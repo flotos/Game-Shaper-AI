@@ -22,7 +22,7 @@ const generateImageFromOpenAI = async (prompt: string): Promise<string> => {
         'Authorization': `Bearer ${import.meta.env.VITE_OAI_KEY}`
       },
       body: JSON.stringify({
-        model: import.meta.env.VITE_AOI_IMAGE_MODEL,
+        model: import.meta.env.VITE_OAI_IMAGE_MODEL,
         prompt,
         n: 1,
         size: '512x512'

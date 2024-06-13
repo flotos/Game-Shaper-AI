@@ -39,7 +39,7 @@ Create a file named `.env` at the root of this folder
 VITE_OAI_KEY=# Open ai api key
 VITE_LLM_API=openai
 VITE_IMG_API=openai
-VITE_AOI_IMAGE_MODEL=dalle-e-3 # You can set dalle-e-2 instead for half the cost, lower quality
+VITE_OAI_IMAGE_MODEL=dalle-e-3 # You can set dalle-e-2 instead for half the cost, lower quality
 ```
 
 Run `start.bat` which will install dependencies and run a server.
@@ -76,7 +76,7 @@ VITE_LLM_HOST=http://127.0.0.1:5001
 
 VITE_IMG_API=automatic1111 #can be automatic1111 or openai (dalle-e)
 VITE_IMG_HOST=http://127.0.0.1:7860
-VITE_AOI_IMAGE_MODEL=dalle-e-3
+VITE_OAI_IMAGE_MODEL=dalle-e-3
 ```
 
 ### Quick notes
