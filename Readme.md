@@ -1,9 +1,15 @@
 # Game Shaper AI
+
 Interact with a Game-engine that keep building its rules and world as you play, adapted to your gameplay.
+
+![logo](logo.jpg)
+
 The node has few advantages over raw LLM gaming:
 - Token-saving features to keep the API costs lowers, as large stories can easily scale in content. the AI only retrieves the content from the nodes it needs, while keeping a short context of all the available nodes
 - UI to inspect any node in your game, with the possibility to store an image for each
 - Adapt nodes as you play, or create game templates. Export your game stat at any moment to share the state of your gameplay and see how others diverge from it, or prepare a set of rules from scratch.
+
+![example screenshot](docs/images/capture2.JPG)
 
 
 ## External tools
