@@ -1,12 +1,12 @@
 # Game Shaper AI
 
-Interact with a Game-engine that keep building its rules and world as you play, adapted to your gameplay.
+> Interact with a Game-engine that keep building its rules and world as you play, adapted to your gameplay.
 
 <p align="center">
     <img src="https://github.com/flotos/Game-Shaper-AI/raw/main/logo.jpg" alt="logo"/>
 </p>
 
-The node has few advantages over raw LLM gaming:
+We propose a node system that has few advantages over raw LLM gaming:
 - Token-saving features to keep the API costs lowers, as large stories can easily scale in content. the AI only retrieves the content from the nodes it needs, while keeping a short context of all the available nodes
 - UI to inspect any node in your game, with the possibility to store an image for each
 - Adapt nodes as you play, or create game templates. Export your game stat at any moment to share the state of your gameplay and see how others diverge from it, or prepare a set of rules from scratch.
