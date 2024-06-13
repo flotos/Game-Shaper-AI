@@ -6,10 +6,19 @@ Interact with a Game-engine that keep building its rules and world as you play, 
     <img src="https://github.com/flotos/Game-Shaper-AI/raw/main/logo.jpg" alt="logo"/>
 </p>
 
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/spKp9zeuQV)
+
+## Features
+### Node-based system
 We propose a node system that has few advantages over raw LLM gaming:
 - Token-saving features to keep the API costs lowers, as large stories can easily scale in content. the AI only retrieves the content from the nodes it needs, while keeping a short context of all the available nodes
 - UI to inspect any node in your game, with the possibility to store an image for each
 - Adapt nodes as you play, or create game templates. Export your game stat at any moment to share the state of your gameplay and see how others diverge from it, or prepare a set of rules from scratch.
+
+### Strong support for Local AIs
+We have strong optimizations in place for local AIs using KoboldCPP for accessibility on smaller GPU, and thanks to a set of custom Grammar (GNBF), your AI, even the simpler one will very rarely produce unhandled output such as badly formated JSON.
+
+We know local AI can be more prone to errors, and we made sure these will not break your adventure.
 
 ![example screenshot](docs/images/capture2.JPG)
 
