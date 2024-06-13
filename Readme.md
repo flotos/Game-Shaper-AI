@@ -63,7 +63,7 @@ Start your automatic1111 repository with the following argument:
 
 Example launch argument for running Higgs-Llama-3-70B.Q4_K on 2 RTX 4090
 ```
-./koboldcpp --port 5001 --usecublas --model ./model/Higgs-Llama-3-70B.Q4_K.gguf --flashattention --quantkv 0 --gpulayers 81 --contextsize 2048 --password nodegame
+./koboldcpp --port 5001 --usecublas --model ./model/Higgs-Llama-3-70B.Q4_K.gguf --flashattention --quantkv 0 --gpulayers 81 --contextsize 2048
 ```
 
 ## IV. Notes
