@@ -8,7 +8,7 @@ Interact with a Game-engine that keep building its rules and world as you play, 
 
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/spKp9zeuQV)
 
-## Features
+## I. Features
 ### Node-based system
 We propose a node system that has few advantages over raw LLM gaming:
 - Token-saving features to keep the API costs lowers, as large stories can easily scale in content. the AI only retrieves the content from the nodes it needs, while keeping a short context of all the available nodes
@@ -23,7 +23,7 @@ We know local AI can be more prone to errors, and we made sure these will not br
 ![example screenshot](docs/images/capture2.JPG)
 
 
-## How to use (OpenAI Provider)
+## II. How to use (OpenAI Example)
 Node.js available here (Windows/linux/Mac)
 `https://nodejs.org/en/download/package-manager`
 
@@ -45,7 +45,7 @@ VITE_AOI_IMAGE_MODEL=dalle-e-3 # You can set dalle-e-2 instead for half the cost
 Run `start.bat` which will install dependencies and run a server.
 On your browser open [http://localhost:3000](http://localhost:3000)
 
-## External Tools required (LLM, image generation)
+## III. Set up AI Tools (LLM, image generation)
 ### OpenAI
 You can specify in the .env your API key and the model to use for image generation
 [Sample .env](#sample-env)
@@ -66,7 +66,8 @@ Example launch argument for running Higgs-Llama-3-70B.Q4_K on 2 RTX 4090
 ./koboldcpp --port 5001 --usecublas --model ./model/Higgs-Llama-3-70B.Q4_K.gguf --flashattention --quantkv 0 --gpulayers 81 --contextsize 2048 --password nodegame
 ```
 
-## Sample .env
+## IV. Notes
+### Sample .env
 ```
 VITE_OAI_KEY=# Open ai api key
 
@@ -78,7 +79,7 @@ VITE_IMG_HOST=http://127.0.0.1:7860
 VITE_AOI_IMAGE_MODEL=dalle-e-3
 ```
 
-## Quick notes
+### Quick notes
 
 I have tested this project with both OpenAI and the following setup:
 
