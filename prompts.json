@@ -1,0 +1,4 @@
+{
+    "llm_prompt_guidelines": "Add to the prompt 'high quality digital painting'",
+    "image_prompt_negative": "low quality, multiple views, concept art, bad anatomy"
+}

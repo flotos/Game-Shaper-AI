@@ -1,0 +1,17 @@
+src/
+  components/
+    ChatInterface.tsx
+    NodeGraphInterface.tsx
+    App.tsx
+  services/
+    LLMService.ts
+    ImageService.ts
+  models/
+    Node.ts
+    NodeGraph.ts
+  main.tsx
+  vite-env.d.ts
+index.html
+package.json
+tsconfig.json
+vite.config.ts
