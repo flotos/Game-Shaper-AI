@@ -1,6 +1,6 @@
 # Game Shaper AI
 
-> Interact with a Game-engine that keep building its rules and world as you play, adapted to your gameplay.
+Interact with a Game-engine that keep building its rules and world as you play, adapted to your gameplay.
 
 <p align="center">
     <img src="https://github.com/flotos/Game-Shaper-AI/raw/main/logo.jpg" alt="logo"/>
