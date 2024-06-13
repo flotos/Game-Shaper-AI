@@ -23,7 +23,7 @@ We know local AI can be more prone to errors, and we made sure these will not br
 ![example screenshot](docs/images/capture2.JPG)
 
 
-## II. How to use (OpenAI Example)
+## II. Quick start with OpenAI Example
 Node.js available here (Windows/linux/Mac)
 `https://nodejs.org/en/download/package-manager`
 
