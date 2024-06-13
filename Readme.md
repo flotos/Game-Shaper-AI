@@ -2,7 +2,9 @@
 
 Interact with a Game-engine that keep building its rules and world as you play, adapted to your gameplay.
 
-![logo](logo.jpg)
+<p align="center">
+    <img src="https://github.com/flotos/Game-Shaper-AI/raw/main/logo.jpg" alt="logo"/>
+</p>
 
 The node has few advantages over raw LLM gaming:
 - Token-saving features to keep the API costs lowers, as large stories can easily scale in content. the AI only retrieves the content from the nodes it needs, while keeping a short context of all the available nodes
