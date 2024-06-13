@@ -32,7 +32,7 @@ Get the files, either:
 - Or clone the repository with
 `git clone https://github.com/flotos/Game-Shaper-AI.git`
 
-Get an OpenAI API key from this link `https://platform.openai.com/api-keys` (We recommend setting low usage cost so you can first see the pricing.)
+Get an OpenAI API key from [this link](https://platform.openai.com/api-keys) (We recommend setting low usage cost so you can first see the pricing.)
 
 Create a file named `.env` at the root of this folder
 ```
