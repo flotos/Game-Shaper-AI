@@ -1,6 +1,6 @@
 {
-  "name": "game-engine",
-  "version": "1.0.0",
+  "name": "game-shaper-ai",
+  "version": "1.0.1",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Node } from '../models/Node';
+import { generateNodesFromPrompt } from '../services/LLMService';
 
 interface NodeEditorOverlayProps {
   nodes: Node[];
@@ -7,11 +8,14 @@ interface NodeEditorOverlayProps {
   updateNode: (node: Node) => void;
   deleteNode: (nodeId: string) => void;
   closeOverlay: () => void;
+  updateGraph: (nodeEdition: { merge?: Partial<Node>[], delete?: string[] }) => void;
 }
 
-const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, updateNode, deleteNode, closeOverlay }) => {
+const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, updateNode, deleteNode, closeOverlay, updateGraph }) => {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [newNode, setNewNode] = useState<Partial<Node>>({});
+  const [prompt, setPrompt] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const generateRandomId = () => {
     return Math.random().toString(36).substring(2, 6);
@@ -25,7 +29,7 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
         ...newNode,
         id: generateRandomId(),
         name: newNode.name || 'New Node',
-        description: newNode.shortDescription || '',
+        shortDescription: newNode.shortDescription || '',
         rules: newNode.rules || '',
         longDescription: newNode.longDescription || '',
         image: newNode.image || '',
@@ -42,6 +46,19 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
     if (selectedNode) {
       deleteNode(selectedNode.id);
       setSelectedNode(null);
+    }
+  };
+
+  const handleGenerateNodes = async () => {
+    setIsLoading(true);
+    try {
+      const queryOutput = await generateNodesFromPrompt(prompt, nodes);
+      updateGraph(queryOutput);
+      setIsLoading(false);
+      closeOverlay();
+    } catch (error) {
+      console.error('Failed to generate nodes:', error);
+      setIsLoading(false);
     }
   };
 
@@ -91,6 +108,12 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
           onChange={(e) => selectedNode ? setSelectedNode({ ...selectedNode, rules: e.target.value }) : setNewNode({ ...newNode, rules: e.target.value })}
           className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
         />
+        <textarea
+          placeholder="Prompt to generate nodes"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
+        />
         <div className="flex justify-between">
           <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
             Save
@@ -102,6 +125,13 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
           )}
           <button onClick={closeOverlay} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
             Cancel
+          </button>
+          <button 
+            onClick={handleGenerateNodes} 
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
+            disabled={isLoading}
+          >
+            {isLoading ? <div className="loader"></div> : 'Generate Nodes'}
           </button>
         </div>
       </div>

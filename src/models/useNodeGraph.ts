@@ -14,7 +14,7 @@ const initNodes: Node[] = [
       AvoidToUpdateImageOnLocations;DescribeNewCharactersInNewNodes_WithHairClothesAndBodyShape;Always_DisplayPlayerAppearanceOnItsDescription`,
     longDescription: "",
     image: 'https://i.ibb.co/rvy5zgd/fec82e01-b0ad-4c96-a79f-745f675b4d15.webp',
-    type: 'Game Rules',
+    type: 'Game Rule',
     parent: '',
     child: ['8545', "8phg"]
   },
@@ -71,9 +71,9 @@ function useNodeGraph() {
     setNodes(prevNodes => prevNodes.filter(node => node.id !== nodeId));
   };
 
-  const updateGraph = async (nodeEdition: { merge?: Partial<Node>[], delete?: Node[] }) => {
+  const updateGraph = async (nodeEdition: { merge?: Partial<Node>[], delete?: string[] }) => {
     let newNodes = [...nodes];
-    let imageGenerationCount = 0;  // Initialize counter for image generations
+    let imageGenerationCount = 0;
 
     if (nodeEdition.merge) {
       for (const updatedNode of nodeEdition.merge) {
@@ -82,12 +82,12 @@ function useNodeGraph() {
         if (updatedNode.updateImage || nodeIndex === -1) {
           if (imageGenerationCount >= 4) {
             console.error('Safeguard: Exceeded maximum image generation limit per batch (4)');
-            break;  // Stop further image generation if limit is reached
+            break;
           }
 
           const prompt = await generateImagePrompt(updatedNode, newNodes);
           updatedNode.image = await generateImage(prompt);
-          imageGenerationCount++;  // Increment counter after generating an image
+          imageGenerationCount++;
         }
 
         const { updateImage, ...filteredNode } = updatedNode;
@@ -100,19 +100,14 @@ function useNodeGraph() {
       }
     }
 
-    // Handle delete operations
     if (nodeEdition.delete) {
-      console.log("should delete a node", { nodeEditionDelete: nodeEdition.delete, newNodes });
-      newNodes = newNodes.filter(n => !nodeEdition.delete.includes(n.id));
-      console.log("Updated", { newNodes });
+      newNodes = newNodes.filter(n => !nodeEdition?.delete?.includes(n.id));
     }
 
-
-    // Finally, update the state with the new nodes array
     setNodes(newNodes);
   };
 
-  return { nodes, addNode, updateNode, deleteNode, updateGraph };
+  return { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes };
 }
 
 export default useNodeGraph;

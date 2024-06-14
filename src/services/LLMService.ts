@@ -141,7 +141,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
     id: ${node.id}
     name: ${node.name}
     shortDescription: ${node.shortDescription}
-    rules: ${node.rules}${node.id in detailledNodeIds ? `\n${node.longDescription}\n` : ""}
+    rules: ${node.rules}${node.id in detailledNodeIds || node.type == "Game Rule" ? `\n${node.longDescription}\n` : ""}
     type: ${node.type}
     child: ${node.child}
     parent: ${node.parent}
@@ -160,7 +160,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   - longDescription: (Mandatory) Detailed description, write everything that is visible or that the player should know.
   - shortDescription: (Mandatory) Very short summary of the longDescription, in natural language
   - rules: (Mandatory) Internal info for AI that player shouldn't see. Describe interesting behavior of this node so you will know later on how to use it. This should be written as compressed text that you can understand later on, to use less tokens. You can use semicolon separated words/entities.
-  - type: Category/type (e.g., 'item', 'location', 'character', 'game concept/rule', 'event')
+  - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
   - parent: ID of the parent node (has to match an existing or newly created node)
   - child: Array of child node IDs (has to match an existing or newly created node)
   - updateImage: If the element described by the node receives a visual/appearance change set to "true"
@@ -212,6 +212,9 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   Keep the logic properly scoped in each node. Prefer to store information in the node that is impacted by the change rather by the one triggering it.
   
   When creating new nodes, be creative and surprise the user with its content. You have to create an interesting game for the player.
+
+  You VERY MUCH have to enforce the world rules and not comply with the user action if it doesn't fit with the Game Rule. Guide the user to interact
+  with the game by following the Game Rule nodes directives.
   
   Reply directly with the JSON. Ensure proper JSON syntax. Always reply with content in your json. Don't use any backquote. DONT USE \`\`\`json for example
   `;
@@ -246,15 +249,15 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   
   node ::= (
     "{"
-      ws "\\"id\\":" ws "\\"" [^"\\\\]+ "\\"" ws "," ws
-      "\\"name\\":" ws "\\"" [^"\\\\]+ "\\"" ws "," ws 
-      "\\"rules\\":" ws "\\"" [^"\\\\]+ "\\"" ws "," ws
-      "\\"longDescription\\":" ws "\\"" [^"\\\\]+ "\\"" ws "," ws
-      "\\"shortDescription\\":" ws "\\"" [^"\\\\]+ "\\"" ws "," ws
-      ( "\\"child\\":" ws "\\"" [^"\\\\]+ "\\"" ws "," ws )?
-      ( "\\"parent\\":" ws "\\"" [^"\\\\]+ "\\"" ws "," ws )?
-      ( "\\"updateImage\\":" ws "\\"" [^"\\\\]+ "\\"" ws "," ws )?
-       "\\"type\\":" ws "\\"" [^"\\\\]+ "\\"" ws
+      ws "\\"id\\":" ws textInQuotes ws "," ws
+      "\\"name\\":" ws textInQuotes ws "," ws 
+      "\\"rules\\":" ws textInQuotes ws "," ws
+      "\\"longDescription\\":" ws textInQuotes ws "," ws
+      "\\"shortDescription\\":" ws textInQuotes ws "," ws
+      ( "\\"child\\":" ws textInQuotes ws "," ws )?
+      ( "\\"parent\\":" ws textInQuotes ws "," ws )?
+      ( "\\"updateImage\\":" ws textInQuotes ws "," ws )?
+       "\\"type\\":" ws textInQuotes ws
     "}" ws
   )
   
@@ -264,24 +267,112 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
     "]" ws
   )
   
-  nodeId ::= "\\"" [^"\\\\]+ "\\"" ws
-  
   chatText ::= [^"\\\\]+ # Any character except double quote and backslash
   
   actions ::= (
     "["
-      ws action (ws "," ws action)* ws 
+      ws textInQuotes (ws "," ws textInQuotes)* ws 
     "]" ws
   )
   
-  action ::= "\\"" [^"\\\\]+ "\\"" ws
-  
+  textInQuotes ::= "\\"" [^"\\\\]+ "\\"" ws
   ws ::= [ \t\n]* # Optional whitespace
-  `;  
+  `;
 
   const response = await getResponse(messages, 'gpt-4o', grammar)
   return JSON.parse(response);
 }
+
+export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => {
+  
+  const nodesDescription = nodes.reduce((acc, node) => {
+    return acc + `
+    id: ${node.id}
+    name: ${node.name}
+    shortDescription: ${node.shortDescription}
+    longDescription: ${node.longDescription}
+    rules: ${node.rules}
+    type: ${node.type}
+    child: ${node.child}
+    parent: ${node.parent}
+    `;
+  }, "");
+
+  const promptMessage = `
+  You are a Game Engine. The user asked to update how the game work or to change some aspect of the world.
+  Your task is to update the game nodes based on the following prompt, for a Game Engine:
+  ---
+  ${prompt}
+  ---
+
+  Here are the existing nodes:
+  ---
+  ${nodesDescription}
+
+  Each node should be described in a JSON format with the following properties:
+  {
+    "id": "unique-id",
+    "name": "node name",
+    "shortDescription": "short description",
+    "longDescription": "long description",
+    "rules": "rules, written in a concise, compressed way.",
+    "type": "node type",
+    "parent": "parent id",
+    "child": ["child ids"]
+  }
+
+  The generated nodes should NOT count as a game round and make the content progress. You have to create either Game systems or content in the world.
+  Ensure proper JSON syntax and do not include any other text except the JSON array.
+  Return an object in this format:
+  {
+    "merge": [{node1Content...}, {node2Content...}],
+    "delete": ["nodeID1ToDelete","nodeID2ToDelete", ...]
+  }
+  `;
+
+  const messages: Message[] = [
+    { role: 'system', content: promptMessage },
+  ];
+
+  const grammar = `root ::= (
+    "{"
+      ws "\\"merge\\":" ws nodes ws "," ws
+      "\\"delete\\":" ws delete ws
+    "}" ws
+  )
+  
+  node ::= (
+    "{"
+      ws "\\"id\\":" ws textInQuotes ws "," ws
+      "\\"name\\":" ws textInQuotes ws "," ws 
+      "\\"rules\\":" ws textInQuotes ws "," ws
+      "\\"longDescription\\":" ws textInQuotes ws "," ws
+      "\\"shortDescription\\":" ws textInQuotes ws "," ws
+      "\\"child\\":" ws textInQuotes ws "," ws
+      "\\"parent\\":" ws textInQuotes ws "," ws
+       "\\"type\\":" ws textInQuotes ws
+    "}" ws
+  )
+
+  nodes ::= (
+    "["
+      ws node (ws "," ws node)* ws 
+    "]" ws
+  )
+
+  delete ::= (
+    "["
+      ws (textInQuotes (ws "," ws textInQuotes)*)? ws 
+    "]" ws
+  )
+    
+  textInQuotes ::= "\\"" [^"\\\\]+ "\\"" ws
+  ws ::= [ \t\n]* # Optional whitespace
+  `;
+
+  const response = await getResponse(messages, 'gpt-4o', grammar);
+  return JSON.parse(response);
+};
 
 const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined) => {
   const apiType = import.meta.env.VITE_LLM_API;
@@ -339,7 +430,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
 
   let llmResult;
   if (apiType === 'openai') {
-    llmResult = data.choices[0].message.content.replace("```", "");
+    llmResult = data.choices[0].message.content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
   } else if (apiType === 'koboldcpp') {
     llmResult = data.results[0].text.replace("```\n", "").replace("\n```", "").replace("```", "");
   }

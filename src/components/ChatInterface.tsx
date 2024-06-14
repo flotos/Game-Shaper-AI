@@ -28,6 +28,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     }
   }, [input]);
 
+  useEffect(() => {
+    if (chatHistory.length === 0) {
+      // Handle any necessary UI updates when chat history is cleared
+      setInput('');
+      setLastNodeEdition(null);
+      setLoadingMessage('');
+      setErrorMessage('');
+    }
+  }, [chatHistory]);
+
   const handleSend = async () => {
     try {
       setErrorMessage('');

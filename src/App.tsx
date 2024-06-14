@@ -17,6 +17,11 @@ const App: React.FC = () => {
     window.location.reload();
   };
 
+  const clearChatHistory = () => {
+    localStorage.removeItem('chatHistory');
+    setChatHistory([]);
+  };
+
   const exportToJson = () => {
     const dataStr = JSON.stringify({ nodes, chatHistory }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
@@ -49,13 +54,19 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-gray-800 text-white">
       <header className="flex justify-between items-center bg-gray-900 shadow-md">
-        <h1 className="text-xl font-bold">Node Graph App</h1>
+        <h1 className="text-xl font-bold">Game Shaper AI</h1>
         <div className="flex space-x-4">
           <button 
             onClick={clearLocalStorage} 
             className="px-1 bg-slate-800 text-white rounded hover:bg-red-700"
           >
             Reset game
+          </button>
+          <button 
+            onClick={clearChatHistory} 
+            className="px-1 bg-slate-800 text-white rounded hover:bg-orange-700"
+          >
+            Reset chat
           </button>
           <button 
             onClick={exportToJson} 
@@ -95,6 +106,7 @@ const App: React.FC = () => {
           updateNode={updateNode}
           deleteNode={deleteNode}
           closeOverlay={() => setShowNodeEditor(false)}
+          updateGraph={updateGraph}
         />
       )}
     </div>
