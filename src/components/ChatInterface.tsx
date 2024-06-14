@@ -57,7 +57,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
 
       setLastNodeEdition(response.nodeEdition);
 
-      const messagesToAdd = [
+      const messagesToAdd: Message[] = [
         {
           role: "selectedNodes",
           content: JSON.stringify(detailedNodeIds, null, 2),
