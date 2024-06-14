@@ -9,12 +9,7 @@ export interface Message {
 const useChatHistory = () => {
   const [chatHistory, setChatHistory] = useState<Message[]>(() => {
     const savedHistory = localStorage.getItem('chatHistory');
-    return savedHistory ? JSON.parse(savedHistory) : [
-      {
-        role: "assistant",
-        content: "You arrives in front of a tavern",
-      }
-    ];
+    return savedHistory ? JSON.parse(savedHistory) : [];
   });
 
   useEffect(() => {
