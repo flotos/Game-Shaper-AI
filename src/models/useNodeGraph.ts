@@ -79,7 +79,7 @@ function useNodeGraph() {
       for (const updatedNode of nodeEdition.merge) {
         const nodeIndex = newNodes.findIndex(n => n.id === updatedNode.id);
 
-        if (updatedNode.updateImage || nodeIndex === -1) {
+        if (updatedNode.updateImage || nodeIndex === -1 && import.meta.env.VITE_IMG_API) {
           if (imageGenerationCount >= 4) {
             console.error('Safeguard: Exceeded maximum image generation limit per batch (4)');
             break;
