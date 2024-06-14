@@ -86,7 +86,7 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
           className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
         />
         <textarea
-          placeholder="Hidden Description"
+          placeholder="Rules (will be hidden to players later on)"
           value={selectedNode ? selectedNode.rules : newNode.rules || ''}
           onChange={(e) => selectedNode ? setSelectedNode({ ...selectedNode, rules: e.target.value }) : setNewNode({ ...newNode, rules: e.target.value })}
           className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
