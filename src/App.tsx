@@ -6,7 +6,7 @@ import useChatHistory from './hooks/useChatHistory';
 import NodeEditorOverlay from './components/NodeEditorOverlay';
 
 const App: React.FC = () => {
-  const { nodes, addNode, updateNode, deleteNode, updateGraph } = useNodeGraph();
+  const { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes } = useNodeGraph();
   const { chatHistory, setChatHistory } = useChatHistory();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
@@ -41,9 +41,9 @@ const App: React.FC = () => {
     reader.onload = (e) => {
       try {
         const { nodes: importedNodes, chatHistory: importedChatHistory } = JSON.parse(e.target?.result as string);
-        localStorage.setItem('nodeGraph', JSON.stringify(importedNodes));
-        localStorage.setItem('chatHistory', JSON.stringify(importedChatHistory));
-        window.location.reload();
+        setNodes(importedNodes);
+        console.log(importedChatHistory)
+        setChatHistory(importedChatHistory);
       } catch (error) {
         console.error('Failed to import JSON', error);
       }
