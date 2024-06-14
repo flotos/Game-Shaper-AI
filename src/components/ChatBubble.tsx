@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Message } from '../hooks/useChatHistory';
+import { Message } from '../context/ChatContext';
 
 const expandableMessagesTypes = ["reasoning", "nodeEdition", "selectedNodes"];
 

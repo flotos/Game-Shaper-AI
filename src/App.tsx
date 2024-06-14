@@ -2,12 +2,12 @@ import React, { useRef, useState } from 'react';
 import ChatInterface from './components/ChatInterface';
 import NodeGraphInterface from './components/NodeGraphInterface';
 import useNodeGraph from './models/useNodeGraph';
-import useChatHistory from './hooks/useChatHistory';
+import { useChat } from './context/ChatContext';
 import NodeEditorOverlay from './components/NodeEditorOverlay';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes } = useNodeGraph();
-  const { chatHistory, setChatHistory } = useChatHistory();
+  const { chatHistory, setChatHistory, clearChatHistory } = useChat();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
 
@@ -15,11 +15,6 @@ const App: React.FC = () => {
     localStorage.removeItem('nodeGraph');
     localStorage.removeItem('chatHistory');
     window.location.reload();
-  };
-
-  const clearChatHistory = () => {
-    localStorage.removeItem('chatHistory');
-    setChatHistory([]);
   };
 
   const exportToJson = () => {
@@ -42,7 +37,6 @@ const App: React.FC = () => {
       try {
         const { nodes: importedNodes, chatHistory: importedChatHistory } = JSON.parse(e.target?.result as string);
         setNodes(importedNodes);
-        console.log(importedChatHistory)
         setChatHistory(importedChatHistory);
       } catch (error) {
         console.error('Failed to import JSON', error);
@@ -113,4 +107,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
+export default AppContent;

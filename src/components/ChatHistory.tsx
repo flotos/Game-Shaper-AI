@@ -1,16 +1,17 @@
 import React from 'react';
 import ChatBubble from './ChatBubble';
-import { Message } from '../hooks/useChatHistory';
+import { useChat } from '../context/ChatContext';
 
 interface ChatHistoryProps {
-  chatHistory: Message[];
   waitingForAnswer: boolean;
   loadingMessage: string;
   errorMessage: string;
   onActionClick: (action: string) => void;
 }
 
-const ChatHistory: React.FC<ChatHistoryProps> = ({ chatHistory, waitingForAnswer, loadingMessage, errorMessage, onActionClick }) => {
+const ChatHistory: React.FC<ChatHistoryProps> = ({ waitingForAnswer, loadingMessage, errorMessage, onActionClick }) => {
+  const { chatHistory, addMessage, setChatHistory } = useChat();
+
   return (
     <div className="flex-grow overflow-y-auto mb-4 space-y-2">
       {chatHistory.map((msg, index) => (

@@ -1,6 +1,6 @@
 import { Node } from '../models/Node';
-import { Message } from '../hooks/useChatHistory';
 import prompts from '../../prompts.json';
+import { Message } from '../context/ChatContext';
 
 export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) => {
 

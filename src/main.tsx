@@ -1,11 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import App from './App';
-import "./index.css";
+import { ChatProvider } from './context/ChatContext';
+import './index.css';
 
 ReactDOM.render(
-  <React.StrictMode>
+  <ChatProvider>
     <App />
-  </React.StrictMode>,
+  </ChatProvider>,
   document.getElementById('root')
 );
