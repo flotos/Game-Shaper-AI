@@ -3,17 +3,48 @@ import prompts from '../../prompts.json';
 import { Message } from '../context/ChatContext';
 
 export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) => {
+  // Check for nodes with type "image_generation"
+  const imageGenerationNodes = allNodes.filter(n => n.type === "image_generation");
+  
+  let contentPrompt = "";
 
-  const nodesDescription = allNodes.reduce((acc, nodet) => {
-    return acc + `
-    ---
-    name: ${nodet.name}
-    shortDescription: ${nodet.shortDescription}
-    rules: ${nodet.rules}
+  // If there are image generation nodes, use their content
+  if (imageGenerationNodes.length > 0) {
+    contentPrompt = imageGenerationNodes.map(n => {
+      let prompt = "";
+      if (n.shortDescription) prompt += n.shortDescription + "\n";
+      if (n.longDescription) prompt += n.longDescription + "\n";
+      if (n.rules) prompt += n.rules + "\n";
+      return prompt;
+    }).join("\n");
+
+    // Add the nodes details from allNodes
+    contentPrompt += `
+    You will generate the caption of image for a game object.
+    The image is for the following object :
+    --
+    name: ${node.name}
+    shortDescription: ${node.shortDescription}
+    longDescription: ${node.longDescription}
+    rules: ${node.rules}
+    type: ${node.type}
+    --
+
+    Here are the other nodes in the scene to give some context:
+    ${allNodes.reduce((acc, nodet) => {
+      return acc + `
+      ---
+      name: ${nodet.name}
+      shortDescription: ${nodet.shortDescription}
+      rules: ${nodet.rules}
+      `;
+    }, "")}
+    
+    Now, generate the image prompt.
     `;
-  }, "");
-
-  const prompt = `
+  } else {
+    // Default prompt when no image generation nodes exist
+    contentPrompt = `
     You will generate the caption of image for a game object.
     The image is for the following object :
     --
@@ -24,19 +55,25 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
     type: ${node.type}
 
     Here are the other nodes in the scene to give some context:
-    ${nodesDescription}
+    ${allNodes.reduce((acc, nodet) => {
+      return acc + `
+      ---
+      name: ${nodet.name}
+      shortDescription: ${nodet.shortDescription}
+      rules: ${nodet.rules}
+      `;
+    }, "")}
 
-
-
-    ${prompts.llm_prompt_guidelines}
+    // ${prompts.llm_prompt_guidelines}
 
     The caption should be a concise text at most 2 sentences describing what we can see on the image. Don't write anything else.
     It should describe what can be seen now.
     Use the object's long and short description mostly, and just a bit the information from "rules" that was given for some context.
-  `
+    `;
+  }
 
   const messages: Message[] = [
-    { role: 'system', content: prompt },
+    { role: 'system', content: contentPrompt },
   ];
 
   return getResponse(messages);
