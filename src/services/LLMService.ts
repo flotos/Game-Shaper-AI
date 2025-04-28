@@ -229,6 +229,9 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   Update the game graph and generate appropriate dialogue and actions based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
   You will make the world progress by itself at every round, in addition to any action the player make in the world. Each user action should have a significant impact.
 
+  ## IMPORTANT: Your response must be a single, flat JSON object. Do not nest JSON within the content field.
+  ## The response should be directly parseable as JSON without any additional processing.
+
   ## Node Properties:
   - id: Unique id string
   - name: title
