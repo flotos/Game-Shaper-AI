@@ -573,7 +573,15 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
   if (apiType === 'openai') {
     llmResult = data.choices[0].message.content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
   } else if (apiType === 'openrouter') {
-    llmResult = data.choices[0].message.content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
+    const content = data.choices[0].message.content;
+    // Check if the content is already a JSON string
+    try {
+      JSON.parse(content);
+      llmResult = content;
+    } catch (e) {
+      // If not valid JSON, clean it like OpenAI response
+      llmResult = content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
+    }
   } else if (apiType === 'koboldcpp') {
     llmResult = data.results[0].text.replace("```\n", "").replace("\n```", "").replace("```", "");
   }

@@ -7,9 +7,10 @@ interface ChatHistoryProps {
   loadingMessage: string;
   errorMessage: string;
   onActionClick: (action: string) => void;
+  onRetry: () => void;
 }
 
-const ChatHistory: React.FC<ChatHistoryProps> = ({ waitingForAnswer, loadingMessage, errorMessage, onActionClick }) => {
+const ChatHistory: React.FC<ChatHistoryProps> = ({ waitingForAnswer, loadingMessage, errorMessage, onActionClick, onRetry }) => {
   const { chatHistory, addMessage, setChatHistory } = useChat();
 
   return (
@@ -27,6 +28,12 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({ waitingForAnswer, loadingMess
         <div className="flex flex-col items-center">
           <div className="text-red-500 text-xl font-bold">×</div>
           <div className="text-white text-sm">{errorMessage}</div>
+          <button
+            onClick={onRetry}
+            className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Retry
+          </button>
         </div>
       )}
     </div>

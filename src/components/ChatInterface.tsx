@@ -20,6 +20,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
   const [lastNodeEdition, setLastNodeEdition] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionTriggered, setActionTriggered] = useState(false);
+  const [lastFailedRequest, setLastFailedRequest] = useState<{
+    input: string;
+    chatHistory: Message[];
+    nodes: Node[];
+    detailedNodeIds: string[];
+  } | null>(null);
 
   useEffect(() => {
     if (actionTriggered) {
@@ -38,7 +44,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     }
   }, [chatHistory]);
 
-  const handleSend = async () => {
+  const handleSend = async (retry = false) => {
     if (!input.trim() || waitingForAnswer) return;
 
     setWaitingForAnswer(true);
@@ -53,22 +59,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         content: input,
         timestamp
       };
-      addMessage(userMessage);
+      
+      if (!retry) {
+        addMessage(userMessage);
+      }
 
       let detailedNodeIds;
       if (nodes.length < 15) {
-        // If less than 15 nodes, use all non-image_generation nodes
         detailedNodeIds = nodes
           .filter(node => node.type !== "image_generation")
           .map(node => node.id);
       } else {
-        // Original behavior for 15 or more nodes
         detailedNodeIds = await getRelevantNodes(input, [...chatHistory, userMessage].slice(-4), nodes);
       }
 
       const response = await generateUserInputResponse(input, [...chatHistory, userMessage].slice(-20), nodes, detailedNodeIds);
 
       setLastNodeEdition(response.nodeEdition);
+      setLastFailedRequest(null);
 
       const messagesToAdd: Message[] = [
         {
@@ -109,9 +117,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     } catch (error) {
       console.error('Error during chat handling:', error);
       setErrorMessage('An error occurred. Please try again.');
+      setLastFailedRequest({
+        input,
+        chatHistory: [...chatHistory],
+        nodes,
+        detailedNodeIds: nodes
+          .filter(node => node.type !== "image_generation")
+          .map(node => node.id)
+      });
     } finally {
       setWaitingForAnswer(false);
       setLoadingMessage('');
+    }
+  };
+
+  const handleRetry = () => {
+    if (lastFailedRequest) {
+      setInput(lastFailedRequest.input);
+      handleSend(true);
     }
   };
 
@@ -129,7 +152,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       <ChatHistory 
         waitingForAnswer={waitingForAnswer} 
         loadingMessage={loadingMessage} 
-        errorMessage={errorMessage} 
+        errorMessage={errorMessage}
+        onRetry={handleRetry}
         onActionClick={handleActionClick} 
       />
       <ChatInput input={input} setInput={setInput} handleSend={handleSend} waitingForAnswer={waitingForAnswer} />
