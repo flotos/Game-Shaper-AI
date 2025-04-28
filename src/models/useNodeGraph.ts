@@ -79,7 +79,10 @@ function useNodeGraph() {
       // First, collect all nodes that need image generation
       const nodesToUpdate = nodeEdition.merge.filter(updatedNode => {
         const nodeIndex = newNodes.findIndex(n => n.id === updatedNode.id);
-        return updatedNode.updateImage || (nodeIndex === -1 && import.meta.env.VITE_IMG_API);
+        // Only include nodes that either:
+        // 1. Are new (nodeIndex === -1) and image API is available
+        // 2. Have updateImage flag set to true
+        return (nodeIndex === -1 && import.meta.env.VITE_IMG_API) || updatedNode.updateImage === true;
       });
 
       if (nodesToUpdate.length > 4) {
@@ -99,10 +102,15 @@ function useNodeGraph() {
 
       let results;
       if (import.meta.env.VITE_IMG_API === 'novelai') {
-        // For NovelAI, process images sequentially
+        // For NovelAI, process everything sequentially
         results = [];
-        for (const promise of imageGenerationPromises) {
-          results.push(await promise);
+        for (const updatedNode of nodesToUpdate) {
+          const prompt = await generateImagePrompt(updatedNode, newNodes);
+          const image = await generateImage(prompt);
+          results.push({
+            node: updatedNode,
+            image
+          });
         }
       } else {
         // For other providers, process images in parallel
