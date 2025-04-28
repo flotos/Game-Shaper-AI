@@ -90,30 +90,70 @@ function useNodeGraph() {
         return;
       }
 
-      // Generate all images in parallel
-      const imageGenerationPromises = nodesToUpdate.map(async (updatedNode) => {
-        const promptPromise = generateImagePrompt(updatedNode, newNodes);
-        const imagePromise = promptPromise.then(prompt => generateImage(prompt));
-        return {
-          node: updatedNode,
-          image: await imagePromise
-        };
-      });
-
       let results;
       if (import.meta.env.VITE_IMG_API === 'novelai') {
-        // For NovelAI, process everything sequentially
+        // For NovelAI:
+        // 1. Generate all prompts in parallel first
+        const promptPromises = nodesToUpdate.map(updatedNode => generateImagePrompt(updatedNode, newNodes));
+        const prompts = await Promise.all(promptPromises);
+        
+        // 2. Then generate images sequentially
         results = [];
-        for (const updatedNode of nodesToUpdate) {
-          const prompt = await generateImagePrompt(updatedNode, newNodes);
-          const image = await generateImage(prompt);
-          results.push({
-            node: updatedNode,
-            image
-          });
+        for (let i = 0; i < nodesToUpdate.length; i++) {
+          const updatedNode = nodesToUpdate[i];
+          const prompt = prompts[i];
+          let retryCount = 0;
+          const maxRetries = 3;
+          let success = false;
+          
+          while (!success && retryCount < maxRetries) {
+            try {
+              const image = await generateImage(prompt);
+              if (image) {
+                results.push({
+                  node: updatedNode,
+                  image
+                });
+                success = true;
+              } else {
+                throw new Error('Empty image returned');
+              }
+            } catch (error: any) {
+              retryCount++;
+              if (error.message === 'RATE_LIMITED') {
+                // For rate limiting, use exponential backoff
+                const delay = Math.pow(2, retryCount) * 1000;
+                console.log(`Rate limited. Retrying in ${delay/1000}s (attempt ${retryCount + 1}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+              } else if (retryCount === maxRetries) {
+                console.error(`Failed to generate image for node ${updatedNode.id} after ${maxRetries} attempts:`, error);
+                results.push({
+                  node: updatedNode,
+                  image: ''
+                });
+              } else {
+                // For other errors, use a fixed delay
+                console.log(`Retrying image generation for node ${updatedNode.id} in 2s (attempt ${retryCount + 1}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+              }
+            }
+          }
+          
+          // Add a delay between successful generations
+          if (success) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
         }
       } else {
-        // For other providers, process images in parallel
+        // For other providers, process everything in parallel
+        const imageGenerationPromises = nodesToUpdate.map(async (updatedNode) => {
+          const prompt = await generateImagePrompt(updatedNode, newNodes);
+          const image = await generateImage(prompt);
+          return {
+            node: updatedNode,
+            image
+          };
+        });
         results = await Promise.all(imageGenerationPromises);
       }
 

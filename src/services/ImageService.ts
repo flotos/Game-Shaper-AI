@@ -154,7 +154,7 @@ const generateImageFromAutomatic = async (prompt: string): Promise<string> => {
 const generateImageFromNovelAIV4 = async (prompt: string): Promise<string> => {
   console.log('Starting NovelAI v4 image generation...');
   // You may want to customize these or pass as arguments
-  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, flat lighting\n";
+  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres";
   const seed = Math.floor(Math.random() * 4294967295); // random 32-bit unsigned int
   const now = new Date().toISOString();
   const correlationId = Math.random().toString(36).substring(2, 8);
@@ -239,6 +239,10 @@ const generateImageFromNovelAIV4 = async (prompt: string): Promise<string> => {
       if (response.status === 400) {
         console.error('400 error: Bad request for image generation.');
         return '';
+      }
+      if (response.status === 429) {
+        console.log('Rate limited by NovelAI API. Waiting before retry...');
+        throw new Error('RATE_LIMITED');
       }
       throw new Error(`Unexpected error: ${response.statusText}`);
     }
