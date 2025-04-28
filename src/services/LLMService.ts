@@ -374,6 +374,26 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   return JSON.parse(response);
 };
 
+/**
+ * Available OpenRouter Text Models:
+ * - anthropic/claude-3-opus-20240229
+ * - anthropic/claude-3-sonnet-20240229
+ * - anthropic/claude-3-haiku-20240307
+ * - anthropic/claude-2.1
+ * - anthropic/claude-2.0
+ * - google/gemini-pro
+ * - google/gemini-1.0-pro
+ * - meta-llama/llama-2-70b-chat
+ * - meta-llama/llama-2-13b-chat
+ * - mistral/mistral-medium
+ * - mistral/mistral-small
+ * - mistral/mixtral-8x7b
+ * - nousresearch/nous-hermes-2-mixtral-8x7b-dpo
+ * - perplexity/pplx-70b-online
+ * - perplexity/pplx-7b-online
+ * For pricing and capabilities, see: https://openrouter.ai/docs#models
+ */
+
 const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined) => {
   const apiType = import.meta.env.VITE_LLM_API;
 
@@ -391,15 +411,23 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       })
     });
   } else if (apiType === 'openrouter') {
+    // Get the configured model or use a default
+    const openrouterModel = import.meta.env.VITE_OPENROUTER_MODEL || 'anthropic/claude-3-opus-20240229';
+    console.log('Using OpenRouter model:', openrouterModel);
+
     response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY}`
+        'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY}`,
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Game Shaper AI'
       },
       body: JSON.stringify({
-        model: model,
-        messages: messages
+        model: openrouterModel,
+        messages: messages,
+        temperature: import.meta.env.VITE_OPENROUTER_TEMPERATURE ? parseFloat(import.meta.env.VITE_OPENROUTER_TEMPERATURE) : 0.7,
+        max_tokens: import.meta.env.VITE_OPENROUTER_MAX_TOKENS ? parseInt(import.meta.env.VITE_OPENROUTER_MAX_TOKENS) : 4096
       })
     });
   } else if (apiType === 'koboldcpp') {

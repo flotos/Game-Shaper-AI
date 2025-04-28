@@ -54,19 +54,40 @@ const generateImageFromOpenAI = async (prompt: string): Promise<string> => {
   }
 };
 
+/**
+ * Available OpenRouter Image Models:
+ * - stabilityai/stable-diffusion-xl-base-1.0
+ * - stability-ai/sdxl
+ * - stability-ai/stable-diffusion-xl
+ * - dall-e-3
+ * - dall-e-2
+ * - anthropic/claude-3-haiku
+ * - anthropic/claude-3-sonnet
+ * - anthropic/claude-3-opus
+ */
+
 const generateImageFromOpenRouter = async (prompt: string): Promise<string> => {
   try {
+    const model = import.meta.env.VITE_OPENROUTER_IMAGE_MODEL || 'stability-ai/sdxl';
+    const size = import.meta.env.VITE_OPENROUTER_IMAGE_SIZE || '1024x1024';
+    const quality = import.meta.env.VITE_OPENROUTER_IMAGE_QUALITY || 'standard';
+
+    console.log('Generating image with OpenRouter model:', model);
     const response = await fetch('https://openrouter.ai/api/v1/images/generations', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY}`
+        'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY}`,
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Game Shaper AI'
       },
       body: JSON.stringify({
-        model: import.meta.env.VITE_OPENROUTER_IMAGE_MODEL,
+        model,
         prompt,
         n: 1,
-        size: '512x512'
+        size,
+        quality,
+        style: import.meta.env.VITE_OPENROUTER_IMAGE_STYLE || 'vivid'
       })
     });
 
@@ -144,8 +165,8 @@ const generateImageFromNovelAIV4 = async (prompt: string): Promise<string> => {
     action: "generate",
     parameters: {
       params_version: 3,
-      width: 832,
-      height: 1216,
+      width: 1024,
+      height: 1024,
       scale: 7,
       sampler: "k_dpmpp_2m_sde",
       steps: 28,

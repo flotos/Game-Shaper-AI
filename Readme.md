@@ -111,3 +111,76 @@ To use NovelAI v4 for image generation:
 3. The API will return a compressed image (JPEG) as a data URL.
 
 The integration uses the official NovelAI v4 endpoint and mimics the required headers and payload structure.
+
+## OpenRouter Image Generation Configuration
+
+When using OpenRouter for image generation (`VITE_IMG_API=openrouter`), you can configure the following environment variables:
+
+- `VITE_OPENROUTER_KEY`: Your OpenRouter API key
+- `VITE_OPENROUTER_IMAGE_MODEL`: The model to use for image generation (default: 'stability-ai/sdxl')
+  - Available models:
+    - `stabilityai/stable-diffusion-xl-base-1.0`
+    - `stability-ai/sdxl`
+    - `stability-ai/stable-diffusion-xl`
+    - `dall-e-3`
+    - `dall-e-2`
+    - `anthropic/claude-3-haiku`
+    - `anthropic/claude-3-sonnet`
+    - `anthropic/claude-3-opus`
+- `VITE_OPENROUTER_IMAGE_SIZE`: The size of the generated image (default: '1024x1024')
+  - Available sizes depend on the model:
+    - DALL-E 3: '1024x1024', '1792x1024', '1024x1792'
+    - SDXL: '1024x1024'
+    - Other models: Check the model's documentation
+- `VITE_OPENROUTER_IMAGE_QUALITY`: The quality of the generated image (default: 'standard')
+  - Available options: 'standard', 'hd' (for models that support it)
+- `VITE_OPENROUTER_IMAGE_STYLE`: The style of the generated image (default: 'vivid')
+  - Available options: 'vivid', 'natural' (for models that support it)
+
+Example .env configuration:
+```env
+VITE_IMG_API=openrouter
+VITE_OPENROUTER_KEY=your_api_key
+VITE_OPENROUTER_IMAGE_MODEL=stability-ai/sdxl
+VITE_OPENROUTER_IMAGE_SIZE=1024x1024
+VITE_OPENROUTER_IMAGE_QUALITY=standard
+VITE_OPENROUTER_IMAGE_STYLE=vivid
+```
+
+## OpenRouter Text Generation Configuration
+
+When using OpenRouter for text generation (`VITE_LLM_API=openrouter`), you can configure the following environment variables:
+
+- `VITE_OPENROUTER_KEY`: Your OpenRouter API key
+- `VITE_OPENROUTER_MODEL`: The model to use for text generation (default: 'anthropic/claude-3-opus-20240229')
+  - Available models:
+    - `anthropic/claude-3-opus-20240229` - Most capable Claude 3 model
+    - `anthropic/claude-3-sonnet-20240229` - Balanced Claude 3 model
+    - `anthropic/claude-3-haiku-20240307` - Fast and efficient Claude 3 model
+    - `anthropic/claude-2.1` - Previous generation Claude
+    - `anthropic/claude-2.0` - Previous generation Claude
+    - `google/gemini-pro` - Google's latest model
+    - `google/gemini-1.0-pro` - Previous Gemini version
+    - `meta-llama/llama-2-70b-chat` - Meta's largest Llama 2 model
+    - `meta-llama/llama-2-13b-chat` - Smaller Llama 2 model
+    - `mistral/mistral-medium` - Mistral's medium model
+    - `mistral/mistral-small` - Mistral's small model
+    - `mistral/mixtral-8x7b` - Mistral's MoE model
+    - `nousresearch/nous-hermes-2-mixtral-8x7b-dpo` - Nous Research's Mixtral fine-tune
+    - `perplexity/pplx-70b-online` - Perplexity's large model
+    - `perplexity/pplx-7b-online` - Perplexity's small model
+- `VITE_OPENROUTER_TEMPERATURE`: Controls randomness in the output (default: 0.7)
+  - Range: 0.0 to 1.0 (lower = more deterministic)
+- `VITE_OPENROUTER_MAX_TOKENS`: Maximum number of tokens in the response (default: 4096)
+  - Actual limits vary by model
+
+Example .env configuration:
+```env
+VITE_LLM_API=openrouter
+VITE_OPENROUTER_KEY=your_api_key
+VITE_OPENROUTER_MODEL=anthropic/claude-3-opus-20240229
+VITE_OPENROUTER_TEMPERATURE=0.7
+VITE_OPENROUTER_MAX_TOKENS=4096
+```
+
+For detailed pricing and capabilities of each model, visit: https://openrouter.ai/docs#models
