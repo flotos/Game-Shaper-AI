@@ -3,22 +3,22 @@ import JSZip from 'jszip';
 
 const apiType = import.meta.env.VITE_IMG_API;
 
-export const generateImage = async (prompt: string): Promise<string> => {
+export const generateImage = async (prompt: string, seed?: number): Promise<string> => {
   if (apiType === 'openai') {
-    return generateImageFromOpenAI(prompt);
+    return generateImageFromOpenAI(prompt, seed);
   } else if (apiType === 'openrouter') {
-    return generateImageFromOpenRouter(prompt);
+    return generateImageFromOpenRouter(prompt, seed);
   } else if (apiType === 'automatic1111') {
-    return generateImageFromAutomatic(prompt);
+    return generateImageFromAutomatic(prompt, seed);
   } else if (apiType === 'novelai') {
-    return generateImageFromNovelAIV4(prompt);
+    return generateImageFromNovelAIV4(prompt, seed);
   } else {
     console.error('Unknown API type');
     return '';
   }
 };
 
-const generateImageFromOpenAI = async (prompt: string): Promise<string> => {
+const generateImageFromOpenAI = async (prompt: string, seed?: number): Promise<string> => {
   try {
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
@@ -30,7 +30,8 @@ const generateImageFromOpenAI = async (prompt: string): Promise<string> => {
         model: import.meta.env.VITE_OAI_IMAGE_MODEL,
         prompt,
         n: 1,
-        size: '512x512'
+        size: '512x512',
+        seed: seed
       })
     });
 
@@ -66,7 +67,7 @@ const generateImageFromOpenAI = async (prompt: string): Promise<string> => {
  * - anthropic/claude-3-opus
  */
 
-const generateImageFromOpenRouter = async (prompt: string): Promise<string> => {
+const generateImageFromOpenRouter = async (prompt: string, seed?: number): Promise<string> => {
   try {
     const model = import.meta.env.VITE_OPENROUTER_IMAGE_MODEL || 'stability-ai/sdxl';
     const size = import.meta.env.VITE_OPENROUTER_IMAGE_SIZE || '1024x1024';
@@ -87,7 +88,8 @@ const generateImageFromOpenRouter = async (prompt: string): Promise<string> => {
         n: 1,
         size,
         quality,
-        style: import.meta.env.VITE_OPENROUTER_IMAGE_STYLE || 'vivid'
+        style: import.meta.env.VITE_OPENROUTER_IMAGE_STYLE || 'vivid',
+        seed: seed
       })
     });
 
@@ -108,13 +110,13 @@ const generateImageFromOpenRouter = async (prompt: string): Promise<string> => {
   }
 };
 
-const generateImageFromAutomatic = async (prompt: string): Promise<string> => {
+const generateImageFromAutomatic = async (prompt: string, seed?: number): Promise<string> => {
   const webuiServerUrl = import.meta.env.VITE_IMG_HOST || 'http://127.0.0.1:7860';
 
   const payload = {
     prompt,
     negative_prompt: prompts.image_prompt_negative,
-    seed: 1,
+    seed: seed || 1,
     steps: 20,
     width: 1024,
     height: 1024,
@@ -151,11 +153,10 @@ const generateImageFromAutomatic = async (prompt: string): Promise<string> => {
   }
 };
 
-const generateImageFromNovelAIV4 = async (prompt: string): Promise<string> => {
+const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promise<string> => {
   console.log('Starting NovelAI v4 image generation...');
   // You may want to customize these or pass as arguments
-  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres";
-  const seed = Math.floor(Math.random() * 4294967295); // random 32-bit unsigned int
+  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim";
   const now = new Date().toISOString();
   const correlationId = Math.random().toString(36).substring(2, 8);
 
@@ -167,7 +168,7 @@ const generateImageFromNovelAIV4 = async (prompt: string): Promise<string> => {
       params_version: 3,
       width: 1024,
       height: 1024,
-      scale: 7,
+      scale: 5,
       sampler: "k_dpmpp_2m_sde",
       steps: 28,
       n_samples: 1,
@@ -185,7 +186,7 @@ const generateImageFromNovelAIV4 = async (prompt: string): Promise<string> => {
       use_coords: false,
       legacy_uc: false,
       normalize_reference_strength_multiple: true,
-      seed: seed,
+      seed: seed || Math.floor(Math.random() * 4294967295),
       v4_prompt: {
         caption: {
           base_caption: prompt,

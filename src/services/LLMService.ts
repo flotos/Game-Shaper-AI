@@ -192,15 +192,35 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   }, "");
   
   const nodesDescription = nodes.reduce((acc, node) => {
-    return acc + `
-    id: ${node.id}
-    name: ${node.name}
-    shortDescription: ${node.shortDescription}
-    rules: ${node.rules}${node.id in detailledNodeIds || node.type == "Game Rule" ? `\n${node.longDescription}\n` : ""}
-    type: ${node.type}
-    child: ${node.child}
-    parent: ${node.parent}
-    `;
+    // Skip image_generation nodes
+    if (node.type === "image_generation") {
+      return acc;
+    }
+
+    // If there are less than 15 nodes, include full content
+    if (nodes.length < 15) {
+      return acc + `
+        id: ${node.id}
+        name: ${node.name}
+        shortDescription: ${node.shortDescription}
+        longDescription: ${node.longDescription}
+        rules: ${node.rules}
+        type: ${node.type}
+        child: ${node.child}
+        parent: ${node.parent}
+        `;
+    } else {
+      // Original behavior for 15 or more nodes
+      return acc + `
+        id: ${node.id}
+        name: ${node.name}
+        longDescription: ${node.longDescription}
+        rules: ${node.rules}${node.id in detailledNodeIds || node.type == "Game Rule" ? `\n${node.longDescription}\n` : ""}
+        type: ${node.type}
+        child: ${node.child}
+        parent: ${node.parent}
+        `;
+    }
   }, "");
   
   const prompt = `
@@ -214,11 +234,21 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   - name: title
   - longDescription: (Mandatory) Detailed description, write everything that is visible or that the player should know.
   - shortDescription: (Mandatory) Very short summary of the longDescription, in natural language
-  - rules: (Mandatory) Internal info for AI that player shouldn't see. Describe interesting behavior of this node so you will know later on how to use it. This should be written as compressed text that you can understand later on, to use less tokens. You can use semicolon separated words/entities.
+  - rules: (Mandatory) Internal info for AI that player shouldn't see. Store rich, reusable information in a structured format:
+    * Use semicolons to separate different aspects
+    * Include character traits, motivations, and relationships
+    * Store environmental details and atmosphere
+    * Note potential interactions and consequences
+    * Keep track of past events and their impact
+    * Store hidden mechanics and triggers
+    * Include potential future developments
+    * Note emotional states and psychological aspects
+    * Store physical characteristics and capabilities
+    * Include cultural and social context
   - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
   - parent: ID of the parent node (has to match an existing or newly created node)
   - child: Array of child node IDs (has to match an existing or newly created node)
-  - updateImage: If the element described by the node receives a visual/appearance change set to "true"
+  - updateImage: If the element described by the node receives a visual/appearance change set to "true". Use this flag only if there are major changes as this trigger a 20-second generation process per image.
   
   ## Node Guidelines:
   - Purpose-Driven: Clear role within the game
@@ -226,14 +256,20 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   - Interactivity: Enhance engagement through interactions and consequences
   - Scalability: Allow for future modifications
   - Innovativeness: Creative design to enrich player experience
+  - Image update: Don't update the image when a character changes expression or pose, but only if their body or clothes change for example. Unless a node states otherwise
+  - Rich Information Storage: Store detailed, reusable information in the rules field that can be referenced later
+  - Dynamic Evolution: Allow nodes to evolve based on player interactions and story progression
+  - Hidden Depth: Include subtle details and hidden mechanics that can be discovered
+  - Emotional Resonance: Track emotional states and psychological aspects of characters
+  - Environmental Context: Store rich environmental details and atmosphere
   
-  ## Example Node:
+  ## Example Node with Rich Information:
   {
     "id": "56",
     "name": "Healing Potion",
     "shortDescription": "A small vial containing a red liquid that restores health.",
     "longDescription": "The vial has a strong smell, and its red liquid is similar to blood. Few people would drink this if it wasn't a medicine.",
-    "rules": "Restores 50 points of health instantly when consumed.",
+    "rules": "Restores 50 points of health instantly when consumed;Made from rare mountain herbs;Has a metallic aftertaste;Can be used to poison if mixed with certain ingredients;Lasts for 3 days before losing potency;Created by the ancient alchemist guild;Has a faint glow in darkness;Can be used to detect magical traps;Stains skin red temporarily;Has a calming effect on magical creatures;Can be used as a bargaining chip with certain factions;Has a 10% chance to cause temporary hallucinations;Can be used to create magical ink;Has a unique resonance with certain magical artifacts",
     "type": "Item",
     "parent": "12",
     "updateImage": true,
@@ -254,7 +290,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   Using the information provided, update the graph as needed and generate a JSON response with:
   {
     "reasoning": "Write here short sentences to decide what happens in reaction to the player's action. Another sentence to explain how you will update the node graph, always prefer to update before creating new nodes. Ensure to assign correctly the changes to the correct nodes. Analyse which node should update their image, because their description change has is visible",
-    "chatText": "Narrator dialogue/description reflecting the current game state and actions taken in natural language that will display in the chat. One or two paragraphs. Don't ask question to the player. Avoir repeating what was said before.",
+    "chatText": "Narrator dialogue/description reflecting the current game state and actions taken in natural language that will display in the chat. Should be a small chapter (4 to 8 paragraphs). Don't ask question to the player. Avoir repeating what was said before.",
     "actions": "(Array of strings) two interesting actions the player can then take",
     "nodeEdition": {
       "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id",
@@ -270,6 +306,16 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
 
   You VERY MUCH have to enforce the world rules and not comply with the user action if it doesn't fit with the Game Rule. Guide the user to interact
   with the game by following the Game Rule nodes directives.
+  
+  When updating nodes, enrich their rules field with additional information that could be relevant later. This includes:
+  - Character development and relationships
+  - Environmental changes and atmosphere
+  - Hidden mechanics and triggers
+  - Emotional states and psychological aspects
+  - Cultural and social context
+  - Potential future developments
+  - Past events and their impact
+  - Physical characteristics and capabilities
   
   Reply directly with the JSON. Ensure proper JSON syntax. Always reply with content in your json. Don't use any backquote. DONT USE \`\`\`json for example
   `;

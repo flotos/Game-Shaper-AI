@@ -55,7 +55,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       };
       addMessage(userMessage);
 
-      const detailedNodeIds = await getRelevantNodes(input, [...chatHistory, userMessage].slice(-4), nodes);
+      let detailedNodeIds;
+      if (nodes.length < 15) {
+        // If less than 15 nodes, use all non-image_generation nodes
+        detailedNodeIds = nodes
+          .filter(node => node.type !== "image_generation")
+          .map(node => node.id);
+      } else {
+        // Original behavior for 15 or more nodes
+        detailedNodeIds = await getRelevantNodes(input, [...chatHistory, userMessage].slice(-4), nodes);
+      }
+
       const response = await generateUserInputResponse(input, [...chatHistory, userMessage].slice(-20), nodes, detailedNodeIds);
 
       setLastNodeEdition(response.nodeEdition);

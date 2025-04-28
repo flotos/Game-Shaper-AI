@@ -108,19 +108,21 @@ function useNodeGraph() {
           
           while (!success && retryCount < maxRetries) {
             try {
-              const image = await generateImage(prompt);
+              // Use existing seed if available, otherwise generate a new one
+              const imageSeed = updatedNode.imageSeed || Math.floor(Math.random() * 4294967295);
+              const image = await generateImage(prompt, imageSeed);
               if (image) {
                 results.push({
-                  node: updatedNode,
+                  node: { ...updatedNode, imageSeed }, // Store the seed in the node
                   image
                 });
                 success = true;
               } else {
                 throw new Error('Empty image returned');
               }
-            } catch (error: any) {
+            } catch (error: unknown) {
               retryCount++;
-              if (error.message === 'RATE_LIMITED') {
+              if (error instanceof Error && error.message === 'RATE_LIMITED') {
                 // For rate limiting, use exponential backoff
                 const delay = Math.pow(2, retryCount) * 1000;
                 console.log(`Rate limited. Retrying in ${delay/1000}s (attempt ${retryCount + 1}/${maxRetries})`);
@@ -148,9 +150,11 @@ function useNodeGraph() {
         // For other providers, process everything in parallel
         const imageGenerationPromises = nodesToUpdate.map(async (updatedNode) => {
           const prompt = await generateImagePrompt(updatedNode, newNodes);
-          const image = await generateImage(prompt);
+          // Use existing seed if available, otherwise generate a new one
+          const imageSeed = updatedNode.imageSeed || Math.floor(Math.random() * 4294967295);
+          const image = await generateImage(prompt, imageSeed);
           return {
-            node: updatedNode,
+            node: { ...updatedNode, imageSeed }, // Store the seed in the node
             image
           };
         });

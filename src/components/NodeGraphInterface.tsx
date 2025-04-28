@@ -30,7 +30,7 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
             <p className="text-xs mt-5 break-all">Hidden Description: {selectedNode.rules}</p>
             <p className="text-xs break-all">Type: {selectedNode.type}</p>
             <p className="text-xs break-all">short description: {selectedNode.shortDescription}</p>
-            <img src={selectedNode.image} alt={selectedNode.name} className="w-full object-contain max-h-[55vh] mt-4" />
+            <img src={selectedNode.image} alt={selectedNode.name} className="w-full object-contain max-h-[70vh] mt-4" />
           </div>
           <button className="mt-4 py-2 px-4 bg-red-900 rounded w-full" onClick={() => setSelectedNode(null)}>Close</button>
         </div>

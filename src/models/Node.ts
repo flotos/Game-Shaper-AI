@@ -9,4 +9,5 @@ export interface Node {
   type: string;
   parent: string;
   child: string[];
+  imageSeed?: number;
 }
