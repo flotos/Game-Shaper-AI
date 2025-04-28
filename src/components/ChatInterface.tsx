@@ -60,9 +60,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         timestamp
       };
       
-      if (!retry) {
-        addMessage(userMessage);
-      }
+      // Always add the user message to chat history
+      addMessage(userMessage);
 
       let detailedNodeIds;
       if (nodes.length < 15) {
