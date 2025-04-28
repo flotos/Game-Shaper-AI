@@ -89,3 +89,25 @@ I have tested this project with both OpenAI and the following setup:
 
 ### OpenAI
 About half the cost was images, the other GPT-4o. Each image is 0.02$ on dalle-e-2 and 0.04$ for dalle-e-3 [pricing](https://openai.com/api/pricing/)
+
+## Environment Variables
+- `VITE_LLM_API`: The API provider for LLM (e.g., `openai`, `openrouter`, `koboldcpp`).
+- `VITE_IMG_API`: The API provider for image generation (e.g., `openai`, `openrouter`, `automatic1111`).
+- `VITE_OAI_KEY`: The API key for OpenAI.
+- `VITE_OPENROUTER_KEY`: The API key for OpenRouter.
+- `VITE_OAI_IMAGE_MODEL`: The model for OpenAI image generation.
+- `VITE_OPENROUTER_IMAGE_MODEL`: The model for OpenRouter image generation.
+- `VITE_LLM_HOST`: The host for the LLM API.
+- `VITE_IMG_HOST`: The host for the image generation API.
+
+## NovelAI v4 Image Generation Support
+
+To use NovelAI v4 for image generation:
+
+1. Set the following environment variables in your `.env` or build environment:
+   - `VITE_IMG_API=novelai`
+   - `VITE_NAI_KEY=your_novelai_api_key`
+2. The prompt you provide will be used as the main prompt. The negative prompt is taken from `prompts.json` (key: `image_prompt_negative`).
+3. The API will return a compressed image (JPEG) as a data URL.
+
+The integration uses the official NovelAI v4 endpoint and mimics the required headers and payload structure.

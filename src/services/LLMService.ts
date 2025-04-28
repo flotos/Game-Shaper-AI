@@ -390,6 +390,18 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         messages: messages
       })
     });
+  } else if (apiType === 'openrouter') {
+    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: messages
+      })
+    });
   } else if (apiType === 'koboldcpp') {
     const prompt = messages.map(message => `${message.role}: ${message.content}`).join('\n');
     const requestBody = {
@@ -430,6 +442,8 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
 
   let llmResult;
   if (apiType === 'openai') {
+    llmResult = data.choices[0].message.content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
+  } else if (apiType === 'openrouter') {
     llmResult = data.choices[0].message.content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
   } else if (apiType === 'koboldcpp') {
     llmResult = data.results[0].text.replace("```\n", "").replace("\n```", "").replace("```", "");

@@ -39,10 +39,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
   }, [chatHistory]);
 
   const handleSend = async () => {
+    if (!input.trim() || waitingForAnswer) return;
+
+    setWaitingForAnswer(true);
+    setErrorMessage('');
+    setLoadingMessage('Generating story...');
+
     try {
-      setErrorMessage('');
-      setWaitingForAnswer(true);
-      setLoadingMessage('Generating story...');
       const timestamp = new Date().toLocaleTimeString();
 
       const userMessage: Message = {
@@ -84,8 +87,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       messagesToAdd.forEach(addMessage);
       setInput('');
 
-      setLoadingMessage('Generating images...');
-      await updateGraph(response.nodeEdition);
+      if (response.nodeEdition) {
+        setLoadingMessage('Generating images...');
+        try {
+          await updateGraph(response.nodeEdition);
+        } catch (error) {
+          console.error('Error during image generation:', error);
+          setErrorMessage('Error generating images. Please try again.');
+        }
+      }
     } catch (error) {
       console.error('Error during chat handling:', error);
       setErrorMessage('An error occurred. Please try again.');
@@ -97,7 +107,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
 
   const handleActionClick = (action: string) => {
     setInput(action);
-    setActionTriggered(true);
+    handleSend();
   };
 
   const toggleCollapse = () => {
