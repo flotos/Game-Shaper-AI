@@ -4,12 +4,14 @@ import NodeGraphInterface from './components/NodeGraphInterface';
 import useNodeGraph from './models/useNodeGraph';
 import { useChat } from './context/ChatContext';
 import NodeEditorOverlay from './components/NodeEditorOverlay';
+import AssistantOverlay from './components/AssistantOverlay';
 
 const AppContent: React.FC = () => {
   const { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes } = useNodeGraph();
   const { chatHistory, setChatHistory, clearChatHistory } = useChat();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
 
   const clearLocalStorage = () => {
     localStorage.removeItem('nodeGraph');
@@ -50,6 +52,12 @@ const AppContent: React.FC = () => {
       <header className="flex justify-between items-center bg-gray-900 shadow-md">
         <h1 className="text-xl font-bold">Game Shaper AI</h1>
         <div className="flex space-x-4">
+          <button 
+            onClick={() => setShowAssistant(true)} 
+            className="px-1 bg-slate-800 text-white rounded hover:bg-purple-700"
+          >
+            Assistant
+          </button>
           <button 
             onClick={clearLocalStorage} 
             className="px-1 bg-slate-800 text-white rounded hover:bg-red-700"
@@ -93,6 +101,7 @@ const AppContent: React.FC = () => {
         <ChatInterface nodes={nodes} updateGraph={updateGraph} />
         <NodeGraphInterface nodes={nodes} />
       </div>
+      
       {showNodeEditor && (
         <NodeEditorOverlay
           nodes={nodes}
@@ -101,6 +110,14 @@ const AppContent: React.FC = () => {
           deleteNode={deleteNode}
           closeOverlay={() => setShowNodeEditor(false)}
           updateGraph={updateGraph}
+        />
+      )}
+
+      {showAssistant && (
+        <AssistantOverlay
+          nodes={nodes}
+          updateGraph={updateGraph}
+          closeOverlay={() => setShowAssistant(false)}
         />
       )}
     </div>
