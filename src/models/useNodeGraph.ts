@@ -97,7 +97,17 @@ function useNodeGraph() {
         };
       });
 
-      const results = await Promise.all(imageGenerationPromises);
+      let results;
+      if (import.meta.env.VITE_IMG_API === 'novelai') {
+        // For NovelAI, process images sequentially
+        results = [];
+        for (const promise of imageGenerationPromises) {
+          results.push(await promise);
+        }
+      } else {
+        // For other providers, process images in parallel
+        results = await Promise.all(imageGenerationPromises);
+      }
 
       // Update nodes with their generated images
       for (const result of results) {
