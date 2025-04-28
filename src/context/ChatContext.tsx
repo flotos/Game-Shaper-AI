@@ -17,8 +17,14 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const [chatHistory, setChatHistoryState] = useState<Message[]>(() => {
-    const savedChatHistory = localStorage.getItem('chatHistory');
-    return savedChatHistory ? JSON.parse(savedChatHistory) : [];
+    try {
+      const savedChatHistory = localStorage.getItem('chatHistory');
+      return savedChatHistory ? JSON.parse(savedChatHistory) : [];
+    } catch (error) {
+      console.error('Error parsing chat history from localStorage:', error);
+      localStorage.removeItem('chatHistory'); // Clear corrupted data
+      return [];
+    }
   });
 
   const addMessage = useCallback((message: Message) => {
