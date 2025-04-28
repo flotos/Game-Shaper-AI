@@ -10,7 +10,20 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
 
   // If there are image generation nodes, use their content
   if (imageGenerationNodes.length > 0) {
-    contentPrompt = imageGenerationNodes.map(n => {
+
+    
+    contentPrompt += `
+      --> Your task
+      The following instructions are to generate ONE image. It is very important to ensure only one image is generated.
+      Your reply should be the prompt directly, with no comment, no reasoning.
+      The "real" titles of these instructions are separated by the "-->" flag.
+
+
+      --> Image generation instructions Guidelines
+
+    `
+    
+    contentPrompt += imageGenerationNodes.map(n => {
       let prompt = "";
       if (n.shortDescription) prompt += n.shortDescription + "\n";
       if (n.longDescription) prompt += n.longDescription + "\n";
@@ -20,6 +33,8 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
 
     // Add the nodes details from allNodes
     contentPrompt += `
+    --> The Game object to generate the image for
+
     You will generate the caption of image for a game object.
     The image is for the following object :
     --
@@ -30,7 +45,9 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
     type: ${node.type}
     --
 
-    Here are the other nodes in the scene to give some context:
+    --> Additional Context
+
+    Here are the other game nodes in the scene to give some context. Only use these information to help get a grasp of the scene and keep coherence:
     ${allNodes.reduce((acc, nodet) => {
       return acc + `
       ---
@@ -40,7 +57,8 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
       `;
     }, "")}
     
-    Now, generate the image prompt.
+    --> Final word
+    Now, generate the image prompt, with no comment, no reasoning.
     `;
   } else {
     // Default prompt when no image generation nodes exist
