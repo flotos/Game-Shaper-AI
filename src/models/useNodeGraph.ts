@@ -76,26 +76,53 @@ function useNodeGraph() {
     let imageGenerationCount = 0;
 
     if (nodeEdition.merge) {
-      for (const updatedNode of nodeEdition.merge) {
+      // First, collect all nodes that need image generation
+      const nodesToUpdate = nodeEdition.merge.filter(updatedNode => {
         const nodeIndex = newNodes.findIndex(n => n.id === updatedNode.id);
+        return updatedNode.updateImage || (nodeIndex === -1 && import.meta.env.VITE_IMG_API);
+      });
 
-        if (updatedNode.updateImage || nodeIndex === -1 && import.meta.env.VITE_IMG_API) {
-          if (imageGenerationCount >= 4) {
-            console.error('Safeguard: Exceeded maximum image generation limit per batch (4)');
-            break;
-          }
+      if (nodesToUpdate.length > 4) {
+        console.error('Safeguard: Exceeded maximum image generation limit per batch (4)');
+        return;
+      }
 
-          const prompt = await generateImagePrompt(updatedNode, newNodes);
-          updatedNode.image = await generateImage(prompt);
-          imageGenerationCount++;
-        }
+      // Generate all images in parallel
+      const imageGenerationPromises = nodesToUpdate.map(async (updatedNode) => {
+        const promptPromise = generateImagePrompt(updatedNode, newNodes);
+        const imagePromise = promptPromise.then(prompt => generateImage(prompt));
+        return {
+          node: updatedNode,
+          image: await imagePromise
+        };
+      });
 
-        const { updateImage, ...filteredNode } = updatedNode;
+      const results = await Promise.all(imageGenerationPromises);
 
+      // Update nodes with their generated images
+      for (const result of results) {
+        const { node, image } = result;
+        const nodeIndex = newNodes.findIndex(n => n.id === node.id);
+        const { updateImage, ...filteredNode } = node;
+        
         if (nodeIndex !== -1) {
-          Object.assign(newNodes[nodeIndex], filteredNode);
+          Object.assign(newNodes[nodeIndex], { ...filteredNode, image });
         } else {
-          newNodes.push(filteredNode as Node);
+          newNodes.push({ ...filteredNode, image } as Node);
+        }
+      }
+
+      // Handle nodes that don't need image generation
+      for (const updatedNode of nodeEdition.merge) {
+        if (!nodesToUpdate.includes(updatedNode)) {
+          const nodeIndex = newNodes.findIndex(n => n.id === updatedNode.id);
+          const { updateImage, ...filteredNode } = updatedNode;
+          
+          if (nodeIndex !== -1) {
+            Object.assign(newNodes[nodeIndex], filteredNode);
+          } else {
+            newNodes.push(filteredNode as Node);
+          }
         }
       }
     }
