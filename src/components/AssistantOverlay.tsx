@@ -15,6 +15,7 @@ interface PreviewState {
     delete?: string[];
   };
   originalNodes: Node[];
+  prompt?: string;
 }
 
 // Helper function to create diff spans
@@ -124,7 +125,8 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
       setPreview({
         showPreview: true,
         changes: response,
-        originalNodes: nodes
+        originalNodes: nodes,
+        prompt: query
       });
     } catch (err) {
       setError('Failed to process your request. Please try again.');
@@ -270,6 +272,13 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
       <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
         <div className="bg-slate-900 p-6 rounded shadow-md w-5/6 max-w-[100vw] max-h-[95vh] overflow-y-auto">
           <h2 className="text-xl mb-4 text-white">Preview Changes</h2>
+          
+          {preview.prompt && (
+            <div className="mb-4 p-4 bg-gray-800 rounded">
+              <h3 className="text-sm font-semibold mb-2 text-gray-300">Your Request:</h3>
+              <p className="text-white whitespace-pre-wrap">{preview.prompt}</p>
+            </div>
+          )}
           
           {preview.changes.delete && preview.changes.delete.length > 0 && (
             <div className="mb-4 p-4 bg-red-900/50 rounded">
