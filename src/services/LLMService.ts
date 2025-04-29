@@ -224,7 +224,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   }, "");
   
   const prompt = `
-  ### USER:
+  # TASK:
   You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
   Update the game graph and generate appropriate dialogue and actions based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
   You will make the world progress by itself at every round, in addition to any action the player make in the world. Each user action should have a significant impact.
@@ -413,6 +413,12 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   ---
   ${nodesDescription}
 
+  IMPORTANT: When updating nodes, you must follow these critical rules:
+  1. NEVER reference or assume knowledge of the previous state of a node. Each node update is a complete replacement.
+  2. You must explicitly include ALL content you want to preserve in the updated node. Any content not included will be lost.
+  3. Each node update should be self-contained and complete, with no dependencies on previous states.
+  4. If you want to keep any information from the previous state, you must explicitly copy it into the new node.
+
   Each node should be described in a JSON format with the following properties:
   {
     "id": "unique-id",
@@ -500,6 +506,15 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
 
 const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined) => {
   const apiType = import.meta.env.VITE_LLM_API;
+  const includeReasoning = import.meta.env.VITE_LLM_INCLUDE_REASONING !== 'false';
+
+  // Ensure there's at least one user message for OpenRouter
+  if (apiType === 'openrouter') {
+    const hasUserMessage = messages.some(msg => msg.role === 'user');
+    if (!hasUserMessage) {
+      messages.push({ role: 'user', content: 'Please process the system instructions.' });
+    }
+  }
 
   let response;
   if (apiType === 'openai') {
@@ -517,7 +532,8 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
   } else if (apiType === 'openrouter') {
     // Get the configured model or use a default
     const openrouterModel = import.meta.env.VITE_OPENROUTER_MODEL || 'anthropic/claude-3-opus-20240229';
-    console.log('Using OpenRouter model:', openrouterModel);
+    const openrouterProvider = import.meta.env.VITE_OPENROUTER_PROVIDER;
+    console.log('Using OpenRouter model:', openrouterModel, 'from provider:', openrouterProvider);
 
     response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -529,6 +545,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       },
       body: JSON.stringify({
         model: openrouterModel,
+        provider: openrouterProvider,
         messages: messages,
         temperature: import.meta.env.VITE_OPENROUTER_TEMPERATURE ? parseFloat(import.meta.env.VITE_OPENROUTER_TEMPERATURE) : 0.7,
         max_tokens: import.meta.env.VITE_OPENROUTER_MAX_TOKENS ? parseInt(import.meta.env.VITE_OPENROUTER_MAX_TOKENS) : 4096
@@ -579,8 +596,14 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
     const content = data.choices[0].message.content;
     // Check if the content is already a JSON string
     try {
-      JSON.parse(content);
-      llmResult = content;
+      const parsedContent = JSON.parse(content);
+      // If reasoning is disabled and the content has a reasoning field, remove it
+      if (!includeReasoning && parsedContent.reasoning !== undefined) {
+        delete parsedContent.reasoning;
+        llmResult = JSON.stringify(parsedContent);
+      } else {
+        llmResult = content;
+      }
     } catch (e) {
       // If not valid JSON, clean it like OpenAI response
       llmResult = content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
