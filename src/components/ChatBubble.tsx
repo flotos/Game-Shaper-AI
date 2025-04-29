@@ -12,7 +12,7 @@ const ChatBubble: React.FC<{ message: Message, onActionClick: (action: string) =
 
   return (
     <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} mb-2`}>
-      <div className={`max-w-md p-4 rounded-lg shadow-md relative ${
+      <div className={`w-[90%] p-4 rounded-lg shadow-md relative ${
         message.role === "user" ? "bg-blue-500 text-white" :
         message.role === "assistant" ? "bg-gray-300 text-black" :
         "bg-gray-200 text-gray-700 text-xs"
