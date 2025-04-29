@@ -95,10 +95,28 @@ About half the cost was images, the other GPT-4o. Each image is 0.02$ on dalle-e
 - `VITE_IMG_API`: The API provider for image generation (e.g., `openai`, `openrouter`, `automatic1111`).
 - `VITE_OAI_KEY`: The API key for OpenAI.
 - `VITE_OPENROUTER_KEY`: The API key for OpenRouter.
+- `VITE_OPENROUTER_MODEL`: The model for OpenRouter LLM (e.g., `anthropic/claude-3-opus-20240229`, `google/gemini-pro`).
+- `VITE_OPENROUTER_PROVIDER`: The provider for OpenRouter models (e.g., `anthropic`, `google`, `meta-llama`, `mistral`, `perplexity`).
 - `VITE_OAI_IMAGE_MODEL`: The model for OpenAI image generation.
 - `VITE_OPENROUTER_IMAGE_MODEL`: The model for OpenRouter image generation.
 - `VITE_LLM_HOST`: The host for the LLM API.
-- `VITE_IMG_HOST`: The host for the image generation API.
+- `VITE_LLM_INCLUDE_REASONING`: Whether to include the reasoning field in JSON responses (default: `true`). Set to `false` when using models that already include reasoning in their output.
+
+### OpenRouter Configuration Example
+```
+VITE_LLM_API=openrouter
+VITE_OPENROUTER_KEY=your_openrouter_api_key
+VITE_OPENROUTER_MODEL=anthropic/claude-3-opus-20240229
+VITE_OPENROUTER_PROVIDER=anthropic
+VITE_LLM_INCLUDE_REASONING=false  # Disable reasoning field for models that already include it
+```
+
+Available OpenRouter providers and their corresponding models:
+- `anthropic`: Claude models (e.g., `anthropic/claude-3-opus-20240229`)
+- `google`: Gemini models (e.g., `google/gemini-pro`)
+- `meta-llama`: Llama models (e.g., `meta-llama/llama-2-70b-chat`)
+- `mistral`: Mistral models (e.g., `mistral/mistral-medium`)
+- `perplexity`: PPLX models (e.g., `perplexity/pplx-70b-online`)
 
 ## NovelAI v4 Image Generation Support
 

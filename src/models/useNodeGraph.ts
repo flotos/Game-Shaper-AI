@@ -85,22 +85,22 @@ function useNodeGraph() {
         return (nodeIndex === -1 && import.meta.env.VITE_IMG_API) || updatedNode.updateImage === true;
       });
 
+      let results = [];
       if (nodesToUpdate.length > 4) {
-        console.error('Safeguard: Exceeded maximum image generation limit per batch (4)');
-        return;
+        console.warn('Safeguard: Limiting image generation to first 4 images out of', nodesToUpdate.length);
       }
-
-      let results;
+      
+      const nodesToProcess = nodesToUpdate.slice(0, 4);
       if (import.meta.env.VITE_IMG_API === 'novelai') {
         // For NovelAI:
         // 1. Generate all prompts in parallel first
-        const promptPromises = nodesToUpdate.map(updatedNode => generateImagePrompt(updatedNode, newNodes));
+        const promptPromises = nodesToProcess.map(updatedNode => generateImagePrompt(updatedNode, newNodes));
         const prompts = await Promise.all(promptPromises);
         
         // 2. Then generate images sequentially
         results = [];
-        for (let i = 0; i < nodesToUpdate.length; i++) {
-          const updatedNode = nodesToUpdate[i];
+        for (let i = 0; i < nodesToProcess.length; i++) {
+          const updatedNode = nodesToProcess[i];
           const prompt = prompts[i];
           let retryCount = 0;
           const maxRetries = 3;
@@ -148,7 +148,7 @@ function useNodeGraph() {
         }
       } else {
         // For other providers, process everything in parallel
-        const imageGenerationPromises = nodesToUpdate.map(async (updatedNode) => {
+        const imageGenerationPromises = nodesToProcess.map(async (updatedNode) => {
           const prompt = await generateImagePrompt(updatedNode, newNodes);
           // Use existing seed if available, otherwise generate a new one
           const imageSeed = updatedNode.imageSeed || Math.floor(Math.random() * 4294967295);
