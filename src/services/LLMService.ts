@@ -294,7 +294,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   Using the information provided, update the graph as needed and generate a JSON response with:
   {
     "reasoning": "Write here short sentences to decide what happens in reaction to the player's action. Another sentence to explain how you will update the node graph, always prefer to update before creating new nodes. Ensure to assign correctly the changes to the correct nodes. Analyse which node should update their image, because their description change has is visible",
-    "chatText": "Narrator dialogue/description reflecting the current game state and actions taken in natural language that will display in the chat. Should be a detailed chapter (8 to 12 paragraphs) with rich descriptions of the environment, character emotions, and unfolding events. Include sensory details, character thoughts, and atmospheric elements. Don't ask questions to the player. Avoid repeating what was said before.",
+    "chatText": "Narrator dialogue/description reflecting the current game state and actions taken in natural language that will display in the chat.\n\nShould be a detailed chapter (8 to 12 paragraphs) with rich descriptions of the environment, character emotions, and unfolding events.\n\nInclude sensory details, character thoughts, and atmospheric elements.\n\nDon't ask questions to the player.\n\nAvoid repeating what was said before.",
     "actions": "(Array of strings) two interesting actions the player can then take",
     "nodeEdition": {
       "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id",

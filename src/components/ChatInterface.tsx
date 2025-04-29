@@ -17,6 +17,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
   const [waitingForAnswer, setWaitingForAnswer] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [showDebug, setShowDebug] = useState(true);
   const [lastNodeEdition, setLastNodeEdition] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionTriggered, setActionTriggered] = useState(false);
@@ -231,6 +232,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         errorMessage={errorMessage}
         onRetry={handleRetry}
         onActionClick={handleActionClick}
+        showDebug={showDebug}
       />
       <ChatInput 
         input={input} 
@@ -240,9 +242,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         onRegenerate={handleRegenerate}
         showRegenerate={chatHistory.length > 0}
       />
-      <button className="py-2 text-sm text-left text-blue-500 underline" onClick={toggleCollapse}>
-        {isCollapsed ? 'Show Details' : 'Hide Details'}
-      </button>
+      <div className="flex space-x-4">
+        <button className="py-2 text-sm text-left text-blue-500 underline" onClick={toggleCollapse}>
+          {isCollapsed ? 'Show Details' : 'Hide Details'}
+        </button>
+        <button 
+          className="py-2 text-sm text-left text-blue-500 underline" 
+          onClick={() => setShowDebug(!showDebug)}
+        >
+          {showDebug ? 'Hide Debug' : 'Show Debug'}
+        </button>
+      </div>
       <DetailsOverlay isCollapsed={isCollapsed} toggleCollapse={toggleCollapse} lastNodeEdition={lastNodeEdition || []} nodes={nodes} />
     </div>
   );

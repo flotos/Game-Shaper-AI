@@ -8,15 +8,28 @@ interface ChatHistoryProps {
   errorMessage: string;
   onActionClick: (action: string) => void;
   onRetry: () => void;
+  showDebug: boolean;
 }
 
-const ChatHistory: React.FC<ChatHistoryProps> = ({ waitingForAnswer, loadingMessage, errorMessage, onActionClick, onRetry }) => {
+const ChatHistory: React.FC<ChatHistoryProps> = ({ 
+  waitingForAnswer, 
+  loadingMessage, 
+  errorMessage, 
+  onActionClick, 
+  onRetry,
+  showDebug 
+}) => {
   const { chatHistory } = useChat();
 
   return (
     <div className="flex-grow overflow-y-auto mb-4 space-y-2">
       {chatHistory.map((msg, index) => (
-        <ChatBubble key={index} message={msg} onActionClick={onActionClick} />
+        <ChatBubble 
+          key={index} 
+          message={msg} 
+          onActionClick={onActionClick}
+          showDebug={showDebug}
+        />
       ))}
       {waitingForAnswer && (
         <div className="flex flex-col items-center">
