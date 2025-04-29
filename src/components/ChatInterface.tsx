@@ -26,6 +26,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     nodes: Node[];
     detailedNodeIds: string[];
   } | null>(null);
+  const [generationTimes, setGenerationTimes] = useState<{
+    story: number;
+    imagePrompts: number[];
+    imageGeneration: number[];
+  }>({ story: 0, imagePrompts: [], imageGeneration: [] });
 
   useEffect(() => {
     if (actionTriggered) {
@@ -53,6 +58,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
 
     try {
       const timestamp = new Date().toLocaleTimeString();
+      const storyStartTime = Date.now();
 
       const userMessage: Message = {
         role: "user",
@@ -60,7 +66,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         timestamp
       };
       
-      // Always add the user message to chat history
       addMessage(userMessage);
 
       let detailedNodeIds;
@@ -73,6 +78,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       }
 
       const response = await generateUserInputResponse(input, [...chatHistory, userMessage].slice(-20), nodes, detailedNodeIds);
+      const storyEndTime = Date.now();
+      const storyDuration = storyEndTime - storyStartTime;
 
       setLastNodeEdition(response.nodeEdition);
       setLastFailedRequest(null);
@@ -84,7 +91,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
           timestamp,
         }, {
           role: "reasoning",
-          content: response.reasoning,
+          content: response.reasoning || "",
           timestamp
         }, {
           role: "assistant",
@@ -101,13 +108,46 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         }
       ];
 
-      messagesToAdd.forEach(addMessage);
+      // Filter out messages that should be hidden
+      const filteredMessages = messagesToAdd.filter(message => {
+        if (!message || !message.content) return false;
+        
+        if (message.role === "selectedNodes" && nodes.length < 15) {
+          return false; // Hide selectedNodes when all nodes are selected
+        }
+        if (message.role === "reasoning" && !message.content.trim()) {
+          return false; // Hide reasoning when empty
+        }
+        return true;
+      });
+
+      filteredMessages.forEach(addMessage);
       setInput('');
 
       if (response.nodeEdition) {
         setLoadingMessage('Generating images...');
         try {
-          await updateGraph(response.nodeEdition);
+          const imageStartTime = Date.now();
+          const imagePromptTimes = await updateGraph(response.nodeEdition);
+          const imageEndTime = Date.now();
+          const imageDuration = imageEndTime - imageStartTime;
+          
+          setGenerationTimes({
+            story: storyDuration,
+            imagePrompts: imagePromptTimes,
+            imageGeneration: [imageDuration]
+          });
+
+          // Add timing information to chat
+          const timingMessage: Message = {
+            role: "system",
+            content: `Generation times:
+- Story: ${(storyDuration / 1000).toFixed(1)}s
+- Image prompts: ${imagePromptTimes.map((t: number) => (t / 1000).toFixed(1)).join('s, ')}s
+- Image generation: ${(imageDuration / 1000).toFixed(1)}s`,
+            timestamp: new Date().toLocaleTimeString()
+          };
+          addMessage(timingMessage);
         } catch (error) {
           console.error('Error during image generation:', error);
           setErrorMessage('Error generating images. Please try again.');

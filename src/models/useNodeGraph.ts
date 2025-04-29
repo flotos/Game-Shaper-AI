@@ -72,29 +72,53 @@ function useNodeGraph() {
   };
 
   const updateGraph = async (nodeEdition: { merge?: Partial<Node>[], delete?: string[] }) => {
-    let newNodes = [...nodes];
-    let imageGenerationCount = 0;
+    if (!nodeEdition) return;
 
-    if (nodeEdition.merge) {
-      // First, collect all nodes that need image generation
-      const nodesToUpdate = nodeEdition.merge.filter(updatedNode => {
-        const nodeIndex = newNodes.findIndex(n => n.id === updatedNode.id);
-        // Only include nodes that either:
-        // 1. Are new (nodeIndex === -1) and image API is available
-        // 2. Have updateImage flag set to true
-        return (nodeIndex === -1 && import.meta.env.VITE_IMG_API) || updatedNode.updateImage === true;
+    const newNodes = [...nodes];
+    const nodesToProcess: Partial<Node>[] = [];
+    const imagePromptTimes: number[] = [];
+
+    // Process deletions first
+    if (nodeEdition.delete) {
+      nodeEdition.delete.forEach(id => {
+        const index = newNodes.findIndex(node => node.id === id);
+        if (index !== -1) {
+          newNodes.splice(index, 1);
+        }
       });
+    }
 
-      let results = [];
-      if (nodesToUpdate.length > 4) {
-        console.warn('Safeguard: Limiting image generation to first 4 images out of', nodesToUpdate.length);
-      }
-      
-      const nodesToProcess = nodesToUpdate.slice(0, 4);
+    // Process updates and new nodes
+    if (nodeEdition.merge) {
+      nodeEdition.merge.forEach(updatedNode => {
+        const index = newNodes.findIndex(node => node.id === updatedNode.id);
+        if (index !== -1) {
+          newNodes[index] = { ...newNodes[index], ...updatedNode };
+          if (updatedNode.updateImage) {
+            nodesToProcess.push(newNodes[index]);
+          }
+        } else {
+          newNodes.push(updatedNode as Node);
+          if (updatedNode.updateImage) {
+            nodesToProcess.push(updatedNode);
+          }
+        }
+      });
+    }
+
+    let results: { node: Partial<Node>, image: string }[] = [];
+
+    if (nodesToProcess.length > 0) {
       if (import.meta.env.VITE_IMG_API === 'novelai') {
         // For NovelAI:
         // 1. Generate all prompts in parallel first
-        const promptPromises = nodesToProcess.map(updatedNode => generateImagePrompt(updatedNode, newNodes));
+        const promptPromises = nodesToProcess.map(async (updatedNode) => {
+          const promptStartTime = Date.now();
+          const prompt = await generateImagePrompt(updatedNode, newNodes);
+          const promptEndTime = Date.now();
+          imagePromptTimes.push(promptEndTime - promptStartTime);
+          return prompt;
+        });
         const prompts = await Promise.all(promptPromises);
         
         // 2. Then generate images sequentially
@@ -120,80 +144,64 @@ function useNodeGraph() {
               } else {
                 throw new Error('Empty image returned');
               }
-            } catch (error: unknown) {
+            } catch (error) {
               retryCount++;
-              if (error instanceof Error && error.message === 'RATE_LIMITED') {
-                // For rate limiting, use exponential backoff
-                const delay = Math.pow(2, retryCount) * 1000;
-                console.log(`Rate limited. Retrying in ${delay/1000}s (attempt ${retryCount + 1}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-              } else if (retryCount === maxRetries) {
-                console.error(`Failed to generate image for node ${updatedNode.id} after ${maxRetries} attempts:`, error);
-                results.push({
-                  node: updatedNode,
-                  image: ''
-                });
-              } else {
-                // For other errors, use a fixed delay
-                console.log(`Retrying image generation for node ${updatedNode.id} in 2s (attempt ${retryCount + 1}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+              if (retryCount === maxRetries) {
+                console.error('Failed to generate image after', maxRetries, 'attempts:', error);
+                throw error;
               }
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
             }
-          }
-          
-          // Add a delay between successful generations
-          if (success) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
           }
         }
       } else {
-        // For other providers, process everything in parallel
-        const imageGenerationPromises = nodesToProcess.map(async (updatedNode) => {
+        // For other APIs, process sequentially
+        for (const updatedNode of nodesToProcess) {
+          const promptStartTime = Date.now();
           const prompt = await generateImagePrompt(updatedNode, newNodes);
-          // Use existing seed if available, otherwise generate a new one
-          const imageSeed = updatedNode.imageSeed || Math.floor(Math.random() * 4294967295);
-          const image = await generateImage(prompt, imageSeed);
-          return {
-            node: { ...updatedNode, imageSeed }, // Store the seed in the node
-            image
-          };
-        });
-        results = await Promise.all(imageGenerationPromises);
-      }
-
-      // Update nodes with their generated images
-      for (const result of results) {
-        const { node, image } = result;
-        const nodeIndex = newNodes.findIndex(n => n.id === node.id);
-        const { updateImage, ...filteredNode } = node;
-        
-        if (nodeIndex !== -1) {
-          Object.assign(newNodes[nodeIndex], { ...filteredNode, image });
-        } else {
-          newNodes.push({ ...filteredNode, image } as Node);
-        }
-      }
-
-      // Handle nodes that don't need image generation
-      for (const updatedNode of nodeEdition.merge) {
-        if (!nodesToUpdate.includes(updatedNode)) {
-          const nodeIndex = newNodes.findIndex(n => n.id === updatedNode.id);
-          const { updateImage, ...filteredNode } = updatedNode;
+          const promptEndTime = Date.now();
+          imagePromptTimes.push(promptEndTime - promptStartTime);
           
-          if (nodeIndex !== -1) {
-            Object.assign(newNodes[nodeIndex], filteredNode);
-          } else {
-            newNodes.push(filteredNode as Node);
+          let retryCount = 0;
+          const maxRetries = 3;
+          let success = false;
+          
+          while (!success && retryCount < maxRetries) {
+            try {
+              const imageSeed = updatedNode.imageSeed || Math.floor(Math.random() * 4294967295);
+              const image = await generateImage(prompt, imageSeed);
+              if (image) {
+                results.push({
+                  node: { ...updatedNode, imageSeed },
+                  image
+                });
+                success = true;
+              } else {
+                throw new Error('Empty image returned');
+              }
+            } catch (error) {
+              retryCount++;
+              if (retryCount === maxRetries) {
+                console.error('Failed to generate image after', maxRetries, 'attempts:', error);
+                throw error;
+              }
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            }
           }
         }
       }
     }
 
-    if (nodeEdition.delete) {
-      newNodes = newNodes.filter(n => !nodeEdition?.delete?.includes(n.id));
-    }
+    // Update nodes with new images
+    results.forEach(({ node, image }) => {
+      const index = newNodes.findIndex(n => n.id === node.id);
+      if (index !== -1) {
+        newNodes[index] = { ...newNodes[index], image };
+      }
+    });
 
     setNodes(newNodes);
+    return imagePromptTimes;
   };
 
   return { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes };
