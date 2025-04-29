@@ -11,7 +11,7 @@ interface ChatHistoryProps {
 }
 
 const ChatHistory: React.FC<ChatHistoryProps> = ({ waitingForAnswer, loadingMessage, errorMessage, onActionClick, onRetry }) => {
-  const { chatHistory, addMessage, setChatHistory } = useChat();
+  const { chatHistory } = useChat();
 
   return (
     <div className="flex-grow overflow-y-auto mb-4 space-y-2">

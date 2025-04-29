@@ -12,7 +12,7 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => {
-  const { chatHistory, addMessage } = useChat();
+  const { chatHistory, addMessage, setChatHistory } = useChat();
   const [input, setInput] = useState('');
   const [waitingForAnswer, setWaitingForAnswer] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
@@ -60,24 +60,35 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       const timestamp = new Date().toLocaleTimeString();
       const storyStartTime = Date.now();
 
-      const userMessage: Message = {
+      // Only add user message if this is not a regeneration
+      if (!actionTriggered) {
+        const userMessage: Message = {
+          role: "user",
+          content: input,
+          timestamp
+        };
+        addMessage(userMessage);
+      }
+
+      let detailedNodeIds;
+      const tempUserMessage: Message = {
         role: "user",
         content: input,
         timestamp
       };
-      
-      addMessage(userMessage);
 
-      let detailedNodeIds;
+      // Use the current chat history for regeneration, or include the new message for normal sends
+      const contextHistory = actionTriggered ? chatHistory : [...chatHistory, tempUserMessage];
+
       if (nodes.length < 15) {
         detailedNodeIds = nodes
           .filter(node => node.type !== "image_generation")
           .map(node => node.id);
       } else {
-        detailedNodeIds = await getRelevantNodes(input, [...chatHistory, userMessage].slice(-4), nodes);
+        detailedNodeIds = await getRelevantNodes(input, contextHistory.slice(-4), nodes);
       }
 
-      const response = await generateUserInputResponse(input, [...chatHistory, userMessage].slice(-20), nodes, detailedNodeIds);
+      const response = await generateUserInputResponse(input, contextHistory.slice(-20), nodes, detailedNodeIds);
       const storyEndTime = Date.now();
       const storyDuration = storyEndTime - storyStartTime;
 
@@ -123,6 +134,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
 
       filteredMessages.forEach(addMessage);
       setInput('');
+      setActionTriggered(false); // Reset the actionTriggered flag
 
       if (response.nodeEdition) {
         setLoadingMessage('Generating images...');
@@ -186,6 +198,31 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     setIsCollapsed(!isCollapsed);
   };
 
+  const handleRegenerate = async () => {
+    if (waitingForAnswer || chatHistory.length === 0) return;
+
+    // Find the last user message and its index
+    let lastUserMessageIndex = -1;
+    let lastUserMessage: Message | null = null;
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+      if (chatHistory[i].role === "user") {
+        lastUserMessageIndex = i;
+        lastUserMessage = chatHistory[i];
+        break;
+      }
+    }
+
+    if (lastUserMessageIndex === -1 || !lastUserMessage) return;
+
+    // Remove all messages after the last user message
+    const newChatHistory = chatHistory.slice(0, lastUserMessageIndex + 1);
+    setChatHistory(newChatHistory);
+
+    // Set the input to the last user message and trigger a new response
+    setInput(lastUserMessage.content);
+    setActionTriggered(true); // This will trigger handleSend in the useEffect
+  };
+
   return (
     <div className="w-1/2 h-full p-4 flex flex-col relative">
       <ChatHistory 
@@ -193,9 +230,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         loadingMessage={loadingMessage} 
         errorMessage={errorMessage}
         onRetry={handleRetry}
-        onActionClick={handleActionClick} 
+        onActionClick={handleActionClick}
       />
-      <ChatInput input={input} setInput={setInput} handleSend={handleSend} waitingForAnswer={waitingForAnswer} />
+      <ChatInput 
+        input={input} 
+        setInput={setInput} 
+        handleSend={handleSend} 
+        waitingForAnswer={waitingForAnswer}
+        onRegenerate={handleRegenerate}
+        showRegenerate={chatHistory.length > 0}
+      />
       <button className="py-2 text-sm text-left text-blue-500 underline" onClick={toggleCollapse}>
         {isCollapsed ? 'Show Details' : 'Hide Details'}
       </button>

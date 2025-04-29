@@ -5,9 +5,11 @@ interface ChatInputProps {
   setInput: React.Dispatch<React.SetStateAction<string>>;
   handleSend: () => void;
   waitingForAnswer: boolean;
+  onRegenerate: () => void;
+  showRegenerate: boolean;
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, waitingForAnswer }) => {
+const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, waitingForAnswer, onRegenerate, showRegenerate }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -35,6 +37,15 @@ const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, wait
         onKeyPress={handleKeyPress}
         rows={1}
       />
+      {showRegenerate && !waitingForAnswer && (
+        <button
+          onClick={onRegenerate}
+          className="ml-2 px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded hover:bg-gray-600 transition-colors"
+          title="Regenerate last response"
+        >
+          ↻
+        </button>
+      )}
       <button
         className="ml-2 px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-600"
         onClick={handleSend}
