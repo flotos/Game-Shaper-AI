@@ -260,6 +260,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   - Scalability: Allow for future modifications
   - Innovativeness: Creative design to enrich player experience
   - Image update: Don't update the image when a character changes expression or pose, but only if their body or clothes change for example. Unless a node states otherwise
+  - Never update images for game design or system nodes (like Game Rules, Game Systems, etc.) - these should maintain their original images
   - Rich Information Storage: Store detailed, reusable information in the rules field that can be referenced later
   - Dynamic Evolution: Allow nodes to evolve based on player interactions and story progression
   - Hidden Depth: Include subtle details and hidden mechanics that can be discovered
@@ -293,7 +294,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   Using the information provided, update the graph as needed and generate a JSON response with:
   {
     "reasoning": "Write here short sentences to decide what happens in reaction to the player's action. Another sentence to explain how you will update the node graph, always prefer to update before creating new nodes. Ensure to assign correctly the changes to the correct nodes. Analyse which node should update their image, because their description change has is visible",
-    "chatText": "Narrator dialogue/description reflecting the current game state and actions taken in natural language that will display in the chat. Should be a small chapter (4 to 8 paragraphs). Don't ask question to the player. Avoir repeating what was said before.",
+    "chatText": "Narrator dialogue/description reflecting the current game state and actions taken in natural language that will display in the chat. Should be a detailed chapter (8 to 12 paragraphs) with rich descriptions of the environment, character emotions, and unfolding events. Include sensory details, character thoughts, and atmospheric elements. Don't ask questions to the player. Avoid repeating what was said before.",
     "actions": "(Array of strings) two interesting actions the player can then take",
     "nodeEdition": {
       "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id",
@@ -548,7 +549,11 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         provider: openrouterProvider,
         messages: messages,
         temperature: import.meta.env.VITE_OPENROUTER_TEMPERATURE ? parseFloat(import.meta.env.VITE_OPENROUTER_TEMPERATURE) : 0.7,
-        max_tokens: import.meta.env.VITE_OPENROUTER_MAX_TOKENS ? parseInt(import.meta.env.VITE_OPENROUTER_MAX_TOKENS) : 4096
+        max_tokens: import.meta.env.VITE_OPENROUTER_MAX_TOKENS ? parseInt(import.meta.env.VITE_OPENROUTER_MAX_TOKENS) : 4096,
+        reasoning: {
+          effort: "low",
+          exclude: false
+        }
       })
     });
   } else if (apiType === 'koboldcpp') {

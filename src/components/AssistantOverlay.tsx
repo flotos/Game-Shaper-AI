@@ -18,25 +18,75 @@ interface PreviewState {
 }
 
 // Helper function to create diff spans
-const createDiffSpans = (original: string, updated: string) => {
-  const result: JSX.Element[] = [];
-  let i = 0;
-  let j = 0;
+const createDiffSpans = (original: string, updated: string, isCurrent: boolean) => {
+  // Split into words and normalize whitespace
+  const originalWords = original.trim().split(/\s+/);
+  const updatedWords = updated.trim().split(/\s+/);
+  const result = [];
   
-  while (i < original.length || j < updated.length) {
-    if (i < original.length && j < updated.length && original[i] === updated[j]) {
-      // Same character, add as normal
-      result.push(<span key={`same-${i}`}>{original[i]}</span>);
-      i++;
-      j++;
+  // Find the longest common subsequence
+  const lcs = [];
+  const dp = Array(originalWords.length + 1).fill(0).map(() => Array(updatedWords.length + 1).fill(0));
+  
+  for (let i = 1; i <= originalWords.length; i++) {
+    for (let j = 1; j <= updatedWords.length; j++) {
+      if (originalWords[i - 1] === updatedWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  
+  let i = originalWords.length;
+  let j = updatedWords.length;
+  
+  while (i > 0 && j > 0) {
+    if (originalWords[i - 1] === updatedWords[j - 1]) {
+      lcs.unshift(originalWords[i - 1]);
+      i--;
+      j--;
+    } else if (dp[i - 1][j] > dp[i][j - 1]) {
+      i--;
     } else {
-      // Different characters, handle deletions and additions
-      if (i < original.length) {
-        result.push(<span key={`del-${i}`} className="bg-red-900/50">{original[i]}</span>);
+      j--;
+    }
+  }
+  
+  // Now render the differences
+  i = 0;
+  j = 0;
+  let lcsIndex = 0;
+  
+  if (isCurrent) {
+    // Left side - show original with deletions in red
+    while (i < originalWords.length) {
+      if (lcsIndex < lcs.length && originalWords[i] === lcs[lcsIndex]) {
+        result.push(<span key={`common-${i}`} className="text-white">{lcs[lcsIndex]} </span>);
+        i++;
+        lcsIndex++;
+      } else {
+        result.push(
+          <span key={`old-${i}`} className="bg-red-900 text-white">
+            {originalWords[i]}{' '}
+          </span>
+        );
         i++;
       }
-      if (j < updated.length) {
-        result.push(<span key={`add-${j}`} className="bg-green-900/50">{updated[j]}</span>);
+    }
+  } else {
+    // Right side - show updated with additions in green
+    while (j < updatedWords.length) {
+      if (lcsIndex < lcs.length && updatedWords[j] === lcs[lcsIndex]) {
+        result.push(<span key={`common-${j}`} className="text-white">{lcs[lcsIndex]} </span>);
+        j++;
+        lcsIndex++;
+      } else {
+        result.push(
+          <span key={`new-${j}`} className="bg-green-900 text-white">
+            {updatedWords[j]}{' '}
+          </span>
+        );
         j++;
       }
     }
@@ -47,10 +97,10 @@ const createDiffSpans = (original: string, updated: string) => {
 
 // Helper function to calculate height based on content length
 const calculateHeight = (text: string, isLongDescription: boolean = false, defaultRows: number = 10) => {
-  if (!isLongDescription) return `${defaultRows * 1.5}rem`; // 1.5rem per row
+  if (!isLongDescription) return `${defaultRows * 1.5}rem`;
   const lineCount = (text || '').split('\n').length;
-  const minHeight = '25rem'; // Increased minimum height for long description
-  const calculatedHeight = `${Math.max(25, lineCount * 2)}rem`; // 2rem per line, increased from 1.5rem
+  const minHeight = '15rem';
+  const calculatedHeight = `${Math.max(15, lineCount * 1.5)}rem`;
   return calculatedHeight;
 };
 
@@ -92,22 +142,16 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   };
 
   const renderDiffField = (original: string, updated: string, rows: number, isLongDescription: boolean = false) => {
-    const diffSpans = createDiffSpans(original || '', updated || '');
-    const height = calculateHeight(updated, isLongDescription, rows);
-    
     return (
-      <div className="relative" style={{ height }}>
-        <textarea
-          readOnly
-          value={updated}
-          className="w-full p-2 bg-gray-700 rounded text-white resize-none overflow-x-auto"
-          style={{ height: '100%', overflowY: 'hidden' }}
-        />
-        <div 
-          className="absolute inset-0 pointer-events-none p-2 whitespace-pre-wrap overflow-x-auto"
-          style={{ height: '100%', overflowY: 'hidden' }}
+      <div className="relative">
+        <div
+          className="w-full p-2 bg-gray-700 rounded text-white resize-none overflow-x-auto whitespace-pre-wrap"
+          style={{ 
+            height: calculateHeight(updated, isLongDescription, rows),
+            overflowY: 'auto'
+          }}
         >
-          {diffSpans}
+          {createDiffSpans(original, updated, false)}
         </div>
       </div>
     );
@@ -123,38 +167,47 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             <div className="text-sm space-y-2">
               <div>
                 <span className="font-semibold block mb-1">Short Description:</span>
-                <textarea
-                  readOnly
-                  value={originalNode?.shortDescription || ''}
-                  className="w-full p-2 bg-gray-700 rounded text-white resize-none"
-                  rows={3}
-                />
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ height: '4.5rem', overflowY: 'auto' }}
+                  >
+                    {createDiffSpans(originalNode?.shortDescription || '', updatedNode.shortDescription || '', true)}
+                  </div>
+                </div>
               </div>
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
-                <textarea
-                  readOnly
-                  value={originalNode?.longDescription || ''}
-                  className="w-full p-2 bg-gray-700 rounded text-white resize-none overflow-x-auto"
-                  style={{ height: calculateHeight(originalNode?.longDescription || '', true), overflowY: 'hidden' }}
-                />
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ 
+                      height: calculateHeight(originalNode?.longDescription || '', true),
+                      overflowY: 'auto'
+                    }}
+                  >
+                    {createDiffSpans(originalNode?.longDescription || '', updatedNode.longDescription || '', true)}
+                  </div>
+                </div>
               </div>
               <div>
                 <span className="font-semibold block mb-1">Rules:</span>
-                <textarea
-                  readOnly
-                  value={originalNode?.rules || ''}
-                  className="w-full p-2 bg-gray-700 rounded text-white resize-none"
-                  rows={5}
-                />
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ height: '7.5rem', overflowY: 'auto' }}
+                  >
+                    {createDiffSpans(originalNode?.rules || '', updatedNode.rules || '', true)}
+                  </div>
+                </div>
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>
-                <input
-                  readOnly
-                  value={originalNode?.type || ''}
-                  className="w-full p-2 bg-gray-700 rounded text-white"
-                />
+                <div className="relative">
+                  <div className="w-full p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
+                    {createDiffSpans(originalNode?.type || '', updatedNode.type || '', true)}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -163,19 +216,47 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             <div className="text-sm space-y-2">
               <div>
                 <span className="font-semibold block mb-1">Short Description:</span>
-                {renderDiffField(originalNode?.shortDescription || '', updatedNode.shortDescription || '', 3)}
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ height: '4.5rem', overflowY: 'auto' }}
+                  >
+                    {createDiffSpans(originalNode?.shortDescription || '', updatedNode.shortDescription || '', false)}
+                  </div>
+                </div>
               </div>
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
-                {renderDiffField(originalNode?.longDescription || '', updatedNode.longDescription || '', 10, true)}
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ 
+                      height: calculateHeight(updatedNode.longDescription || '', true),
+                      overflowY: 'auto'
+                    }}
+                  >
+                    {createDiffSpans(originalNode?.longDescription || '', updatedNode.longDescription || '', false)}
+                  </div>
+                </div>
               </div>
               <div>
                 <span className="font-semibold block mb-1">Rules:</span>
-                {renderDiffField(originalNode?.rules || '', updatedNode.rules || '', 5)}
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ height: '7.5rem', overflowY: 'auto' }}
+                  >
+                    {createDiffSpans(originalNode?.rules || '', updatedNode.rules || '', false)}
+                  </div>
+                </div>
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>
-                {renderDiffField(originalNode?.type || '', updatedNode.type || '', 1)}
+                <div className="relative">
+                  <div className="w-full p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
+                    {createDiffSpans(originalNode?.type || '', updatedNode.type || '', false)}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
