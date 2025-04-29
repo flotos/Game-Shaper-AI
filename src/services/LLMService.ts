@@ -342,11 +342,18 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   nodeEdition ::= (
     "{"
       ws "\\"merge\\":" ws merge ws "," ws 
-      "\\"delete\\":" ws delete ws 
+      "\\"delete\\":" ws delete ws "," ws
+      "\\"appendEnd\\":" ws appendEnd ws
     "}" ws
   )
   
   merge ::= (
+    "["
+      ws (node (ws "," ws node)*)? ws 
+    "]" ws
+  )
+  
+  appendEnd ::= (
     "["
       ws (node (ws "," ws node)*)? ws 
     "]" ws
@@ -419,6 +426,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   2. You must explicitly include ALL content you want to preserve in the updated node. Any content not included will be lost.
   3. Each node update should be self-contained and complete, with no dependencies on previous states.
   4. If you want to keep any information from the previous state, you must explicitly copy it into the new node.
+  5. For the "appendEnd" operation, you can specify nodes where the content will be appended to the end of existing fields. This is useful for adding new information without replacing the entire content.
 
   Each node should be described in a JSON format with the following properties:
   {

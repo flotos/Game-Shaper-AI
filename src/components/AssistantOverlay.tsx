@@ -13,6 +13,7 @@ interface PreviewState {
   changes?: {
     merge?: Partial<Node>[];
     delete?: string[];
+    appendEnd?: Partial<Node>[];
   };
   originalNodes: Node[];
   prompt?: string;
@@ -295,6 +296,29 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
           {preview.changes.merge && preview.changes.merge.map(updatedNode => {
             const originalNode = preview.originalNodes.find(n => n.id === updatedNode.id) || null;
             return renderNodeComparison(originalNode, updatedNode);
+          })}
+
+          {preview.changes.appendEnd && preview.changes.appendEnd.map(nodeToAppend => {
+            const originalNode = preview.originalNodes.find(n => n.id === nodeToAppend.id) || null;
+            if (!originalNode) return null;
+            
+            const previewNode = {
+              ...originalNode,
+              shortDescription: originalNode.shortDescription + (nodeToAppend.shortDescription || ''),
+              longDescription: originalNode.longDescription + (nodeToAppend.longDescription || ''),
+              rules: originalNode.rules + (nodeToAppend.rules || ''),
+              name: originalNode.name + (nodeToAppend.name || ''),
+              type: originalNode.type + (nodeToAppend.type || ''),
+              child: [...originalNode.child, ...(nodeToAppend.child || [])],
+              parent: nodeToAppend.parent || originalNode.parent
+            };
+            
+            return (
+              <div key={nodeToAppend.id} className="mb-4 p-4 bg-blue-900/50 rounded">
+                <h3 className="text-lg font-bold mb-2">Appending to: {originalNode.name}</h3>
+                {renderNodeComparison(originalNode, previewNode)}
+              </div>
+            );
           })}
 
           <div className="flex justify-end space-x-4 mt-4">

@@ -71,7 +71,7 @@ function useNodeGraph() {
     setNodes(prevNodes => prevNodes.filter(node => node.id !== nodeId));
   };
 
-  const updateGraph = async (nodeEdition: { merge?: Partial<Node>[], delete?: string[] }) => {
+  const updateGraph = async (nodeEdition: { merge?: Partial<Node>[], delete?: string[], appendEnd?: Partial<Node>[] }) => {
     if (!nodeEdition) return;
 
     const newNodes = [...nodes];
@@ -101,6 +101,29 @@ function useNodeGraph() {
           newNodes.push(updatedNode as Node);
           if (updatedNode.updateImage) {
             nodesToProcess.push(updatedNode);
+          }
+        }
+      });
+    }
+
+    // Process append operations
+    if (nodeEdition.appendEnd) {
+      nodeEdition.appendEnd.forEach(nodeToAppend => {
+        const index = newNodes.findIndex(node => node.id === nodeToAppend.id);
+        if (index !== -1) {
+          const existingNode = newNodes[index];
+          newNodes[index] = {
+            ...existingNode,
+            shortDescription: existingNode.shortDescription + (nodeToAppend.shortDescription || ''),
+            longDescription: existingNode.longDescription + (nodeToAppend.longDescription || ''),
+            rules: existingNode.rules + (nodeToAppend.rules || ''),
+            name: existingNode.name + (nodeToAppend.name || ''),
+            type: existingNode.type + (nodeToAppend.type || ''),
+            child: [...existingNode.child, ...(nodeToAppend.child || [])],
+            parent: nodeToAppend.parent || existingNode.parent
+          };
+          if (nodeToAppend.updateImage) {
+            nodesToProcess.push(newNodes[index]);
           }
         }
       });
