@@ -156,7 +156,7 @@ const generateImageFromAutomatic = async (prompt: string, seed?: number): Promis
 const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promise<string> => {
   console.log('Starting NovelAI v4 image generation...');
   // You may want to customize these or pass as arguments
-  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim";
+  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art";
   const now = new Date().toISOString();
   const correlationId = Math.random().toString(36).substring(2, 8);
 
