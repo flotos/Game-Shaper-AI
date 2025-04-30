@@ -25,7 +25,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
     
     contentPrompt += imageGenerationNodes.map(n => {
       let prompt = "";
-      if (n.shortDescription) prompt += n.shortDescription + "\n";
       if (n.longDescription) prompt += n.longDescription + "\n";
       if (n.rules) prompt += n.rules + "\n";
       return prompt;
@@ -39,7 +38,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
     The image is for the following object :
     --
     name: ${node.name}
-    shortDescription: ${node.shortDescription}
     longDescription: ${node.longDescription}
     rules: ${node.rules}
     type: ${node.type}
@@ -52,7 +50,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
       return acc + `
       ---
       name: ${nodet.name}
-      shortDescription: ${nodet.shortDescription}
       rules: ${nodet.rules}
       `;
     }, "")}
@@ -67,7 +64,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
     The image is for the following object :
     --
     name: ${node.name}
-    shortDescription: ${node.shortDescription}
     longDescription: ${node.longDescription}
     rules: ${node.rules}
     type: ${node.type}
@@ -77,7 +73,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
       return acc + `
       ---
       name: ${nodet.name}
-      shortDescription: ${nodet.shortDescription}
       rules: ${nodet.rules}
       `;
     }, "")}
@@ -86,7 +81,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
 
     The caption should be a concise text at most 2 sentences describing what we can see on the image. Don't write anything else.
     It should describe what can be seen now.
-    Use the object's long and short description mostly, and just a bit the information from "rules" that was given for some context.
+    Use the object's long description mostly, and just a bit the information from "rules" that was given for some context.
     `;
   }
 
@@ -110,7 +105,6 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     ---
     id: ${node.id}
     name: ${node.name}
-    shortDescription: ${node.shortDescription}
     rules: ${node.rules}
     type: ${node.type}
     child: ${node.child}
@@ -132,7 +126,6 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     ---
     id: "98ak"
     name: A playing card
-    shortDescription: A 10 of heart
     rules: The card has heavy wear and can be distinguished
     type: Card
     child: []
@@ -140,7 +133,6 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     ---
     id: "10eg"
     name: A deck of cards
-    shortDescription: a deck containing cards, it is near perfect
     rules: Only one card (the 10 of heart) is not mint.
     type: Object
     child: ["98ak"]
@@ -181,9 +173,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   return JSON.parse(response);
 }
 
-
-
-export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
+export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   const stringHistory = chatHistory.reduce((acc, message) => {
     if (message.role === "user" || message.role === "assistant") {
       return acc + `${message.role}: ${message.content}\n`;
@@ -202,7 +192,6 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
       return acc + `
         id: ${node.id}
         name: ${node.name}
-        shortDescription: ${node.shortDescription}
         longDescription: ${node.longDescription}
         rules: ${node.rules}
         type: ${node.type}
@@ -222,65 +211,13 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
         `;
     }
   }, "");
-  
-  const prompt = `
+
+  const chatTextPrompt = `
   # TASK:
   You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
-  Update the game graph and generate appropriate dialogue and actions based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
+  Generate appropriate dialogue based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
   You will make the world progress by itself at every round, in addition to any action the player make in the world. Each user action should have a significant impact.
 
-  ## IMPORTANT: Your response must be a single, flat JSON object. Do not nest JSON within the content field.
-  ## The response should be directly parseable as JSON without any additional processing.
-
-  ## Node Properties:
-  - id: Unique id string
-  - name: title
-  - longDescription: (Mandatory) Detailed description, write everything that is visible or that the player should know.
-  - shortDescription: (Mandatory) Very short summary of the longDescription, in natural language
-  - rules: (Mandatory) Internal info for AI that player shouldn't see. Store rich, reusable information in a structured format:
-    * Use semicolons to separate different aspects
-    * Include character traits, motivations, and relationships
-    * Store environmental details and atmosphere
-    * Note potential interactions and consequences
-    * Keep track of past events and their impact
-    * Store hidden mechanics and triggers
-    * Include potential future developments
-    * Note emotional states and psychological aspects
-    * Store physical characteristics and capabilities
-    * Include cultural and social context
-  - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
-  - parent: ID of the parent node (has to match an existing or newly created node)
-  - child: Array of child node IDs (has to match an existing or newly created node)
-  - updateImage: If the element described by the node receives a visual/appearance change set to "true". Use this flag only if there are major changes as this trigger a 20-second generation process per image.
-  
-  ## Node Guidelines:
-  - Purpose-Driven: Clear role within the game
-  - Consistency: Fit logically within the game's universe
-  - Interactivity: Enhance engagement through interactions and consequences
-  - Scalability: Allow for future modifications
-  - Innovativeness: Creative design to enrich player experience
-  - Image update: Don't update the image when a character changes expression or pose, but only if their body or clothes change for example. Unless a node states otherwise
-  - Never update images for game design or system nodes (like Game Rules, Game Systems, etc.) - these should maintain their original images
-  - Rich Information Storage: Store detailed, reusable information in the rules field that can be referenced later
-  - Dynamic Evolution: Allow nodes to evolve based on player interactions and story progression
-  - Hidden Depth: Include subtle details and hidden mechanics that can be discovered
-  - Emotional Resonance: Track emotional states and psychological aspects of characters
-  - Environmental Context: Store rich environmental details and atmosphere
-  
-  ## Example Node with Rich Information:
-  {
-    "id": "56",
-    "name": "Healing Potion",
-    "shortDescription": "A small vial containing a red liquid that restores health.",
-    "longDescription": "The vial has a strong smell, and its red liquid is similar to blood. Few people would drink this if it wasn't a medicine.",
-    "rules": "Restores 50 points of health instantly when consumed;Made from rare mountain herbs;Has a metallic aftertaste;Can be used to poison if mixed with certain ingredients;Lasts for 3 days before losing potency;Created by the ancient alchemist guild;Has a faint glow in darkness;Can be used to detect magical traps;Stains skin red temporarily;Has a calming effect on magical creatures;Can be used as a bargaining chip with certain factions;Has a 10% chance to cause temporary hallucinations;Can be used to create magical ink;Has a unique resonance with certain magical artifacts",
-    "type": "Item",
-    "parent": "12",
-    "updateImage": true,
-    "child": []
-  }
-
-  
   ## Game Content:
   ### Current Nodes:
   ${nodesDescription}
@@ -291,108 +228,141 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   ### User Input:
   ${userInput}
   
-  Using the information provided, update the graph as needed and generate a JSON response with:
-  {
-    "reasoning": "Write here short sentences to decide what happens in reaction to the player's action. Another sentence to explain how you will update the node graph, always prefer to update before creating new nodes. Ensure to assign correctly the changes to the correct nodes. Analyse which node should update their image, because their description change has is visible",
-    "chatText": "Narrator dialogue/description reflecting the current game state and actions taken in natural language that will display in the chat.\n\nShould be a detailed chapter (8 to 12 paragraphs) with rich descriptions of the environment, character emotions, and unfolding events.\n\nInclude sensory details, character thoughts, and atmospheric elements.\n\nDon't ask questions to the player.\n\nAvoid repeating what was said before.",
-    "actions": "(Array of strings) two interesting actions the player can then take",
-    "nodeEdition": {
-      "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id",
-      "delete": "(Array of node id) List nodes to be removed and justify their removal. Nodes that became irrelevant for a while should be deleted."
+  Generate a detailed chapter (8 to 12 paragraphs) with rich descriptions of the environment, character emotions, and unfolding events.
+  Include sensory details, character thoughts, and atmospheric elements.
+  Don't ask questions to the player.
+  Avoid repeating what was said before.
+  `;
+
+  const chatTextMessages: Message[] = [
+    { role: 'system', content: chatTextPrompt },
+  ];
+
+  const chatTextResponse = await getResponse(chatTextMessages, 'gpt-4o');
+  return chatTextResponse.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
+}
+
+export const generateActions = async(chatText: string, nodes: Node[], userInput: string) => {
+  const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "image_generation") {
+      return acc;
     }
+    return acc + `
+      id: ${node.id}
+      name: ${node.name}
+      longDescription: ${node.longDescription}
+      rules: ${node.rules}
+      type: ${node.type}
+      child: ${node.child}
+      parent: ${node.parent}
+      `;
+  }, "");
+
+  const actionsPrompt = `
+  # TASK:
+  Based on the following game state and narrative, generate two interesting actions the player can take next.
+  The actions should be natural continuations of the story and make sense in the current context.
+
+  ## Current Game State:
+  ${nodesDescription}
+
+  ## Current Narrative:
+  ${chatText}
+
+  ## User's Last Input:
+  ${userInput}
+
+  Return a JSON array of exactly two strings, each describing one possible action.
+  Example: ["examine the mysterious door", "ask the merchant about the strange artifact"]
+  `;
+
+  const actionsMessages: Message[] = [
+    { role: 'system', content: actionsPrompt },
+  ];
+
+  const actionsResponse = await getResponse(actionsMessages, 'gpt-4o');
+  return JSON.parse(actionsResponse);
+}
+
+export const generateNodeEdition = async(chatText: string, actions: string[], nodes: Node[], userInput: string) => {
+  const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "image_generation") {
+      return acc;
+    }
+    return acc + `
+      id: ${node.id}
+      name: ${node.name}
+      longDescription: ${node.longDescription}
+      rules: ${node.rules}
+      type: ${node.type}
+      child: ${node.child}
+      parent: ${node.parent}
+      `;
+  }, "");
+
+  const nodeEditionPrompt = `
+  # TASK:
+  Based on the following game state, narrative, and possible actions, update the game graph.
+  Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
+
+  ## Node Properties:
+  - id: Unique id string
+  - name: title
+  - longDescription: (Mandatory) Detailed description, write everything that is visible or that the player should know.
+  - rules: (Mandatory) Internal info for AI that player shouldn't see. Store rich, reusable information in a structured format:
+    * Use semicolons to separate different aspects
+    * Character and World: traits, motivations, relationships, physical characteristics, cultural context
+    * Environment and Atmosphere: details, mood, potential interactions and consequences
+    * Story Elements: plot hooks, foreshadowing, unresolved mysteries, thematic elements
+    * Game Mechanics: hidden triggers, past events impact, future developments
+    * Story Generation: hints for future narrative development, character arcs, world-building opportunities
+  - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
+  - parent: ID of the parent node (has to match an existing or newly created node)
+  - child: Array of child node IDs (has to match an existing or newly created node)
+  - updateImage: If the element described by the node receives a visual/appearance change set to "true". Use this flag only if there are major changes as this trigger a 20-second generation process per image.
+
+  ## Current Game State:
+  ${nodesDescription}
+
+  ## Current Narrative:
+  ${chatText}
+
+  ## Possible Actions:
+  ${JSON.stringify(actions)}
+
+  ## User's Last Input:
+  ${userInput}
+
+  Return a JSON object with:
+  {
+    "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id",
+    "delete": "(Array of node id) List nodes to be removed and justify their removal. Nodes that became irrelevant for a while should be deleted."
   }
 
   Try to not to exceed 10 nodes in the graph, either by merging existing ones that share same concepts instead of creating new nodes, or deleting irelevant ones.
-
   Keep the logic properly scoped in each node. Prefer to store information in the node that is impacted by the change rather by the one triggering it.
-  
   When creating new nodes, be creative and surprise the user with its content. You have to create an interesting game for the player.
-
-  You VERY MUCH have to enforce the world rules and not comply with the user action if it doesn't fit with the Game Rule. Guide the user to interact
-  with the game by following the Game Rule nodes directives.
-  
-  When updating nodes, enrich their rules field with additional information that could be relevant later. This includes:
-  - Character development and relationships
-  - Environmental changes and atmosphere
-  - Hidden mechanics and triggers
-  - Emotional states and psychological aspects
-  - Cultural and social context
-  - Potential future developments
-  - Past events and their impact
-  - Physical characteristics and capabilities
-  
-  Reply directly with the JSON. Ensure proper JSON syntax. Always reply with content in your json. Don't use any backquote. DONT USE \`\`\`json for example
+  You VERY MUCH have to enforce the world rules and not comply with the user action if it doesn't fit with the Game Rule.
   `;
-  
-  const messages: Message[] = [
-    { role: 'system', content: prompt },
+
+  const nodeEditionMessages: Message[] = [
+    { role: 'system', content: nodeEditionPrompt },
   ];
 
-  const grammar = `root ::= (
-    "{"
-      "\\"reasoning\\":" ws "\\"" reasoning "\\"" ws "," ws 
-      "\\"chatText\\":" ws "\\"" chatText "\\"" ws "," ws 
-      "\\"actions\\":" ws actions ws "," ws 
-      "\\"nodeEdition\\":" ws nodeEdition ws
-    "}"
-  )
-    
-  reasoning ::= ([^"\\\\.]+ "."? [^"\\\\.]*)* # Any character except double quote, backslash, and three consecutive dots
+  const nodeEditionResponse = await getResponse(nodeEditionMessages, 'gpt-4o');
+  return JSON.parse(nodeEditionResponse);
+}
 
-  nodeEdition ::= (
-    "{"
-      ws "\\"merge\\":" ws merge ws "," ws 
-      "\\"delete\\":" ws delete ws "," ws
-      "\\"appendEnd\\":" ws appendEnd ws
-    "}" ws
-  )
+export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
+  const chatText = await generateChatText(userInput, chatHistory, nodes, detailledNodeIds);
+  const actions = await generateActions(chatText, nodes, userInput);
+  const nodeEdition = await generateNodeEdition(chatText, actions, nodes, userInput);
   
-  merge ::= (
-    "["
-      ws (node (ws "," ws node)*)? ws 
-    "]" ws
-  )
-  
-  appendEnd ::= (
-    "["
-      ws (node (ws "," ws node)*)? ws 
-    "]" ws
-  )
-  
-  node ::= (
-    "{"
-      ws "\\"id\\":" ws textInQuotes ws "," ws
-      "\\"name\\":" ws textInQuotes ws "," ws 
-      "\\"rules\\":" ws textInQuotes ws "," ws
-      "\\"longDescription\\":" ws textInQuotes ws "," ws
-      "\\"shortDescription\\":" ws textInQuotes ws "," ws
-      ( "\\"child\\":" ws textInQuotes ws "," ws )?
-      ( "\\"parent\\":" ws textInQuotes ws "," ws )?
-      ( "\\"updateImage\\":" ws textInQuotes ws "," ws )?
-       "\\"type\\":" ws textInQuotes ws
-    "}" ws
-  )
-  
-  delete ::= (
-    "["
-      ws (nodeId (ws "," ws nodeId)*)? ws 
-    "]" ws
-  )
-  
-  chatText ::= [^"\\\\]+ # Any character except double quote and backslash
-  
-  actions ::= (
-    "["
-      ws textInQuotes (ws "," ws textInQuotes)* ws 
-    "]" ws
-  )
-  
-  textInQuotes ::= "\\"" [^"\\\\]+ "\\"" ws
-  ws ::= [ \t\n]* # Optional whitespace
-  `;
-
-  const response = await getResponse(messages, 'gpt-4o', grammar)
-  return JSON.parse(response);
+  return {
+    chatText,
+    actions,
+    nodeEdition
+  };
 }
 
 export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => {
@@ -401,8 +371,6 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
     return acc + `
     id: ${node.id}
     name: ${node.name}
-    shortDescription: ${node.shortDescription}
-    longDescription: ${node.longDescription}
     rules: ${node.rules}
     type: ${node.type}
     child: ${node.child}
@@ -554,13 +522,16 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       },
       body: JSON.stringify({
         model: openrouterModel,
-        provider: openrouterProvider,
-        messages: messages,
-        temperature: import.meta.env.VITE_OPENROUTER_TEMPERATURE ? parseFloat(import.meta.env.VITE_OPENROUTER_TEMPERATURE) : 0.7,
-        max_tokens: import.meta.env.VITE_OPENROUTER_MAX_TOKENS ? parseInt(import.meta.env.VITE_OPENROUTER_MAX_TOKENS) : 4096,
-        reasoning: {
-          effort: "low",
-          exclude: false
+        messages: messages.map(msg => ({
+          role: msg.role,
+          content: [{
+            type: "text",
+            text: msg.content
+          }]
+        })),
+        provider: {
+          order: [openrouterProvider],
+          allow_fallbacks: false
         }
       })
     });

@@ -17,13 +17,15 @@ interface ChatBubbleProps {
   onActionClick: (action: string) => void;
   showDebug?: boolean;
   onToggleDebug?: () => void;
+  isWaiting?: boolean;
 }
 
 const ChatBubble: React.FC<ChatBubbleProps> = ({ 
   message, 
   onActionClick,
   showDebug = true,
-  onToggleDebug
+  onToggleDebug,
+  isWaiting = false
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(expandableMessagesTypes.includes(message.role));
 
@@ -39,8 +41,8 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
   return (
     <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} mb-3`}>
       <div className={`w-[90%] p-3 rounded-xl shadow-sm relative transition-all duration-200 ${
-        message.role === "user" ? "bg-slate-600 text-white shadow-slate-500/30" :
-        message.role === "assistant" ? "bg-slate-700 text-white shadow-slate-500/30" :
+        message.role === "user" ? "bg-slate-600 text-white shadow-slate-500/30 animate-vibrate" :
+        message.role === "assistant" ? `bg-slate-700 text-white shadow-slate-500/30 ${isWaiting ? 'animate-float' : ''}` :
         expandableMessagesTypes.includes(message.role) ? "bg-gray-50/50 border border-gray-100 text-gray-700" :
         "bg-transparent text-gray-600"
       }`}>
@@ -97,6 +99,10 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
                 {expandableMessagesTypes.includes(message.role) ? (
                   <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50/50 p-2 rounded-lg">
                     {formatJsonContent(message.content)}
+                  </pre>
+                ) : message.role === "assistant" ? (
+                  <pre className="whitespace-pre-wrap font-sans text-sm">
+                    {message.content}
                   </pre>
                 ) : (
                   message.content

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Node } from '../models/Node';
 
 interface NodeGraphInterfaceProps {
@@ -7,6 +7,28 @@ interface NodeGraphInterfaceProps {
 
 const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [updatedNodes, setUpdatedNodes] = useState<Set<string>>(new Set());
+
+  // Track node updates
+  useEffect(() => {
+    const newUpdatedNodes = new Set<string>();
+    nodes.forEach(node => {
+      if (node.updateImage) {
+        newUpdatedNodes.add(node.id);
+      }
+    });
+    setUpdatedNodes(newUpdatedNodes);
+  }, [nodes]);
+
+  // Clear updated nodes after animation completes
+  useEffect(() => {
+    if (updatedNodes.size > 0) {
+      const timer = setTimeout(() => {
+        setUpdatedNodes(new Set());
+      }, 1000); // Match animation duration
+      return () => clearTimeout(timer);
+    }
+  }, [updatedNodes]);
 
   const handleNodeSelect = (node: Node) => {
     setSelectedNode(node);
@@ -16,8 +38,18 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
     <div className="w-1/2 p-4 flex flex-col space-y-4 relative overflow-y-auto">
       <div className="flex-grow overflow-y-auto grid grid-cols-2 gap-4">
         {nodes.map((node) => (
-          <div key={node.id} className="relative cursor-pointer rounded overflow-hidden h-64">
-            <img src={node.image} alt={node.name} className="w-full h-64 object-cover" onClick={() => handleNodeSelect(node)} />
+          <div 
+            key={node.id} 
+            className={`relative cursor-pointer rounded overflow-hidden h-64 transition-all duration-200 ${
+              updatedNodes.has(node.id) ? 'animate-pulse border-2' : ''
+            }`}
+          >
+            <img 
+              src={node.image} 
+              alt={node.name} 
+              className="w-full h-64 object-cover" 
+              onClick={() => handleNodeSelect(node)} 
+            />
             <div className="absolute bottom-0 left-0 w-full bg-black bg-opacity-70 text-white p-2 text-center">{node.name}</div>
           </div>
         ))}
@@ -29,7 +61,6 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
             <p className="break-all">{selectedNode.longDescription}</p>
             <p className="text-xs mt-5 break-all">Hidden Description: {selectedNode.rules}</p>
             <p className="text-xs break-all">Type: {selectedNode.type}</p>
-            <p className="text-xs break-all">short description: {selectedNode.shortDescription}</p>
             <img src={selectedNode.image} alt={selectedNode.name} className="w-full object-contain max-h-[70vh] mt-4" />
           </div>
           <button className="mt-4 py-2 px-4 bg-red-900 rounded w-full" onClick={() => setSelectedNode(null)}>Close</button>

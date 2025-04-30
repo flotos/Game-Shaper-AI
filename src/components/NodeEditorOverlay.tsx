@@ -29,7 +29,6 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
         ...newNode,
         id: generateRandomId(),
         name: newNode.name || 'New Node',
-        shortDescription: newNode.shortDescription || '',
         rules: newNode.rules || '',
         longDescription: newNode.longDescription || '',
         image: newNode.image || '',
@@ -88,12 +87,6 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
           placeholder="Name"
           value={selectedNode ? selectedNode.name : newNode.name || ''}
           onChange={(e) => selectedNode ? setSelectedNode({ ...selectedNode, name: e.target.value }) : setNewNode({ ...newNode, name: e.target.value })}
-          className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
-        />
-        <textarea
-          placeholder="Description"
-          value={selectedNode ? selectedNode.shortDescription : newNode.shortDescription || ''}
-          onChange={(e) => selectedNode ? setSelectedNode({ ...selectedNode, shortDescription: e.target.value }) : setNewNode({ ...newNode, shortDescription: e.target.value })}
           className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
         />
         <textarea

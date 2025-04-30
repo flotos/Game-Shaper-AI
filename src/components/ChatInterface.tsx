@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateUserInputResponse, getRelevantNodes } from '../services/LLMService';
+import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition } from '../services/LLMService';
 import { Node } from '../models/Node';
 import { useChat, Message } from '../context/ChatContext';
 import ChatHistory from './ChatHistory';
@@ -89,13 +89,32 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         detailedNodeIds = await getRelevantNodes(input, contextHistory.slice(-4), nodes);
       }
 
-      const response = await generateUserInputResponse(input, contextHistory.slice(-20), nodes, detailedNodeIds);
+      // First, generate and display the chat text
+      const chatText = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
       const storyEndTime = Date.now();
       const storyDuration = storyEndTime - storyStartTime;
 
-      setLastNodeEdition(response.nodeEdition);
+      // Add the chat text message immediately
+      const chatTextMessage: Message = {
+        role: "assistant",
+        content: chatText,
+        timestamp
+      };
+      addMessage(chatTextMessage);
+
+      // Update loading message for the next steps
+      setLoadingMessage('Generating actions and updating game state...');
+
+      // Generate actions and node edition in parallel
+      const [actions, nodeEdition] = await Promise.all([
+        generateActions(chatText, nodes, input),
+        generateNodeEdition(chatText, [], nodes, input)
+      ]);
+
+      setLastNodeEdition(nodeEdition);
       setLastFailedRequest(null);
 
+      // Add the remaining messages
       const messagesToAdd: Message[] = [
         {
           role: "selectedNodes",
@@ -103,19 +122,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
           timestamp,
         }, {
           role: "reasoning",
-          content: response.reasoning || "",
-          timestamp
-        }, {
-          role: "assistant",
-          content: `${response.chatText}`,
+          content: "",
           timestamp
         }, {
           role: "actions",
-          content: JSON.stringify(response.actions),
+          content: JSON.stringify(actions),
           timestamp
         }, {
           role: "nodeEdition",
-          content: JSON.stringify(response.nodeEdition, null, 2),
+          content: JSON.stringify(nodeEdition, null, 2),
           timestamp
         }
       ];
@@ -135,13 +150,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
 
       filteredMessages.forEach(addMessage);
       setInput('');
-      setActionTriggered(false); // Reset the actionTriggered flag
+      setActionTriggered(false);
 
-      if (response.nodeEdition) {
+      if (nodeEdition) {
         setLoadingMessage('Generating images...');
         try {
           const imageStartTime = Date.now();
-          const imagePromptTimes = await updateGraph(response.nodeEdition);
+          const imagePromptTimes = await updateGraph(nodeEdition);
           const imageEndTime = Date.now();
           const imageDuration = imageEndTime - imageStartTime;
           

@@ -169,17 +169,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             <h4 className="text-sm font-semibold mb-1">Current</h4>
             <div className="text-sm space-y-2">
               <div>
-                <span className="font-semibold block mb-1">Short Description:</span>
-                <div className="relative">
-                  <div
-                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
-                    style={{ height: '4.5rem', overflowY: 'auto' }}
-                  >
-                    {createDiffSpans(originalNode?.shortDescription || '', updatedNode.shortDescription || '', true)}
-                  </div>
-                </div>
-              </div>
-              <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
                 <div className="relative">
                   <div
@@ -217,17 +206,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
           <div>
             <h4 className="text-sm font-semibold mb-1">New</h4>
             <div className="text-sm space-y-2">
-              <div>
-                <span className="font-semibold block mb-1">Short Description:</span>
-                <div className="relative">
-                  <div
-                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
-                    style={{ height: '4.5rem', overflowY: 'auto' }}
-                  >
-                    {createDiffSpans(originalNode?.shortDescription || '', updatedNode.shortDescription || '', false)}
-                  </div>
-                </div>
-              </div>
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
                 <div className="relative">

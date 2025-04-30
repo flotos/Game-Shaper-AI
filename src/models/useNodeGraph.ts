@@ -8,7 +8,6 @@ const initNodes: Node[] = [
   {
     id: '0tg',
     name: 'Adventure game',
-    shortDescription: 'The game is an adventure where the player has to reach the max level.',
     rules: `PlayerGainsLevelOnBeat;CharactersHaveHealthAndPower;DenyImpossibleActions;GameControlsEvents;GameChallengesPlayer;
       NoTeleportAllowed;GameHandlesEncounters;WriteDialogInChatText;WriteLikeNovel;
       AvoidToUpdateImageOnLocations;DescribeNewCharactersInNewNodes_WithHairClothesAndBodyShape;Always_DisplayPlayerAppearanceOnItsDescription`,
@@ -21,7 +20,6 @@ const initNodes: Node[] = [
   {
     id: '854euh',
     name: 'Tavern',
-    shortDescription: "The tavern is filled with joy.",
     rules: 'JoyfulFacade;TavernIsTrapForPlayer;FakeWarmth;LivelyAtmosphereHidesDanger;DiverseCrowd;RusticDecor;RoaringFire;SubtleTension;IfPlayerOrderBeerStartAmbush',
     longDescription: `The tavern is a warm, lively place in the bustling town. As you enter, cheerful chatter and music welcome you. 
       The room is filled with a diverse crowd, from adventurers to townsfolk. Rustic decorations and a roaring fire add to the cozy ambiance. 
@@ -34,7 +32,6 @@ const initNodes: Node[] = [
   {
     id: '8phg',
     name: 'Player',
-    shortDescription: 'The character\'s detail.',
     rules: 'Stats:HP Healthy; Strength Low; Agility Low; Intelligence Low; Charisma Low;',
     longDescription: "You are a man, aged 25 with an average appearance, wearing used clothes.",
     image: 'https://i.ibb.co/WBYTzDZ/DALL-E-2024-06-13-17-46-08-A-character-sheet-icon-with-a-fantasy-theme-The-icon-should-depict-a-scro.webp',
@@ -114,7 +111,6 @@ function useNodeGraph() {
           const existingNode = newNodes[index];
           newNodes[index] = {
             ...existingNode,
-            shortDescription: existingNode.shortDescription + (nodeToAppend.shortDescription || ''),
             longDescription: existingNode.longDescription + (nodeToAppend.longDescription || ''),
             rules: existingNode.rules + (nodeToAppend.rules || ''),
             name: existingNode.name + (nodeToAppend.name || ''),
