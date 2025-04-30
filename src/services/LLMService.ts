@@ -13,13 +13,14 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
 
     
     contentPrompt += `
-      --> Your task
-      The following instructions are to generate ONE image. It is very important to ensure only one image is generated.
-      Your reply should be the prompt directly, with no comment, no reasoning.
-      The "real" titles of these instructions are separated by the "-->" flag.
+    /no_think
+    --> Your task
+    The following instructions are to generate ONE image. It is very important to ensure only one image is generated.
+    Your reply should be the prompt directly, with no comment, no reasoning.
+    The "real" titles of these instructions are separated by the "-->" flag.
 
 
-      --> Image generation instructions Guidelines
+    --> Image generation instructions Guidelines
 
     `
     
@@ -155,21 +156,12 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     ##Your answer
   `
 
-  const grammar = `root ::= array
-
-  array ::= "[" ws string (ws "," ws string)* ws "]"
-
-  string ::= "\\"" [^"\\\\]+ "\\"" ws
-
-  ws ::= [ \t\n]* # Optional whitespace
-  `;
-
 
   const messages: Message[] = [
     { role: 'system', content: prompt },
   ];
 
-  const response = await getResponse(messages, "gpt-3.5-turbo", grammar)
+  const response = await getResponse(messages, "gpt-3.5-turbo")
   return JSON.parse(response);
 }
 
@@ -213,6 +205,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   }, "");
 
   const chatTextPrompt = `
+   /no_think
   # TASK:
   You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
   Generate appropriate dialogue based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
@@ -512,6 +505,16 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         provider: {
           order: [openrouterProvider],
           allow_fallbacks: false
+        },
+        temperature: 0.7,
+        top_p: 0.8,
+        top_k: 20,
+        min_p: 0,
+        enable_thinking: includeReasoning,
+        include_reasoning: false,
+        presence_penalty: 1,
+        reasoning: {
+          effort: "low"
         },
         stream: stream
       })
