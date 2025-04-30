@@ -68,15 +68,23 @@ function useNodeGraph() {
     setNodes(prevNodes => prevNodes.filter(node => node.id !== nodeId));
   };
 
-  const updateGraph = async (nodeEdition: { merge?: Partial<Node>[], delete?: string[], appendEnd?: Partial<Node>[] }) => {
+  const updateGraph = async (nodeEdition: { 
+    merge?: Partial<Node>[], 
+    delete?: string[], 
+    appendEnd?: Partial<Node>[],
+    newNodes?: string[] 
+  }, imagePrompts: { nodeId: string, prompt: string }[] = []) => {
     if (!nodeEdition) return;
 
+    console.log('Starting graph update with node edition:', nodeEdition);
+    console.log('Image prompts to process:', imagePrompts);
     const newNodes = [...nodes];
     let nodesToProcess: Partial<Node>[] = [];
     const imagePromptTimes: number[] = [];
 
     // Process deletions first
     if (nodeEdition.delete) {
+      console.log('Processing deletions:', nodeEdition.delete);
       nodeEdition.delete.forEach(id => {
         const index = newNodes.findIndex(node => node.id === id);
         if (index !== -1) {
@@ -87,143 +95,56 @@ function useNodeGraph() {
 
     // Process updates and new nodes
     if (nodeEdition.merge) {
+      console.log('Processing merges:', nodeEdition.merge);
       nodeEdition.merge.forEach(updatedNode => {
         const index = newNodes.findIndex(node => node.id === updatedNode.id);
         if (index !== -1) {
           newNodes[index] = { ...newNodes[index], ...updatedNode };
-          if (updatedNode.updateImage) {
-            nodesToProcess.push(newNodes[index]);
-          }
         } else {
           newNodes.push(updatedNode as Node);
-          if (updatedNode.updateImage) {
-            nodesToProcess.push(updatedNode);
-          }
         }
       });
     }
 
-    // Process append operations
-    if (nodeEdition.appendEnd) {
-      nodeEdition.appendEnd.forEach(nodeToAppend => {
-        const index = newNodes.findIndex(node => node.id === nodeToAppend.id);
-        if (index !== -1) {
-          const existingNode = newNodes[index];
-          newNodes[index] = {
-            ...existingNode,
-            longDescription: existingNode.longDescription + (nodeToAppend.longDescription || ''),
-            rules: existingNode.rules + (nodeToAppend.rules || ''),
-            name: existingNode.name + (nodeToAppend.name || ''),
-            type: existingNode.type + (nodeToAppend.type || ''),
-            child: [...existingNode.child, ...(nodeToAppend.child || [])],
-            parent: nodeToAppend.parent || existingNode.parent
-          };
-          if (nodeToAppend.updateImage) {
-            nodesToProcess.push(newNodes[index]);
+    // Process image prompts
+    if (imagePrompts.length > 0) {
+      console.log('Starting image generation for', imagePrompts.length, 'prompts');
+      const imageGenerationPromises = imagePrompts.map(async ({ nodeId, prompt }) => {
+        const startTime = Date.now();
+        try {
+          const imageUrl = await generateImage(prompt);
+          const index = newNodes.findIndex(node => node.id === nodeId);
+          if (index !== -1) {
+            newNodes[index] = {
+              ...newNodes[index],
+              image: imageUrl,
+              updateImage: true
+            };
           }
+          return Date.now() - startTime;
+        } catch (error) {
+          console.error('Error generating image for node:', nodeId, error);
+          return 0;
+        }
+      });
+
+      const times = await Promise.all(imageGenerationPromises);
+      imagePromptTimes.push(...times);
+    }
+
+    // Process new nodes
+    if (nodeEdition.newNodes) {
+      console.log('Adding new nodes:', nodeEdition.newNodes);
+      nodeEdition.newNodes.forEach(nodeId => {
+        const node = newNodes.find(n => n.id === nodeId);
+        if (node) {
+          nodesToProcess.push(node);
         }
       });
     }
-
-    // Limit the number of nodes to process to 2
-    nodesToProcess = nodesToProcess.slice(0, 2);
-
-    let results: { node: Partial<Node>, image: string }[] = [];
-
-    if (nodesToProcess.length > 0) {
-      if (import.meta.env.VITE_IMG_API === 'novelai') {
-        // For NovelAI:
-        // 1. Generate all prompts in parallel first
-        const promptPromises = nodesToProcess.map(async (updatedNode) => {
-          const promptStartTime = Date.now();
-          const prompt = await generateImagePrompt(updatedNode, newNodes);
-          const promptEndTime = Date.now();
-          imagePromptTimes.push(promptEndTime - promptStartTime);
-          return prompt;
-        });
-        const prompts = await Promise.all(promptPromises);
-        
-        // 2. Then generate images sequentially
-        results = [];
-        for (let i = 0; i < nodesToProcess.length; i++) {
-          const updatedNode = nodesToProcess[i];
-          const prompt = prompts[i];
-          let retryCount = 0;
-          const maxRetries = 3;
-          let success = false;
-          
-          while (!success && retryCount < maxRetries) {
-            try {
-              // Use existing seed if available, otherwise generate a new one
-              const imageSeed = updatedNode.imageSeed || Math.floor(Math.random() * 4294967295);
-              const image = await generateImage(prompt, imageSeed);
-              if (image) {
-                results.push({
-                  node: { ...updatedNode, imageSeed }, // Store the seed in the node
-                  image
-                });
-                success = true;
-              } else {
-                throw new Error('Empty image returned');
-              }
-            } catch (error) {
-              retryCount++;
-              if (retryCount === maxRetries) {
-                console.error('Failed to generate image after', maxRetries, 'attempts:', error);
-                throw error;
-              }
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            }
-          }
-        }
-      } else {
-        // For other APIs, process sequentially
-        for (const updatedNode of nodesToProcess) {
-          const promptStartTime = Date.now();
-          const prompt = await generateImagePrompt(updatedNode, newNodes);
-          const promptEndTime = Date.now();
-          imagePromptTimes.push(promptEndTime - promptStartTime);
-          
-          let retryCount = 0;
-          const maxRetries = 3;
-          let success = false;
-          
-          while (!success && retryCount < maxRetries) {
-            try {
-              const imageSeed = updatedNode.imageSeed || Math.floor(Math.random() * 4294967295);
-              const image = await generateImage(prompt, imageSeed);
-              if (image) {
-                results.push({
-                  node: { ...updatedNode, imageSeed },
-                  image
-                });
-                success = true;
-              } else {
-                throw new Error('Empty image returned');
-              }
-            } catch (error) {
-              retryCount++;
-              if (retryCount === maxRetries) {
-                console.error('Failed to generate image after', maxRetries, 'attempts:', error);
-                throw error;
-              }
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            }
-          }
-        }
-      }
-    }
-
-    // Update nodes with new images
-    results.forEach(({ node, image }) => {
-      const index = newNodes.findIndex(n => n.id === node.id);
-      if (index !== -1) {
-        newNodes[index] = { ...newNodes[index], image };
-      }
-    });
 
     setNodes(newNodes);
-    return imagePromptTimes;
+    console.log('Updating nodes with new images:', nodesToProcess);
   };
 
   return { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes };

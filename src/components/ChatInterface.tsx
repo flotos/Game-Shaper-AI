@@ -32,6 +32,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     imagePrompts: number[];
     imageGeneration: number[];
   }>({ story: 0, imagePrompts: [], imageGeneration: [] });
+  const [imageGenerationLock, setImageGenerationLock] = useState<boolean>(false);
 
   useEffect(() => {
     if (actionTriggered) {
@@ -147,18 +148,116 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         // Update loading message for the next steps
         setLoadingMessage('Generating actions and updating game state...');
 
-        // Generate actions, node edition, and image updates in parallel
+        // Start determineImageUpdates first and handle its result immediately
         console.log('Starting parallel operations: actions, node edition, and image updates');
         const parallelStartTime = Date.now();
-        const [actions, nodeEdition, imageUpdates] = await Promise.all([
+        
+        // Start determineImageUpdates and handle its result immediately
+        const imageUpdatesPromise = determineImageUpdates(accumulatedContent, nodes, contextHistory).then(async (imageUpdates) => {
+          if (imageUpdates && imageUpdates.length > 0) {
+            console.log('Starting early image generation for context-updated nodes:', imageUpdates);
+            setImageGenerationLock(true); // Lock image generation
+            try {
+              const contextImagePrompts = await Promise.all(
+                imageUpdates.map(async (nodeId: string) => {
+                  console.log('Generating prompt for context-updated node:', nodeId);
+                  const node = nodes.find(n => n.id === nodeId);
+                  if (!node) {
+                    console.warn('Node not found:', nodeId);
+                    return null;
+                  }
+                  const prompt = await generateImagePrompt(node, nodes, contextHistory.slice(-4));
+                  console.log('Generated prompt for node', nodeId, ':', prompt);
+                  return { nodeId, prompt };
+                })
+              );
+
+              // Filter out any null results from context prompts
+              const validContextPrompts = contextImagePrompts.filter((prompt): prompt is { nodeId: string, prompt: string } => prompt !== null);
+              
+              // Start generating images for context-updated nodes immediately
+              if (validContextPrompts.length > 0) {
+                console.log('Starting early graph update with context image prompts');
+                await updateGraph(
+                  { merge: [], delete: [], newNodes: [] },
+                  validContextPrompts.map(p => ({ nodeId: p.nodeId, prompt: p.prompt }))
+                );
+              }
+            } finally {
+              setImageGenerationLock(false); // Unlock image generation
+            }
+          }
+          return imageUpdates;
+        });
+        
+        // Start the other operations in parallel
+        const [actions, nodeEdition] = await Promise.all([
           generateActions(accumulatedContent, nodes, input),
-          generateNodeEdition(accumulatedContent, [], nodes, input),
-          determineImageUpdates(accumulatedContent, nodes, contextHistory)
+          generateNodeEdition(accumulatedContent, [], nodes, input)
         ]);
+        
+        // Get image updates result (but image generation has already started)
+        const imageUpdates = await imageUpdatesPromise;
+        
         console.log('Parallel operations completed in:', Date.now() - parallelStartTime, 'ms');
 
         setLastNodeEdition(nodeEdition);
         setLastFailedRequest(null);
+
+        // Then generate images for new nodes
+        setLoadingMessage('Generating images for new nodes...');
+        try {
+          // Wait for any ongoing image generation to complete
+          while (imageGenerationLock) {
+            console.log('Waiting for context-updated nodes image generation to complete...');
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+
+          const imageStartTime = Date.now();
+          console.log('Starting image generation for new nodes...');
+          
+          // Generate prompts for new nodes from nodeEdition
+          const newNodeImagePrompts = nodeEdition.newNodes ? await Promise.all(
+            nodeEdition.newNodes.map(async (nodeId: string) => {
+              console.log('Generating prompt for new node:', nodeId);
+              const node = nodeEdition.merge?.find((n: Node) => n.id === nodeId);
+              if (!node) {
+                console.warn('New node not found in merge:', nodeId);
+                return null;
+              }
+              const prompt = await generateImagePrompt(node, nodes, contextHistory.slice(-4));
+              console.log('Generated prompt for new node', nodeId, ':', prompt);
+              return { nodeId, prompt };
+            })
+          ) : [];
+
+          // Filter out any null results from new node prompts
+          const validNewNodePrompts = newNodeImagePrompts.filter((prompt): prompt is { nodeId: string, prompt: string } => prompt !== null);
+          
+          console.log('Valid new node prompts:', validNewNodePrompts);
+          
+          // Update the graph with new node image prompts
+          if (validNewNodePrompts.length > 0) {
+            console.log('Starting graph update with new node image prompts');
+            await updateGraph(
+              { merge: [], delete: [], newNodes: [] },
+              validNewNodePrompts.map(p => ({ nodeId: p.nodeId, prompt: p.prompt }))
+            );
+            
+            const imageEndTime = Date.now();
+            const imageDuration = imageEndTime - imageStartTime;
+            console.log('New node image generation completed in:', imageDuration, 'ms');
+            
+            setGenerationTimes({
+              story: storyDuration,
+              imagePrompts: [],
+              imageGeneration: [imageDuration]
+            });
+          }
+        } catch (error) {
+          console.error('Error during new node image generation:', error);
+          setErrorMessage('Error generating images for new nodes. Please try again.');
+        }
 
         // Add the remaining messages
         const messagesToAdd: Message[] = [
@@ -198,50 +297,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         setInput('');
         setActionTriggered(false);
 
-        if (nodeEdition) {
-          setLoadingMessage('Generating images...');
-          try {
-            const imageStartTime = Date.now();
-            console.log('Starting image prompt generation for nodes:', imageUpdates);
-            // Generate image prompts for nodes that need updates
-            const imagePrompts = await Promise.all(
-              imageUpdates.map(async (nodeId: string) => {
-                const node = nodes.find(n => n.id === nodeId);
-                if (!node) return null;
-                return generateImagePrompt(node, nodes, contextHistory.slice(-4));
-              })
-            );
-
-            // Filter out any null results and update the graph
-            const validImagePrompts = imagePrompts.filter((prompt: string | null): prompt is string => prompt !== null);
-            console.log('Starting graph update with image prompts');
-            const imagePromptTimes = await updateGraph(nodeEdition, validImagePrompts);
-            
-            const imageEndTime = Date.now();
-            const imageDuration = imageEndTime - imageStartTime;
-            console.log('Image generation completed in:', imageDuration, 'ms');
-            
-            setGenerationTimes({
-              story: storyDuration,
-              imagePrompts: imagePromptTimes,
-              imageGeneration: [imageDuration]
-            });
-
-            // Add timing information to chat
-            const timingMessage: Message = {
-              role: "system",
-              content: `Generation times:
-- Story: ${(storyDuration / 1000).toFixed(1)}s
-- Image prompts: ${imagePromptTimes.map((t: number) => (t / 1000).toFixed(1)).join('s, ')}s
-- Image generation: ${(imageDuration / 1000).toFixed(1)}s`,
-              timestamp: new Date().toLocaleTimeString()
-            };
-            addMessage(timingMessage);
-          } catch (error) {
-            console.error('Error during image generation:', error);
-            setErrorMessage('Error generating images. Please try again.');
-          }
-        }
+        // Apply the node edition to update the graph
+        console.log('Applying node edition to graph...');
+        await updateGraph(nodeEdition, []);
       }
     } catch (error) {
       console.error('Error during chat handling:', error);

@@ -120,8 +120,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     Given the following nodes from a graph, find the ones that are relevant to the user's action.
     You should consider the nodes descriptions, and their relationships using ID in "child" and "parent" values.
 
-    Reply with an array of ID, with no other content. Don't write text except the array of strings.
-    Reply directly with the JSON array, no text or backquote. DO NOT USE \`\`\`json for example
+    Return a JSON object with a single field "relevantNodes" containing an array of node IDs.
     Each ID entry in the array should be enclosed in quotes.
 
     # Example 1:
@@ -146,7 +145,9 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     user: take and observe the card
 
     ## Your answer
-    ["98ak"]
+    {
+      "relevantNodes": ["98ak"]
+    }
 
     # Your turn:
     ## Nodes
@@ -156,15 +157,15 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     ${stringHistory}
 
     ##Your answer
-  `
-
+  `;
 
   const messages: Message[] = [
     { role: 'system', content: prompt },
   ];
 
-  const response = await getResponse(messages, "gpt-3.5-turbo")
-  return JSON.parse(response);
+  const response = await getResponse(messages, "gpt-3.5-turbo", undefined, false, { type: 'json_object' });
+  const parsed = JSON.parse(response);
+  return parsed.relevantNodes;
 }
 
 export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
@@ -268,16 +269,17 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
   ## User's Last Input:
   ${userInput}
 
-  Return a JSON array of exactly two strings, each describing one possible action.
-  Example: ["examine the mysterious door", "ask the merchant about the strange artifact"]
+  Return a JSON object with a single field "actions" containing an array of exactly two strings, each describing one possible action.
+  Example: { "actions": ["examine the mysterious door", "ask the merchant about the strange artifact"] }
   `;
 
   const actionsMessages: Message[] = [
     { role: 'system', content: actionsPrompt },
   ];
 
-  const actionsResponse = await getResponse(actionsMessages, 'gpt-4o');
-  return JSON.parse(actionsResponse);
+  const actionsResponse = await getResponse(actionsMessages, 'gpt-4o', undefined, false, { type: 'json_object' });
+  const parsed = JSON.parse(actionsResponse);
+  return parsed.actions;
 }
 
 export const generateNodeEdition = async(chatText: string, actions: string[], nodes: Node[], userInput: string) => {
@@ -298,6 +300,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   }, "");
 
   const nodeEditionPrompt = `
+  /no_think
   # TASK:
   Based on the following game state, narrative, and possible actions, update the game graph.
   Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
@@ -332,7 +335,8 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   Return a JSON object with:
   {
     "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id. Each node MUST include: id, name, longDescription, rules, type, parent, and child fields.",
-    "delete": "(Array of node id) List nodes to be removed and justify their removal. Nodes that became irrelevant for a while should be deleted."
+    "delete": "(Array of node id) List nodes to be removed and justify their removal. Nodes that became irrelevant for a while should be deleted.",
+    "newNodes": "(Array of node ids) List of newly created node IDs that should have their images generated. This should include all nodes in 'merge' that have new IDs not present in the current game state."
   }
 
   IMPORTANT: Your response must be a valid JSON object and nothing else. Do not include any markdown formatting, code blocks, or additional text before or after the JSON object.
@@ -350,10 +354,15 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
     { role: 'system', content: nodeEditionPrompt },
   ];
 
-  const nodeEditionResponse = await getResponse(nodeEditionMessages, 'gpt-4o');
+  const nodeEditionResponse = await getResponse(nodeEditionMessages, 'gpt-4o', undefined, false, { type: 'json_object' });
   try {
-    console.log('Raw node edition response:', nodeEditionResponse);
     const parsedResponse = JSON.parse(nodeEditionResponse);
+    
+    // Ensure newNodes field exists and is an array
+    if (!parsedResponse.newNodes) {
+      parsedResponse.newNodes = [];
+    }
+    
     return parsedResponse;
   } catch (error) {
     console.error('Error parsing node edition response:', error);
@@ -396,34 +405,47 @@ export const determineImageUpdates = async(chatText: string, nodes: Node[], chat
   ## Recent Chat History:
   ${chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
 
-  Return a JSON array of node IDs that should have their images updated.
-  Example: ["node1", "node2"]
+  Return a JSON object with a single field "nodesToUpdate" containing an array of node IDs that should have their images updated.
+  Example: { "nodesToUpdate": ["node1", "node2"] }
   `;
 
   const messages: Message[] = [
     { role: 'system', content: prompt },
   ];
 
-  const response = await getResponse(messages, 'gpt-4o');
-  return JSON.parse(response);
+  const response = await getResponse(messages, 'gpt-4o', undefined, false, { type: 'json_object' });
+  try {
+    // Remove markdown code block formatting if present
+    const cleanResponse = response.replace(/```json\n|\n```/g, '').trim();
+    const parsedResponse = JSON.parse(cleanResponse);
+    return parsedResponse.nodesToUpdate || [];
+  } catch (error) {
+    console.error('Error parsing image updates response:', error);
+    console.error('Raw response:', response);
+    return [];
+  }
 }
 
 export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   // First generate chat text
   const chatText = await generateChatText(userInput, chatHistory, nodes, detailledNodeIds);
   
-  // Then run actions, node edition, and image updates in parallel
+  // Run all three processes in parallel
   const [actions, nodeEdition, imageUpdates] = await Promise.all([
     generateActions(chatText, nodes, userInput),
     generateNodeEdition(chatText, [], nodes, userInput),
     determineImageUpdates(chatText, nodes, chatHistory)
   ]);
   
+  // Return the results, but note that image generation will be handled separately
+  // to ensure proper sequencing
   return {
     chatText,
     actions,
     nodeEdition,
-    imageUpdates
+    imageUpdates,
+    // We'll handle the actual image generation in the ChatInterface component
+    // to ensure proper sequencing
   };
 }
 
@@ -509,7 +531,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
  * For pricing and capabilities, see: https://openrouter.ai/docs#models
  */
 
-const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined, stream = false) => {
+const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined, stream = false, responseFormat?: { type: string }) => {
   const apiType = import.meta.env.VITE_LLM_API;
   const includeReasoning = import.meta.env.VITE_LLM_INCLUDE_REASONING !== 'false';
 
@@ -532,7 +554,8 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       body: JSON.stringify({
         model: model,
         messages: messages,
-        stream: stream
+        stream: stream,
+        response_format: responseFormat
       })
     });
   } else if (apiType === 'openrouter') {
@@ -572,7 +595,8 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         reasoning: {
           effort: "low"
         },
-        stream: stream
+        stream: stream,
+        response_format: responseFormat
       })
     });
   } else if (apiType === 'koboldcpp') {
@@ -635,6 +659,12 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
     }
     const content = data.choices[0].message.content;
     try {
+      // If response_format is json_object, the content is already a JSON string
+      if (responseFormat?.type === 'json_object') {
+        // Remove any markdown code block formatting if present
+        const cleanContent = content.replace(/```json\n|\n```/g, '').trim();
+        return cleanContent;
+      }
       const parsedContent = JSON.parse(content);
       if (!includeReasoning && parsedContent.reasoning !== undefined) {
         delete parsedContent.reasoning;
