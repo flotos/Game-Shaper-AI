@@ -81,6 +81,7 @@ function useNodeGraph() {
     const newNodes = [...nodes];
     let nodesToProcess: Partial<Node>[] = [];
     const imagePromptTimes: number[] = [];
+    const processedNodeIds = new Set<string>();
 
     // Process deletions first
     if (nodeEdition.delete) {
@@ -106,12 +107,18 @@ function useNodeGraph() {
       });
     }
 
-    // Process image prompts
+    // Process image prompts for context-updated nodes (sequential)
     if (imagePrompts.length > 0) {
       console.log('Starting image generation for', imagePrompts.length, 'prompts');
-      const imageGenerationPromises = imagePrompts.map(async ({ nodeId, prompt }) => {
+      for (let i = 0; i < imagePrompts.length; i++) {
+        const { nodeId, prompt } = imagePrompts[i];
+        if (!nodeId || processedNodeIds.has(nodeId)) {
+          console.log(`Skipping already processed node ${nodeId}`);
+          continue;
+        }
         const startTime = Date.now();
         try {
+          console.log(`Processing image ${i + 1}/${imagePrompts.length} for node ${nodeId}`);
           const imageUrl = await generateImage(prompt);
           const index = newNodes.findIndex(node => node.id === nodeId);
           if (index !== -1) {
@@ -120,16 +127,26 @@ function useNodeGraph() {
               image: imageUrl,
               updateImage: true
             };
+            processedNodeIds.add(nodeId);
+            // Update state and wait for it to complete
+            await new Promise<void>(resolve => {
+              setNodes([...newNodes]);
+              // Use a small delay to ensure state update is complete
+              setTimeout(resolve, 100);
+            });
           }
-          return Date.now() - startTime;
-        } catch (error) {
+          imagePromptTimes.push(Date.now() - startTime);
+          // Add a delay between requests to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (error: any) {
           console.error('Error generating image for node:', nodeId, error);
-          return 0;
+          // If we hit a rate limit, wait longer before retrying
+          if (error.message?.includes('429')) {
+            console.log('Rate limit hit, waiting 10 seconds before continuing...');
+            await new Promise(resolve => setTimeout(resolve, 10000));
+          }
         }
-      });
-
-      const times = await Promise.all(imageGenerationPromises);
-      imagePromptTimes.push(...times);
+      }
     }
 
     // Process new nodes
@@ -137,7 +154,7 @@ function useNodeGraph() {
       console.log('Adding new nodes:', nodeEdition.newNodes);
       nodeEdition.newNodes.forEach(nodeId => {
         const node = newNodes.find(n => n.id === nodeId);
-        if (node) {
+        if (node && !processedNodeIds.has(nodeId)) {
           nodesToProcess.push(node);
         }
       });
@@ -145,6 +162,57 @@ function useNodeGraph() {
 
     setNodes(newNodes);
     console.log('Updating nodes with new images:', nodesToProcess);
+
+    // Queue image generation for new nodes (sequential)
+    if (nodesToProcess.length > 0) {
+      console.log('Starting sequential image generation for new nodes');
+      for (let i = 0; i < nodesToProcess.length; i++) {
+        const node = nodesToProcess[i];
+        if (!node.id || processedNodeIds.has(node.id)) {
+          console.log(`Skipping already processed node ${node.id}`);
+          continue;
+        }
+        console.log(`Processing image for new node ${i + 1}/${nodesToProcess.length}: ${node.id}`);
+        
+        try {
+          const startTime = Date.now();
+          // Generate prompt
+          const prompt = await generateImagePrompt(node, newNodes, []);
+          console.log(`Generated prompt for node ${node.id}`);
+          
+          // Generate image
+          const imageUrl = await generateImage(prompt);
+          console.log(`Generated image for node ${node.id}`);
+          
+          // Update node
+          const index = newNodes.findIndex(n => n.id === node.id);
+          if (index !== -1) {
+            newNodes[index] = {
+              ...newNodes[index],
+              image: imageUrl,
+              updateImage: true
+            };
+            processedNodeIds.add(node.id);
+            // Update state and wait for it to complete
+            await new Promise<void>(resolve => {
+              setNodes([...newNodes]);
+              // Use a small delay to ensure state update is complete
+              setTimeout(resolve, 100);
+            });
+          }
+          imagePromptTimes.push(Date.now() - startTime);
+          // Add a delay between requests to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (error: any) {
+          console.error('Error generating image for new node:', node.id, error);
+          // If we hit a rate limit, wait longer before retrying
+          if (error.message?.includes('429')) {
+            console.log('Rate limit hit, waiting 10 seconds before continuing...');
+            await new Promise(resolve => setTimeout(resolve, 10000));
+          }
+        }
+      }
+    }
   };
 
   return { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes };

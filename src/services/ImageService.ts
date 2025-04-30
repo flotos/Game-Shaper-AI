@@ -103,7 +103,28 @@ const generateImageFromOpenRouter = async (prompt: string, seed?: number): Promi
 
     const data = await response.json();
     const imageUrl = data.data[0].url;
-    return await compressImage(imageUrl);
+
+    // Wait for the image to be ready
+    let retries = 0;
+    const maxRetries = 10;
+    const retryDelay = 2000; // 2 seconds
+
+    while (retries < maxRetries) {
+      try {
+        const imageResponse = await fetch(imageUrl);
+        if (imageResponse.ok) {
+          console.log('Image is ready');
+          return await compressImage(imageUrl);
+        }
+      } catch (error) {
+        console.log(`Image not ready yet, retrying in ${retryDelay}ms (attempt ${retries + 1}/${maxRetries})`);
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      retries++;
+    }
+
+    throw new Error('Image generation timed out');
   } catch (error) {
     console.error('Error generating image:', error);
     return '';
