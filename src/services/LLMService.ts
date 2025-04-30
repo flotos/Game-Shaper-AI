@@ -2,7 +2,8 @@ import { Node } from '../models/Node';
 import prompts from '../../prompts.json';
 import { Message } from '../context/ChatContext';
 
-export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) => {
+export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], chatHistory: Message[] = []) => {
+  console.log('LLM Call: Generating image prompt for node:', node.id);
   // Check for nodes with type "image_generation"
   const imageGenerationNodes = allNodes.filter(n => n.type === "image_generation");
   
@@ -10,8 +11,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
 
   // If there are image generation nodes, use their content
   if (imageGenerationNodes.length > 0) {
-
-    
     contentPrompt += `
     /no_think
     --> Your task
@@ -19,9 +18,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
     Your reply should be the prompt directly, with no comment, no reasoning.
     The "real" titles of these instructions are separated by the "-->" flag.
 
-
     --> Image generation instructions Guidelines
-
     `
     
     contentPrompt += imageGenerationNodes.map(n => {
@@ -55,6 +52,9 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
       `;
     }, "")}
     
+    --> Recent Chat History
+    ${chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
+    
     --> Final word
     Now, generate the image prompt, with no comment, no reasoning.
     `;
@@ -78,7 +78,8 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
       `;
     }, "")}
 
-    // ${prompts.llm_prompt_guidelines}
+    Recent Chat History:
+    ${chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
 
     The caption should be a concise text at most 2 sentences describing what we can see on the image. Don't write anything else.
     It should describe what can be seen now.
@@ -94,6 +95,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[]) 
 }
 
 export const getRelevantNodes = async(userInput: string, chatHistory: Message[], nodes: Node[]) => {
+  console.log('LLM Call: Getting relevant nodes');
   const stringHistory = chatHistory.reduce((acc, message) => {
     if(message.role == "user" || message.role == "assistant") {
       return acc + `${message.role}: ${message.content}\n`;
@@ -166,6 +168,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
 }
 
 export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
+  console.log('LLM Call: Generating chat text');
   const stringHistory = chatHistory.reduce((acc, message) => {
     if (message.role === "user" || message.role === "assistant") {
       return acc + `${message.role}: ${message.content}\n`;
@@ -235,6 +238,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
 }
 
 export const generateActions = async(chatText: string, nodes: Node[], userInput: string) => {
+  console.log('LLM Call: Generating actions');
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "image_generation") {
       return acc;
@@ -277,6 +281,7 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
 }
 
 export const generateNodeEdition = async(chatText: string, actions: string[], nodes: Node[], userInput: string) => {
+  console.log('LLM Call: Generating node edition');
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "image_generation") {
       return acc;
@@ -311,7 +316,6 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
   - parent: ID of the parent node (has to match an existing or newly created node)
   - child: Array of child node IDs (has to match an existing or newly created node)
-  - updateImage: If the element described by the node receives a visual/appearance change set to "true". Use this flag only if there are major changes as this trigger a 20-second generation process per image. IMPORTANT: You can only set updateImage to true for a maximum of 2 nodes per generation process.
 
   ## Current Game State:
   ${nodesDescription}
@@ -327,15 +331,14 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
 
   Return a JSON object with:
   {
-    "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id. Each node MUST include: id, name, longDescription, rules, type, parent, child, and updateImage fields.",
+    "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id. Each node MUST include: id, name, longDescription, rules, type, parent, and child fields.",
     "delete": "(Array of node id) List nodes to be removed and justify their removal. Nodes that became irrelevant for a while should be deleted."
   }
 
   IMPORTANT: Your response must be a valid JSON object and nothing else. Do not include any markdown formatting, code blocks, or additional text before or after the JSON object.
   The response should start with { and end with } with no additional characters.
-  Each node in the "merge" array MUST include ALL required fields: id, name, longDescription, rules, type, parent, child, and updateImage.
+  Each node in the "merge" array MUST include ALL required fields: id, name, longDescription, rules, type, parent, and child.
   The type field is mandatory and should be one of: 'item', 'location', 'character', 'event', 'Game Rule', etc.
-  The updateImage field should be set to true if the node's visual appearance has changed significantly. Do not use it for Game system or Lore nodes, only for characters or objects.
 
   Try to not to exceed 10 nodes in the graph, either by merging existing ones that share same concepts instead of creating new nodes, or deleting irelevant ones.
   Keep the logic properly scoped in each node. Prefer to store information in the node that is impacted by the change rather by the one triggering it.
@@ -359,15 +362,68 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   }
 }
 
+export const determineImageUpdates = async(chatText: string, nodes: Node[], chatHistory: Message[]) => {
+  console.log('LLM Call: Determining image updates');
+  const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "image_generation") {
+      return acc;
+    }
+    return acc + `
+      id: ${node.id}
+      name: ${node.name}
+      longDescription: ${node.longDescription}
+      rules: ${node.rules}
+      type: ${node.type}
+      `;
+  }, "");
+
+  const prompt = `
+  /no_think
+  # TASK:
+  Based on the following game state, narrative, and chat history, determine which nodes should have their images updated.
+  Consider the following rules:
+  - Only update images for nodes that have had significant visual changes
+  - Do not update images for Game system or Lore nodes
+  - Limit to a maximum of 2 nodes per update
+  - Only update if the changes are visually significant enough to warrant a new image
+
+  ## Current Game State:
+  ${nodesDescription}
+
+  ## Current Narrative:
+  ${chatText}
+
+  ## Recent Chat History:
+  ${chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
+
+  Return a JSON array of node IDs that should have their images updated.
+  Example: ["node1", "node2"]
+  `;
+
+  const messages: Message[] = [
+    { role: 'system', content: prompt },
+  ];
+
+  const response = await getResponse(messages, 'gpt-4o');
+  return JSON.parse(response);
+}
+
 export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
+  // First generate chat text
   const chatText = await generateChatText(userInput, chatHistory, nodes, detailledNodeIds);
-  const actions = await generateActions(chatText, nodes, userInput);
-  const nodeEdition = await generateNodeEdition(chatText, actions, nodes, userInput);
+  
+  // Then run actions, node edition, and image updates in parallel
+  const [actions, nodeEdition, imageUpdates] = await Promise.all([
+    generateActions(chatText, nodes, userInput),
+    generateNodeEdition(chatText, [], nodes, userInput),
+    determineImageUpdates(chatText, nodes, chatHistory)
+  ]);
   
   return {
     chatText,
     actions,
-    nodeEdition
+    nodeEdition,
+    imageUpdates
   };
 }
 

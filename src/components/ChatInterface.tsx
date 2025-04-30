@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition } from '../services/LLMService';
+import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition, determineImageUpdates, generateImagePrompt } from '../services/LLMService';
 import { Node } from '../models/Node';
 import { useChat, Message } from '../context/ChatContext';
 import ChatHistory from './ChatHistory';
@@ -60,6 +60,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     try {
       const timestamp = new Date().toLocaleTimeString();
       const storyStartTime = Date.now();
+      console.log('Starting new interaction at:', timestamp);
 
       // Only add user message if this is not a regeneration
       if (!actionTriggered) {
@@ -86,11 +87,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
           .filter(node => node.type !== "image_generation")
           .map(node => node.id);
       } else {
+        console.log('Starting relevant nodes determination');
+        const relevantNodesStartTime = Date.now();
         detailedNodeIds = await getRelevantNodes(input, contextHistory.slice(-4), nodes);
+        console.log('Relevant nodes determination completed in:', Date.now() - relevantNodesStartTime, 'ms');
       }
 
       // First, generate and display the chat text
+      console.log('Starting chat text generation');
+      const chatTextStartTime = Date.now();
       const chatTextResponse = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
+      console.log('Chat text generation completed in:', Date.now() - chatTextStartTime, 'ms');
       
       // Add a streaming message placeholder
       const streamingMessage: Message = {
@@ -135,15 +142,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         endStreaming();
         const storyEndTime = Date.now();
         const storyDuration = storyEndTime - storyStartTime;
+        console.log('Story generation completed in:', storyDuration, 'ms');
 
         // Update loading message for the next steps
         setLoadingMessage('Generating actions and updating game state...');
 
-        // Generate actions and node edition in parallel
-        const [actions, nodeEdition] = await Promise.all([
+        // Generate actions, node edition, and image updates in parallel
+        console.log('Starting parallel operations: actions, node edition, and image updates');
+        const parallelStartTime = Date.now();
+        const [actions, nodeEdition, imageUpdates] = await Promise.all([
           generateActions(accumulatedContent, nodes, input),
-          generateNodeEdition(accumulatedContent, [], nodes, input)
+          generateNodeEdition(accumulatedContent, [], nodes, input),
+          determineImageUpdates(accumulatedContent, nodes, contextHistory)
         ]);
+        console.log('Parallel operations completed in:', Date.now() - parallelStartTime, 'ms');
 
         setLastNodeEdition(nodeEdition);
         setLastFailedRequest(null);
@@ -190,9 +202,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
           setLoadingMessage('Generating images...');
           try {
             const imageStartTime = Date.now();
-            const imagePromptTimes = await updateGraph(nodeEdition);
+            console.log('Starting image prompt generation for nodes:', imageUpdates);
+            // Generate image prompts for nodes that need updates
+            const imagePrompts = await Promise.all(
+              imageUpdates.map(async (nodeId: string) => {
+                const node = nodes.find(n => n.id === nodeId);
+                if (!node) return null;
+                return generateImagePrompt(node, nodes, contextHistory.slice(-4));
+              })
+            );
+
+            // Filter out any null results and update the graph
+            const validImagePrompts = imagePrompts.filter((prompt: string | null): prompt is string => prompt !== null);
+            console.log('Starting graph update with image prompts');
+            const imagePromptTimes = await updateGraph(nodeEdition, validImagePrompts);
+            
             const imageEndTime = Date.now();
             const imageDuration = imageEndTime - imageStartTime;
+            console.log('Image generation completed in:', imageDuration, 'ms');
             
             setGenerationTimes({
               story: storyDuration,
