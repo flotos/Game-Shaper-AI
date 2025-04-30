@@ -100,7 +100,8 @@ function useNodeGraph() {
       nodeEdition.merge.forEach(updatedNode => {
         const index = newNodes.findIndex(node => node.id === updatedNode.id);
         if (index !== -1) {
-          newNodes[index] = { ...newNodes[index], ...updatedNode };
+          const existingNode = newNodes[index];
+          newNodes[index] = { ...existingNode, ...updatedNode };
         } else {
           newNodes.push(updatedNode as Node);
         }
@@ -122,8 +123,9 @@ function useNodeGraph() {
           const imageUrl = await generateImage(prompt);
           const index = newNodes.findIndex(node => node.id === nodeId);
           if (index !== -1) {
+            const existingNode = newNodes[index];
             newNodes[index] = {
-              ...newNodes[index],
+              ...existingNode,
               image: imageUrl,
               updateImage: true
             };
@@ -187,8 +189,9 @@ function useNodeGraph() {
           // Update node
           const index = newNodes.findIndex(n => n.id === node.id);
           if (index !== -1) {
+            const existingNode = newNodes[index];
             newNodes[index] = {
-              ...newNodes[index],
+              ...existingNode,
               image: imageUrl,
               updateImage: true
             };
