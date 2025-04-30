@@ -42,14 +42,18 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
             key={node.id} 
             className={`relative cursor-pointer rounded overflow-hidden h-64 transition-all duration-200 ${
               updatedNodes.has(node.id) ? 'animate-pulse border-2' : ''
-            }`}
+            } ${!node.image ? 'bg-gradient-to-br from-black to-gray-800' : ''}`}
           >
-            <img 
-              src={node.image} 
-              alt={node.name} 
-              className="w-full h-64 object-cover" 
-              onClick={() => handleNodeSelect(node)} 
-            />
+            {node.image ? (
+              <img 
+                src={node.image} 
+                alt={node.name} 
+                className="w-full h-64 object-cover" 
+                onClick={() => handleNodeSelect(node)} 
+              />
+            ) : (
+              <div className="w-full h-64" onClick={() => handleNodeSelect(node)} />
+            )}
             <div className="absolute bottom-0 left-0 w-full bg-black bg-opacity-70 text-white p-2 text-center">{node.name}</div>
           </div>
         ))}

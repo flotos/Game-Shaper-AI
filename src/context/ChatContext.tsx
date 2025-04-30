@@ -4,6 +4,7 @@ export interface Message {
   role: "assistant" | "user" | "system" | "reasoning" | "nodeEdition" | "selectedNodes" | "actions";
   content: string;
   timestamp?: string;
+  isStreaming?: boolean;
 }
 
 interface ChatContextType {
@@ -11,6 +12,8 @@ interface ChatContextType {
   addMessage: (message: Message) => void;
   setChatHistory: (messages: Message[]) => void;
   clearChatHistory: () => void;
+  updateStreamingMessage: (content: string) => void;
+  endStreaming: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -35,6 +38,32 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
     });
   }, []);
 
+  const updateStreamingMessage = useCallback((content: string) => {
+    setChatHistoryState((prevChatHistory) => {
+      const lastMessage = prevChatHistory[prevChatHistory.length - 1];
+      if (lastMessage && lastMessage.isStreaming) {
+        const updatedMessage = { ...lastMessage, content: lastMessage.content + content };
+        const updatedChatHistory = [...prevChatHistory.slice(0, -1), updatedMessage];
+        localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
+        return updatedChatHistory;
+      }
+      return prevChatHistory;
+    });
+  }, []);
+
+  const endStreaming = useCallback(() => {
+    setChatHistoryState((prevChatHistory) => {
+      const lastMessage = prevChatHistory[prevChatHistory.length - 1];
+      if (lastMessage && lastMessage.isStreaming) {
+        const updatedMessage = { ...lastMessage, isStreaming: false };
+        const updatedChatHistory = [...prevChatHistory.slice(0, -1), updatedMessage];
+        localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
+        return updatedChatHistory;
+      }
+      return prevChatHistory;
+    });
+  }, []);
+
   const setChatHistory = useCallback((messages: Message[]) => {
     localStorage.setItem('chatHistory', JSON.stringify(messages));
     setChatHistoryState(messages);
@@ -46,7 +75,14 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
   }, []);
 
   return (
-    <ChatContext.Provider value={{ chatHistory, addMessage, setChatHistory, clearChatHistory }}>
+    <ChatContext.Provider value={{ 
+      chatHistory, 
+      addMessage, 
+      setChatHistory, 
+      clearChatHistory,
+      updateStreamingMessage,
+      endStreaming
+    }}>
       {children}
     </ChatContext.Provider>
   );

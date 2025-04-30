@@ -12,7 +12,7 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => {
-  const { chatHistory, addMessage, setChatHistory } = useChat();
+  const { chatHistory, addMessage, setChatHistory, updateStreamingMessage, endStreaming } = useChat();
   const [input, setInput] = useState('');
   const [waitingForAnswer, setWaitingForAnswer] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
@@ -90,95 +90,130 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       }
 
       // First, generate and display the chat text
-      const chatText = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
-      const storyEndTime = Date.now();
-      const storyDuration = storyEndTime - storyStartTime;
-
-      // Add the chat text message immediately
-      const chatTextMessage: Message = {
+      const chatTextResponse = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
+      
+      // Add a streaming message placeholder
+      const streamingMessage: Message = {
         role: "assistant",
-        content: chatText,
-        timestamp
+        content: "",
+        timestamp,
+        isStreaming: true
       };
-      addMessage(chatTextMessage);
+      addMessage(streamingMessage);
 
-      // Update loading message for the next steps
-      setLoadingMessage('Generating actions and updating game state...');
+      // Handle the streamed response
+      if (chatTextResponse instanceof Response) {
+        const reader = chatTextResponse.body?.getReader();
+        if (!reader) throw new Error('No reader available');
 
-      // Generate actions and node edition in parallel
-      const [actions, nodeEdition] = await Promise.all([
-        generateActions(chatText, nodes, input),
-        generateNodeEdition(chatText, [], nodes, input)
-      ]);
-
-      setLastNodeEdition(nodeEdition);
-      setLastFailedRequest(null);
-
-      // Add the remaining messages
-      const messagesToAdd: Message[] = [
-        {
-          role: "selectedNodes",
-          content: JSON.stringify(detailedNodeIds, null, 2),
-          timestamp,
-        }, {
-          role: "reasoning",
-          content: "",
-          timestamp
-        }, {
-          role: "actions",
-          content: JSON.stringify(actions),
-          timestamp
-        }, {
-          role: "nodeEdition",
-          content: JSON.stringify(nodeEdition, null, 2),
-          timestamp
-        }
-      ];
-
-      // Filter out messages that should be hidden
-      const filteredMessages = messagesToAdd.filter(message => {
-        if (!message || !message.content) return false;
-        
-        if (message.role === "selectedNodes" && nodes.length < 15) {
-          return false; // Hide selectedNodes when all nodes are selected
-        }
-        if (message.role === "reasoning" && !message.content.trim()) {
-          return false; // Hide reasoning when empty
-        }
-        return true;
-      });
-
-      filteredMessages.forEach(addMessage);
-      setInput('');
-      setActionTriggered(false);
-
-      if (nodeEdition) {
-        setLoadingMessage('Generating images...');
-        try {
-          const imageStartTime = Date.now();
-          const imagePromptTimes = await updateGraph(nodeEdition);
-          const imageEndTime = Date.now();
-          const imageDuration = imageEndTime - imageStartTime;
+        let accumulatedContent = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
           
-          setGenerationTimes({
-            story: storyDuration,
-            imagePrompts: imagePromptTimes,
-            imageGeneration: [imageDuration]
-          });
+          const chunk = new TextDecoder().decode(value);
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') break;
+              
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices[0].delta.content || '';
+                if (content) {
+                  accumulatedContent += content;
+                  updateStreamingMessage(content);
+                }
+              } catch (e) {
+                console.error('Error parsing stream chunk:', e);
+              }
+            }
+          }
+        }
+        endStreaming();
+        const storyEndTime = Date.now();
+        const storyDuration = storyEndTime - storyStartTime;
 
-          // Add timing information to chat
-          const timingMessage: Message = {
-            role: "system",
-            content: `Generation times:
+        // Update loading message for the next steps
+        setLoadingMessage('Generating actions and updating game state...');
+
+        // Generate actions and node edition in parallel
+        const [actions, nodeEdition] = await Promise.all([
+          generateActions(accumulatedContent, nodes, input),
+          generateNodeEdition(accumulatedContent, [], nodes, input)
+        ]);
+
+        setLastNodeEdition(nodeEdition);
+        setLastFailedRequest(null);
+
+        // Add the remaining messages
+        const messagesToAdd: Message[] = [
+          {
+            role: "selectedNodes",
+            content: JSON.stringify(detailedNodeIds, null, 2),
+            timestamp,
+          }, {
+            role: "reasoning",
+            content: "",
+            timestamp
+          }, {
+            role: "actions",
+            content: JSON.stringify(actions),
+            timestamp
+          }, {
+            role: "nodeEdition",
+            content: JSON.stringify(nodeEdition, null, 2),
+            timestamp
+          }
+        ];
+
+        // Filter out messages that should be hidden
+        const filteredMessages = messagesToAdd.filter(message => {
+          if (!message || !message.content) return false;
+          
+          if (message.role === "selectedNodes" && nodes.length < 15) {
+            return false; // Hide selectedNodes when all nodes are selected
+          }
+          if (message.role === "reasoning" && !message.content.trim()) {
+            return false; // Hide reasoning when empty
+          }
+          return true;
+        });
+
+        filteredMessages.forEach(addMessage);
+        setInput('');
+        setActionTriggered(false);
+
+        if (nodeEdition) {
+          setLoadingMessage('Generating images...');
+          try {
+            const imageStartTime = Date.now();
+            const imagePromptTimes = await updateGraph(nodeEdition);
+            const imageEndTime = Date.now();
+            const imageDuration = imageEndTime - imageStartTime;
+            
+            setGenerationTimes({
+              story: storyDuration,
+              imagePrompts: imagePromptTimes,
+              imageGeneration: [imageDuration]
+            });
+
+            // Add timing information to chat
+            const timingMessage: Message = {
+              role: "system",
+              content: `Generation times:
 - Story: ${(storyDuration / 1000).toFixed(1)}s
 - Image prompts: ${imagePromptTimes.map((t: number) => (t / 1000).toFixed(1)).join('s, ')}s
 - Image generation: ${(imageDuration / 1000).toFixed(1)}s`,
-            timestamp: new Date().toLocaleTimeString()
-          };
-          addMessage(timingMessage);
-        } catch (error) {
-          console.error('Error during image generation:', error);
-          setErrorMessage('Error generating images. Please try again.');
+              timestamp: new Date().toLocaleTimeString()
+            };
+            addMessage(timingMessage);
+          } catch (error) {
+            console.error('Error during image generation:', error);
+            setErrorMessage('Error generating images. Please try again.');
+          }
         }
       }
     } catch (error) {

@@ -228,18 +228,17 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   ### User Input:
   ${userInput}
   
-  Generate a detailed chapter (8 to 12 paragraphs) with rich descriptions of the environment, character emotions, and unfolding events.
-  Include sensory details, character thoughts, and atmospheric elements.
+  Generate a detailed chapter (3 to 4 paragraphs) making the story progress, with efficient but short descriptions.
   Don't ask questions to the player.
-  Avoid repeating what was said before.
+  Produce new content, make the plot progress, and avoid repeating what was said before.
   `;
 
   const chatTextMessages: Message[] = [
     { role: 'system', content: chatTextPrompt },
   ];
 
-  const chatTextResponse = await getResponse(chatTextMessages, 'gpt-4o');
-  return chatTextResponse.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
+  const chatTextResponse = await getResponse(chatTextMessages, 'gpt-4o', undefined, true);
+  return chatTextResponse;
 }
 
 export const generateActions = async(chatText: string, nodes: Node[], userInput: string) => {
@@ -395,6 +394,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   3. Each node update should be self-contained and complete, with no dependencies on previous states.
   4. If you want to keep any information from the previous state, you must explicitly copy it into the new node.
   5. For the "appendEnd" operation, you can specify nodes where the content will be appended to the end of existing fields. This is useful for adding new information without replacing the entire content.
+  6. The updateImage field MUST be included for each node and set to true if there are significant visual changes that should trigger a new image generation.
 
   Each node should be described in a JSON format with the following properties:
   {
@@ -405,7 +405,8 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
     "rules": "rules, written in a concise, compressed way.",
     "type": "node type",
     "parent": "parent id",
-    "child": ["child ids"]
+    "child": ["child ids"],
+    "updateImage": true/false  // Set to true if the node's visual appearance has changed significantly, false otherwise
   }
 
   The generated nodes should NOT count as a game round and make the content progress. You have to create either Game systems or content in the world.
@@ -421,43 +422,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
     { role: 'system', content: promptMessage },
   ];
 
-  const grammar = `root ::= (
-    "{"
-      ws "\\"merge\\":" ws nodes ws "," ws
-      "\\"delete\\":" ws delete ws
-    "}" ws
-  )
-  
-  node ::= (
-    "{"
-      ws "\\"id\\":" ws textInQuotes ws "," ws
-      "\\"name\\":" ws textInQuotes ws "," ws 
-      "\\"rules\\":" ws textInQuotes ws "," ws
-      "\\"longDescription\\":" ws textInQuotes ws "," ws
-      "\\"shortDescription\\":" ws textInQuotes ws "," ws
-      "\\"child\\":" ws textInQuotes ws "," ws
-      "\\"parent\\":" ws textInQuotes ws "," ws
-       "\\"type\\":" ws textInQuotes ws
-    "}" ws
-  )
-
-  nodes ::= (
-    "["
-      ws node (ws "," ws node)* ws 
-    "]" ws
-  )
-
-  delete ::= (
-    "["
-      ws (textInQuotes (ws "," ws textInQuotes)*)? ws 
-    "]" ws
-  )
-    
-  textInQuotes ::= "\\"" [^"\\\\]+ "\\"" ws
-  ws ::= [ \t\n]* # Optional whitespace
-  `;
-
-  const response = await getResponse(messages, 'gpt-4o', grammar);
+  const response = await getResponse(messages, 'gpt-4o');
   return JSON.parse(response);
 };
 
@@ -481,7 +446,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
  * For pricing and capabilities, see: https://openrouter.ai/docs#models
  */
 
-const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined) => {
+const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined, stream = false) => {
   const apiType = import.meta.env.VITE_LLM_API;
   const includeReasoning = import.meta.env.VITE_LLM_INCLUDE_REASONING !== 'false';
 
@@ -503,7 +468,8 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       },
       body: JSON.stringify({
         model: model,
-        messages: messages
+        messages: messages,
+        stream: stream
       })
     });
   } else if (apiType === 'openrouter') {
@@ -532,7 +498,8 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         provider: {
           order: [openrouterProvider],
           allow_fallbacks: false
-        }
+        },
+        stream: stream
       })
     });
   } else if (apiType === 'koboldcpp') {
@@ -552,7 +519,8 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       top_p: 0.9,
       typical: 1,
       password:"nodegame",
-      grammar
+      grammar,
+      stream: stream
     };
 
     response = await fetch(`${import.meta.env.VITE_LLM_HOST}/api/v1/generate`, {
@@ -571,11 +539,15 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
     throw new Error(`Error: ${response.statusText}`);
   }
 
+  if (stream) {
+    return response;
+  }
+
   const data = await response.json();
 
   let llmResult;
   if (apiType === 'openai') {
-    llmResult = data.choices[0].message.content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
+    llmResult = data.choices[0].message.content;
   } else if (apiType === 'openrouter') {
     const content = data.choices[0].message.content;
     // Check if the content is already a JSON string
@@ -589,11 +561,11 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         llmResult = content;
       }
     } catch (e) {
-      // If not valid JSON, clean it like OpenAI response
-      llmResult = content.replace("```json\n", "").replace("```\n", "").replace("\n```", "").replace("```", "");
+      // If not valid JSON, return content as is
+      llmResult = content;
     }
   } else if (apiType === 'koboldcpp') {
-    llmResult = data.results[0].text.replace("```\n", "").replace("\n```", "").replace("```", "");
+    llmResult = data.results[0].text;
   }
 
   return llmResult;
