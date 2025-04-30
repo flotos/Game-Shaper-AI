@@ -72,7 +72,7 @@ function useNodeGraph() {
     if (!nodeEdition) return;
 
     const newNodes = [...nodes];
-    const nodesToProcess: Partial<Node>[] = [];
+    let nodesToProcess: Partial<Node>[] = [];
     const imagePromptTimes: number[] = [];
 
     // Process deletions first
@@ -124,6 +124,9 @@ function useNodeGraph() {
         }
       });
     }
+
+    // Limit the number of nodes to process to 2
+    nodesToProcess = nodesToProcess.slice(0, 2);
 
     let results: { node: Partial<Node>, image: string }[] = [];
 

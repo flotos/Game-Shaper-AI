@@ -318,7 +318,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
   - parent: ID of the parent node (has to match an existing or newly created node)
   - child: Array of child node IDs (has to match an existing or newly created node)
-  - updateImage: If the element described by the node receives a visual/appearance change set to "true". Use this flag only if there are major changes as this trigger a 20-second generation process per image.
+  - updateImage: If the element described by the node receives a visual/appearance change set to "true". Use this flag only if there are major changes as this trigger a 20-second generation process per image. IMPORTANT: You can only set updateImage to true for a maximum of 2 nodes per generation process.
 
   ## Current Game State:
   ${nodesDescription}
@@ -334,9 +334,15 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
 
   Return a JSON object with:
   {
-    "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id",
+    "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id. Each node MUST include: id, name, longDescription, rules, type, parent, child, and updateImage fields.",
     "delete": "(Array of node id) List nodes to be removed and justify their removal. Nodes that became irrelevant for a while should be deleted."
   }
+
+  IMPORTANT: Your response must be a valid JSON object and nothing else. Do not include any markdown formatting, code blocks, or additional text before or after the JSON object.
+  The response should start with { and end with } with no additional characters.
+  Each node in the "merge" array MUST include ALL required fields: id, name, longDescription, rules, type, parent, child, and updateImage.
+  The type field is mandatory and should be one of: 'item', 'location', 'character', 'event', 'Game Rule', etc.
+  The updateImage field should be set to true if the node's visual appearance has changed significantly. Do not use it for Game system or Lore nodes, only for characters or objects.
 
   Try to not to exceed 10 nodes in the graph, either by merging existing ones that share same concepts instead of creating new nodes, or deleting irelevant ones.
   Keep the logic properly scoped in each node. Prefer to store information in the node that is impacted by the change rather by the one triggering it.
@@ -349,7 +355,15 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   ];
 
   const nodeEditionResponse = await getResponse(nodeEditionMessages, 'gpt-4o');
-  return JSON.parse(nodeEditionResponse);
+  try {
+    console.log('Raw node edition response:', nodeEditionResponse);
+    const parsedResponse = JSON.parse(nodeEditionResponse);
+    return parsedResponse;
+  } catch (error) {
+    console.error('Error parsing node edition response:', error);
+    console.error('Response content:', nodeEditionResponse);
+    throw new Error('Failed to parse node edition response as JSON. Please ensure the response is properly formatted.');
+  }
 }
 
 export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
@@ -394,7 +408,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   3. Each node update should be self-contained and complete, with no dependencies on previous states.
   4. If you want to keep any information from the previous state, you must explicitly copy it into the new node.
   5. For the "appendEnd" operation, you can specify nodes where the content will be appended to the end of existing fields. This is useful for adding new information without replacing the entire content.
-  6. The updateImage field MUST be included for each node and set to true if there are significant visual changes that should trigger a new image generation.
+  6. The updateImage field MUST be included for each node and set to true if there are significant visual changes that should trigger a new image generation (but game systems or lore nodes shouldn't have an image).
 
   Each node should be described in a JSON format with the following properties:
   {
@@ -536,7 +550,9 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
   }
 
   if (!response.ok) {
-    throw new Error(`Error: ${response.statusText}`);
+    const errorText = await response.text();
+    console.error('API Error Response:', errorText);
+    throw new Error(`API Error: ${response.status} ${response.statusText}`);
   }
 
   if (stream) {
@@ -544,16 +560,23 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
   }
 
   const data = await response.json();
+  console.log('API Response:', data); // Debug log
 
   let llmResult;
   if (apiType === 'openai') {
+    if (!data.choices?.[0]?.message?.content) {
+      console.error('Invalid OpenAI response structure:', data);
+      throw new Error('Invalid OpenAI response structure');
+    }
     llmResult = data.choices[0].message.content;
   } else if (apiType === 'openrouter') {
+    if (!data.choices?.[0]?.message?.content) {
+      console.error('Invalid OpenRouter response structure:', data);
+      throw new Error('Invalid OpenRouter response structure');
+    }
     const content = data.choices[0].message.content;
-    // Check if the content is already a JSON string
     try {
       const parsedContent = JSON.parse(content);
-      // If reasoning is disabled and the content has a reasoning field, remove it
       if (!includeReasoning && parsedContent.reasoning !== undefined) {
         delete parsedContent.reasoning;
         llmResult = JSON.stringify(parsedContent);
@@ -561,11 +584,19 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         llmResult = content;
       }
     } catch (e) {
-      // If not valid JSON, return content as is
       llmResult = content;
     }
   } else if (apiType === 'koboldcpp') {
+    if (!data.results?.[0]?.text) {
+      console.error('Invalid KoboldCPP response structure:', data);
+      throw new Error('Invalid KoboldCPP response structure');
+    }
     llmResult = data.results[0].text;
+  }
+
+  if (!llmResult) {
+    console.error('No valid response from LLM API:', data);
+    throw new Error('No valid response received from LLM API');
   }
 
   return llmResult;

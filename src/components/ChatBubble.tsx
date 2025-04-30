@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Message } from '../context/ChatContext';
 
 const expandableMessagesTypes = ["reasoning", "nodeEdition", "selectedNodes"];
@@ -108,12 +109,12 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
                     {formatJsonContent(message.content)}
                   </pre>
                 ) : message.role === "assistant" ? (
-                  <pre className="whitespace-pre-wrap font-sans text-sm">
-                    {displayedContent}
+                  <div className="prose prose-invert max-w-none">
+                    <ReactMarkdown>{displayedContent}</ReactMarkdown>
                     {message.isStreaming && <span className="animate-pulse">▋</span>}
-                  </pre>
+                  </div>
                 ) : (
-                  message.content
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
                 )}
               </div>
             )}

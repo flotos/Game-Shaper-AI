@@ -16,3 +16,73 @@
     100% { transform: rotate(360deg); }
   }
   
+/* Markdown styles */
+.prose {
+  @apply text-sm;
+}
+
+.prose p {
+  @apply mb-2;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  @apply font-semibold mt-4 mb-2;
+}
+
+.prose h1 { @apply text-xl; }
+.prose h2 { @apply text-lg; }
+.prose h3 { @apply text-base; }
+
+.prose ul, .prose ol {
+  @apply pl-4 mb-2;
+}
+
+.prose ul {
+  @apply list-disc;
+}
+
+.prose ol {
+  @apply list-decimal;
+}
+
+.prose li {
+  @apply mb-1;
+}
+
+.prose code {
+  @apply bg-gray-800 px-1 py-0.5 rounded text-sm font-mono;
+}
+
+.prose pre {
+  @apply bg-gray-800 p-2 rounded my-2 overflow-x-auto;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-gray-600 pl-4 italic my-2;
+}
+
+.prose a {
+  @apply text-blue-400 hover:text-blue-300 underline;
+}
+
+.prose img {
+  @apply max-w-full h-auto rounded my-2;
+}
+
+.prose table {
+  @apply w-full border-collapse my-2;
+}
+
+.prose th, .prose td {
+  @apply border border-gray-600 px-2 py-1;
+}
+
+.prose th {
+  @apply bg-gray-800;
+}
+
+/* Custom styles for bold text */
+.prose strong {
+  @apply font-semibold;
+}
+  
