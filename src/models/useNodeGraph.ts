@@ -102,8 +102,16 @@ function useNodeGraph() {
         if (index !== -1) {
           const existingNode = newNodes[index];
           newNodes[index] = { ...existingNode, ...updatedNode };
+          // Only add to processing queue if updateImage is true and not in newNodes
+          if (updatedNode.updateImage && !nodeEdition.newNodes?.includes(updatedNode.id)) {
+            nodesToProcess.push(newNodes[index]);
+          }
         } else {
           newNodes.push(updatedNode as Node);
+          // Only add to processing queue if updateImage is true and not in newNodes
+          if (updatedNode.updateImage && !nodeEdition.newNodes?.includes(updatedNode.id)) {
+            nodesToProcess.push(updatedNode);
+          }
         }
       });
     }
@@ -113,7 +121,7 @@ function useNodeGraph() {
       console.log('Adding new nodes:', nodeEdition.newNodes);
       nodeEdition.newNodes.forEach(nodeId => {
         const node = newNodes.find(n => n.id === nodeId);
-        if (node && !processedNodeIds.has(nodeId)) {
+        if (node && !processedNodeIds.has(nodeId) && node.updateImage) {
           nodesToProcess.push(node);
         }
       });
@@ -129,15 +137,15 @@ function useNodeGraph() {
         newNodes[index] = {
           ...newNodes[index],
           image: updatedNode.image,
-          updateImage: true
+          updateImage: false // Reset the flag after image is generated
         };
         setNodes([...newNodes]);
       }
     });
 
-    // Queue image generation for new nodes
+    // Queue image generation for nodes that need it
     if (nodesToProcess.length > 0) {
-      console.log('Queueing image generation for new nodes');
+      console.log('Queueing image generation for nodes');
       for (const node of nodesToProcess) {
         if (!node.id || processedNodeIds.has(node.id)) {
           console.log(`Skipping already processed node ${node.id}`);

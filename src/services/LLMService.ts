@@ -319,6 +319,12 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
   - parent: ID of the parent node (has to match an existing or newly created node)
   - child: Array of child node IDs (has to match an existing or newly created node)
+  - updateImage: (Optional) Set to true if the node represents a physical object, character, or location that should have a visual representation. This is particularly important for:
+    * New nodes that represent physical entities (characters, items, locations)
+    * Existing nodes whose visual appearance has changed significantly
+    * Nodes that need their first image generated
+    * Nodes that need an image update due to significant changes in their description or rules
+    DO NOT set updateImage to true for abstract concepts, game rules, or system nodes that don't need visual representation.
 
   ## Current Game State:
   ${nodesDescription}
@@ -334,7 +340,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
 
   Return a JSON object with:
   {
-    "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id. Each node MUST include: id, name, longDescription, rules, type, parent, and child fields.",
+    "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id. Each node MUST include: id, name, longDescription, rules, type, parent, and child fields. Include updateImage: true for nodes that need a new image.",
     "delete": "(Array of node id) List nodes to be removed and justify their removal. Nodes that became irrelevant for a while should be deleted.",
     "newNodes": "(Array of node ids) List of newly created node IDs that should have their images generated. This should include all nodes in 'merge' that have new IDs not present in the current game state."
   }
