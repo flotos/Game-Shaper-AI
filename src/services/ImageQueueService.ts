@@ -1,0 +1,85 @@
+import { Node } from '../models/Node';
+import { generateImage } from './ImageService';
+import { generateImagePrompt } from './LLMService';
+
+interface QueuedImage {
+  nodeId: string;
+  prompt: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  imageUrl?: string;
+}
+
+class ImageQueueService {
+  private queue: QueuedImage[] = [];
+  private isProcessing = false;
+  private updateNodeCallback: ((node: Node) => void) | null = null;
+
+  constructor() {
+    this.processQueue = this.processQueue.bind(this);
+  }
+
+  setUpdateNodeCallback(callback: (node: Node) => void) {
+    this.updateNodeCallback = callback;
+  }
+
+  async addToQueue(node: Node, allNodes: Node[], chatHistory: any[]) {
+    try {
+      const prompt = await generateImagePrompt(node, allNodes, chatHistory);
+      this.queue.push({
+        nodeId: node.id,
+        prompt,
+        status: 'pending'
+      });
+      
+      if (!this.isProcessing) {
+        this.processQueue();
+      }
+    } catch (error) {
+      console.error('Error generating prompt for node:', node.id, error);
+    }
+  }
+
+  private async processQueue() {
+    if (this.isProcessing || this.queue.length === 0) return;
+
+    this.isProcessing = true;
+    const item = this.queue.find(item => item.status === 'pending');
+    
+    if (!item) {
+      this.isProcessing = false;
+      return;
+    }
+
+    try {
+      item.status = 'processing';
+      const imageUrl = await generateImage(item.prompt);
+      
+      if (imageUrl && this.updateNodeCallback) {
+        const updatedNode: Node = {
+          id: item.nodeId,
+          image: imageUrl,
+          updateImage: true
+        } as Node;
+        this.updateNodeCallback(updatedNode);
+      }
+
+      item.status = 'completed';
+      item.imageUrl = imageUrl;
+    } catch (error) {
+      console.error('Error generating image for node:', item.nodeId, error);
+      item.status = 'failed';
+    }
+
+    this.isProcessing = false;
+    this.processQueue();
+  }
+
+  getQueueStatus() {
+    return this.queue.map(item => ({
+      nodeId: item.nodeId,
+      status: item.status
+    }));
+  }
+}
+
+export const imageQueueService = new ImageQueueService(); 

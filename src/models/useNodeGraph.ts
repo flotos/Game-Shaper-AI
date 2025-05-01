@@ -3,6 +3,7 @@ import { Node } from './Node';
 import { generateImage } from '../services/ImageService';
 import { generateImagePrompt } from '../services/LLMService';
 import LZString from 'lz-string';
+import { imageQueueService } from '../services/ImageQueueService';
 
 const initNodes: Node[] = [
   {
@@ -69,11 +70,10 @@ function useNodeGraph() {
   };
 
   const updateGraph = async (nodeEdition: { 
-    merge?: Partial<Node>[], 
-    delete?: string[], 
-    appendEnd?: Partial<Node>[],
-    newNodes?: string[] 
-  }, imagePrompts: { nodeId: string, prompt: string }[] = []) => {
+    merge: Node[];
+    delete: string[];
+    newNodes: string[];
+  }, imagePrompts: { nodeId: string; prompt: string }[] = []) => {
     if (!nodeEdition) return;
 
     console.log('Starting graph update with node edition:', nodeEdition);
@@ -122,55 +122,42 @@ function useNodeGraph() {
     setNodes(newNodes);
     console.log('Updating nodes with new images:', nodesToProcess);
 
-    // Queue image generation for new nodes (sequential)
+    // Initialize the image queue service with the update callback
+    imageQueueService.setUpdateNodeCallback((updatedNode: Node) => {
+      const index = newNodes.findIndex(n => n.id === updatedNode.id);
+      if (index !== -1) {
+        newNodes[index] = {
+          ...newNodes[index],
+          image: updatedNode.image,
+          updateImage: true
+        };
+        setNodes([...newNodes]);
+      }
+    });
+
+    // Queue image generation for new nodes
     if (nodesToProcess.length > 0) {
-      console.log('Starting sequential image generation for new nodes');
-      for (let i = 0; i < nodesToProcess.length; i++) {
-        const node = nodesToProcess[i];
+      console.log('Queueing image generation for new nodes');
+      for (const node of nodesToProcess) {
         if (!node.id || processedNodeIds.has(node.id)) {
           console.log(`Skipping already processed node ${node.id}`);
           continue;
         }
-        console.log(`Processing image for new node ${i + 1}/${nodesToProcess.length}: ${node.id}`);
-        
-        try {
-          const startTime = Date.now();
-          // Generate prompt
-          const prompt = await generateImagePrompt(node, newNodes, []);
-          console.log(`Generated prompt for node ${node.id}`);
-          
-          // Generate image
-          const imageUrl = await generateImage(prompt);
-          console.log(`Generated image for node ${node.id}`);
-          
-          // Update node
-          const index = newNodes.findIndex(n => n.id === node.id);
-          if (index !== -1) {
-            const existingNode = newNodes[index];
-            newNodes[index] = {
-              ...existingNode,
-              image: imageUrl,
-              updateImage: true
-            };
-            processedNodeIds.add(node.id);
-            // Update state and wait for it to complete
-            await new Promise<void>(resolve => {
-              setNodes([...newNodes]);
-              // Use a small delay to ensure state update is complete
-              setTimeout(resolve, 100);
-            });
-          }
-          imagePromptTimes.push(Date.now() - startTime);
-          // Add a delay between requests to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        } catch (error: any) {
-          console.error('Error generating image for new node:', node.id, error);
-          // If we hit a rate limit, wait longer before retrying
-          if (error.message?.includes('429')) {
-            console.log('Rate limit hit, waiting 10 seconds before continuing...');
-            await new Promise(resolve => setTimeout(resolve, 10000));
-          }
-        }
+        console.log(`Queueing image generation for node: ${node.id}`);
+        // Ensure node has all required properties before adding to queue
+        const completeNode: Node = {
+          ...node,
+          id: node.id,
+          name: node.name || '',
+          type: node.type || 'Game Object',
+          longDescription: node.longDescription || '',
+          rules: node.rules || '',
+          child: Array.isArray(node.child) ? node.child : [],
+          parent: typeof node.parent === 'string' ? node.parent : '',
+          image: node.image || '',
+          updateImage: node.updateImage || false
+        };
+        await imageQueueService.addToQueue(completeNode, newNodes, []);
       }
     }
   };

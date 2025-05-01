@@ -72,6 +72,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
           timestamp: timestamp.toString()
         };
         addMessage(userMessage);
+        setInput(''); // Clear input immediately after sending
       }
 
       let detailedNodeIds;
@@ -160,55 +161,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         setLastNodeEdition(nodeEdition);
         setLastFailedRequest(null);
 
-        // Then generate images for new nodes
-        setLoadingMessage('Generating images for new nodes...');
-        try {
-          const imageStartTime = Date.now();
-          console.log('Starting image generation for new nodes...');
-          
-          // Generate prompts for new nodes from nodeEdition
-          const newNodeImagePrompts = nodeEdition.newNodes ? await Promise.all(
-            nodeEdition.newNodes.map(async (nodeId: string) => {
-              console.log('Generating prompt for new node:', nodeId);
-              const node = nodeEdition.merge?.find((n: Node) => n.id === nodeId);
-              if (!node) {
-                console.warn('New node not found in merge:', nodeId);
-                return null;
-              }
-              const prompt = await generateImagePrompt(node, nodes, contextHistory.slice(-4));
-              console.log('Generated prompt for new node', nodeId, ':', prompt);
-              return { nodeId, prompt };
-            })
-          ) : [];
-
-          // Filter out any null results from new node prompts
-          const validNewNodePrompts = newNodeImagePrompts.filter((prompt): prompt is { nodeId: string, prompt: string } => prompt !== null);
-          
-          console.log('Valid new node prompts:', validNewNodePrompts);
-          
-          // Update the graph with new node image prompts
-          if (validNewNodePrompts.length > 0) {
-            console.log('Starting graph update with new node image prompts');
-            await updateGraph(
-              { merge: [], delete: [], newNodes: [] },
-              validNewNodePrompts.map(p => ({ nodeId: p.nodeId, prompt: p.prompt }))
-            );
-            
-            const imageEndTime = Date.now();
-            const imageDuration = imageEndTime - imageStartTime;
-            console.log('New node image generation completed in:', imageDuration, 'ms');
-            
-            setGenerationTimes({
-              story: storyDuration,
-              imagePrompts: [],
-              imageGeneration: [imageDuration]
-            });
-          }
-        } catch (error) {
-          console.error('Error during new node image generation:', error);
-          setErrorMessage('Error generating images for new nodes. Please try again.');
-        }
-
         // Add the remaining messages
         const messagesToAdd: Message[] = [
           {
@@ -244,12 +196,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         });
 
         filteredMessages.forEach(addMessage);
-        setInput('');
         setActionTriggered(false);
 
-        // Apply the node edition to update the graph
+        // Keep waitingForAnswer true until all operations are complete
+        setLoadingMessage('Generating images in the background...');
+        setIsLoading(false);
+
+        // Apply the node edition to update the graph in the background
         console.log('Applying node edition to graph...');
-        await updateGraph(nodeEdition, []);
+        updateGraph(nodeEdition, []).then(() => {
+          setWaitingForAnswer(false);
+          setLoadingMessage('');
+        }).catch((error: Error) => {
+          console.error('Error updating graph:', error);
+          setErrorMessage('Error updating game state. Please try again.');
+          setWaitingForAnswer(false);
+          setLoadingMessage('');
+        });
       }
     } catch (error) {
       console.error('Error during chat handling:', error);
@@ -262,7 +225,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
           .filter(node => node.type !== "image_generation")
           .map(node => node.id)
       });
-    } finally {
       setWaitingForAnswer(false);
       setLoadingMessage('');
       setIsLoading(false);
