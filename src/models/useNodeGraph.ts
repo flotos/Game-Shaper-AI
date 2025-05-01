@@ -108,49 +108,6 @@ function useNodeGraph() {
       });
     }
 
-    // Process image prompts for context-updated nodes (sequential)
-    if (imagePrompts.length > 0) {
-      console.log('Starting image generation for', imagePrompts.length, 'prompts');
-      for (let i = 0; i < imagePrompts.length; i++) {
-        const { nodeId, prompt } = imagePrompts[i];
-        if (!nodeId || processedNodeIds.has(nodeId)) {
-          console.log(`Skipping already processed node ${nodeId}`);
-          continue;
-        }
-        const startTime = Date.now();
-        try {
-          console.log(`Processing image ${i + 1}/${imagePrompts.length} for node ${nodeId}`);
-          const imageUrl = await generateImage(prompt);
-          const index = newNodes.findIndex(node => node.id === nodeId);
-          if (index !== -1) {
-            const existingNode = newNodes[index];
-            newNodes[index] = {
-              ...existingNode,
-              image: imageUrl,
-              updateImage: true
-            };
-            processedNodeIds.add(nodeId);
-            // Update state and wait for it to complete
-            await new Promise<void>(resolve => {
-              setNodes([...newNodes]);
-              // Use a small delay to ensure state update is complete
-              setTimeout(resolve, 100);
-            });
-          }
-          imagePromptTimes.push(Date.now() - startTime);
-          // Add a delay between requests to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        } catch (error: any) {
-          console.error('Error generating image for node:', nodeId, error);
-          // If we hit a rate limit, wait longer before retrying
-          if (error.message?.includes('429')) {
-            console.log('Rate limit hit, waiting 10 seconds before continuing...');
-            await new Promise(resolve => setTimeout(resolve, 10000));
-          }
-        }
-      }
-    }
-
     // Process new nodes
     if (nodeEdition.newNodes) {
       console.log('Adding new nodes:', nodeEdition.newNodes);

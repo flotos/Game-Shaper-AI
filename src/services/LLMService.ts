@@ -371,81 +371,22 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   }
 }
 
-export const determineImageUpdates = async(chatText: string, nodes: Node[], chatHistory: Message[]) => {
-  console.log('LLM Call: Determining image updates');
-  const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "image_generation") {
-      return acc;
-    }
-    return acc + `
-      id: ${node.id}
-      name: ${node.name}
-      longDescription: ${node.longDescription}
-      rules: ${node.rules}
-      type: ${node.type}
-      `;
-  }, "");
-
-  const prompt = `
-  /no_think
-  # TASK:
-  Based on the following game state, narrative, and chat history, determine which nodes should have their images updated.
-  Consider the following rules:
-  - Only update images for nodes that have had significant visual changes
-  - Do not update images for Game system or Lore nodes
-  - Limit to a maximum of 2 nodes per update
-  - Only update if the changes are visually significant enough to warrant a new image
-
-  ## Current Game State:
-  ${nodesDescription}
-
-  ## Current Narrative:
-  ${chatText}
-
-  ## Recent Chat History:
-  ${chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
-
-  Return a JSON object with a single field "nodesToUpdate" containing an array of node IDs that should have their images updated.
-  Example: { "nodesToUpdate": ["node1", "node2"] }
-  `;
-
-  const messages: Message[] = [
-    { role: 'system', content: prompt },
-  ];
-
-  const response = await getResponse(messages, 'gpt-4o', undefined, false, { type: 'json_object' });
-  try {
-    // Remove markdown code block formatting if present
-    const cleanResponse = response.replace(/```json\n|\n```/g, '').trim();
-    const parsedResponse = JSON.parse(cleanResponse);
-    return parsedResponse.nodesToUpdate || [];
-  } catch (error) {
-    console.error('Error parsing image updates response:', error);
-    console.error('Raw response:', response);
-    return [];
-  }
-}
-
 export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   // First generate chat text
   const chatText = await generateChatText(userInput, chatHistory, nodes, detailledNodeIds);
   
-  // Run all three processes in parallel
-  const [actions, nodeEdition, imageUpdates] = await Promise.all([
+  // Run processes in parallel
+  const [actions, nodeEdition] = await Promise.all([
     generateActions(chatText, nodes, userInput),
-    generateNodeEdition(chatText, [], nodes, userInput),
-    determineImageUpdates(chatText, nodes, chatHistory)
+    generateNodeEdition(chatText, [], nodes, userInput)
   ]);
   
-  // Return the results, but note that image generation will be handled separately
-  // to ensure proper sequencing
+  // Return the results
   return {
     chatText,
     actions,
     nodeEdition,
-    imageUpdates,
-    // We'll handle the actual image generation in the ChatInterface component
-    // to ensure proper sequencing
+    // Image generation will be handled separately for new nodes only
   };
 }
 

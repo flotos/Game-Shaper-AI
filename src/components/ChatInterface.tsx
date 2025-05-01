@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition, determineImageUpdates, generateImagePrompt } from '../services/LLMService';
+import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition, generateImagePrompt } from '../services/LLMService';
 import { Node } from '../models/Node';
 import { useChat, Message } from '../context/ChatContext';
 import ChatHistory from './ChatHistory';
@@ -33,6 +33,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     imageGeneration: number[];
   }>({ story: 0, imagePrompts: [], imageGeneration: [] });
   const [imageGenerationLock, setImageGenerationLock] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (actionTriggered) {
@@ -52,14 +53,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
   }, [chatHistory]);
 
   const handleSend = async (retry = false) => {
-    if (!input.trim() || waitingForAnswer) return;
+    if (!input.trim() || isLoading) return;
 
-    setWaitingForAnswer(true);
+    setIsLoading(true);
     setErrorMessage('');
-    setLoadingMessage('Generating story...');
+    setLoadingMessage('Processing your request...');
+    const timestamp = new Date().toLocaleTimeString();
 
     try {
-      const timestamp = new Date().toLocaleTimeString();
       const storyStartTime = Date.now();
       console.log('Starting new interaction at:', timestamp);
 
@@ -68,7 +69,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         const userMessage: Message = {
           role: "user",
           content: input,
-          timestamp
+          timestamp: timestamp.toString()
         };
         addMessage(userMessage);
       }
@@ -77,7 +78,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       const tempUserMessage: Message = {
         role: "user",
         content: input,
-        timestamp
+        timestamp: timestamp.toString()
       };
 
       // Use the current chat history for regeneration, or include the new message for normal sends
@@ -104,7 +105,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       const streamingMessage: Message = {
         role: "assistant",
         content: "",
-        timestamp,
+        timestamp: timestamp.toString(),
         isStreaming: true
       };
       addMessage(streamingMessage);
@@ -148,58 +149,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         // Update loading message for the next steps
         setLoadingMessage('Generating actions and updating game state...');
 
-        // Start determineImageUpdates first and handle its result immediately
-        console.log('Starting parallel operations: actions, node edition, and image updates');
-        const parallelStartTime = Date.now();
-        
-        // Start determineImageUpdates and handle its result immediately
-        const imageUpdatesPromise = determineImageUpdates(accumulatedContent, nodes, contextHistory).then(async (imageUpdates) => {
-          if (imageUpdates && imageUpdates.length > 0) {
-            console.log('Starting early image generation for context-updated nodes:', imageUpdates);
-            setImageGenerationLock(true); // Lock image generation
-            try {
-              const contextImagePrompts = await Promise.all(
-                imageUpdates.map(async (nodeId: string) => {
-                  console.log('Generating prompt for context-updated node:', nodeId);
-                  const node = nodes.find(n => n.id === nodeId);
-                  if (!node) {
-                    console.warn('Node not found:', nodeId);
-                    return null;
-                  }
-                  const prompt = await generateImagePrompt(node, nodes, contextHistory.slice(-4));
-                  console.log('Generated prompt for node', nodeId, ':', prompt);
-                  return { nodeId, prompt };
-                })
-              );
-
-              // Filter out any null results from context prompts
-              const validContextPrompts = contextImagePrompts.filter((prompt): prompt is { nodeId: string, prompt: string } => prompt !== null);
-              
-              // Start generating images for context-updated nodes immediately
-              if (validContextPrompts.length > 0) {
-                console.log('Starting early graph update with context image prompts');
-                await updateGraph(
-                  { merge: [], delete: [], newNodes: [] },
-                  validContextPrompts.map(p => ({ nodeId: p.nodeId, prompt: p.prompt }))
-                );
-              }
-            } finally {
-              setImageGenerationLock(false); // Unlock image generation
-            }
-          }
-          return imageUpdates;
-        });
-        
         // Start the other operations in parallel
         const [actions, nodeEdition] = await Promise.all([
           generateActions(accumulatedContent, nodes, input),
           generateNodeEdition(accumulatedContent, [], nodes, input)
         ]);
         
-        // Get image updates result (but image generation has already started)
-        const imageUpdates = await imageUpdatesPromise;
-        
-        console.log('Parallel operations completed in:', Date.now() - parallelStartTime, 'ms');
+        console.log('Parallel operations completed in:', Date.now() - storyStartTime, 'ms');
 
         setLastNodeEdition(nodeEdition);
         setLastFailedRequest(null);
@@ -207,12 +163,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         // Then generate images for new nodes
         setLoadingMessage('Generating images for new nodes...');
         try {
-          // Wait for any ongoing image generation to complete
-          while (imageGenerationLock) {
-            console.log('Waiting for context-updated nodes image generation to complete...');
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-
           const imageStartTime = Date.now();
           console.log('Starting image generation for new nodes...');
           
@@ -264,19 +214,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
           {
             role: "selectedNodes",
             content: JSON.stringify(detailedNodeIds, null, 2),
-            timestamp,
+            timestamp: timestamp.toString(),
           }, {
             role: "reasoning",
             content: "",
-            timestamp
+            timestamp: timestamp.toString()
           }, {
             role: "actions",
             content: JSON.stringify(actions),
-            timestamp
+            timestamp: timestamp.toString()
           }, {
             role: "nodeEdition",
             content: JSON.stringify(nodeEdition, null, 2),
-            timestamp
+            timestamp: timestamp.toString()
           }
         ];
 
@@ -315,6 +265,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     } finally {
       setWaitingForAnswer(false);
       setLoadingMessage('');
+      setIsLoading(false);
     }
   };
 
