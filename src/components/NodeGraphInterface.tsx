@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Node } from '../models/Node';
+import ReactMarkdown from 'react-markdown';
 
 interface NodeGraphInterfaceProps {
   nodes: Node[];
@@ -66,7 +67,9 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
           </div>
           <div className="max-h-full">
             <img src={selectedNode.image} alt={selectedNode.name} className="w-full object-contain max-h-[70vh] mb-4" />
-            <p className="break-all">{selectedNode.longDescription}</p>
+            <div className="prose prose-invert max-w-none">
+              <ReactMarkdown>{selectedNode.longDescription}</ReactMarkdown>
+            </div>
             <p className="text-xs mt-5 break-all">Hidden Description: {selectedNode.rules}</p>
             <p className="text-xs break-all">Type: {selectedNode.type}</p>
           </div>

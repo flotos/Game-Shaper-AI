@@ -5,6 +5,7 @@ import useNodeGraph from './models/useNodeGraph';
 import { useChat } from './context/ChatContext';
 import NodeEditorOverlay from './components/NodeEditorOverlay';
 import AssistantOverlay from './components/AssistantOverlay';
+import TwineImportOverlay from './components/TwineImportOverlay';
 
 const AppContent: React.FC = () => {
   const { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes } = useNodeGraph();
@@ -12,6 +13,7 @@ const AppContent: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
+  const [showTwineImport, setShowTwineImport] = useState(false);
 
   const clearLocalStorage = () => {
     localStorage.removeItem('nodeGraph');
@@ -83,6 +85,12 @@ const AppContent: React.FC = () => {
             Import save
           </button>
           <button 
+            onClick={() => setShowTwineImport(true)} 
+            className="px-1 bg-slate-800 text-white rounded hover:bg-indigo-700"
+          >
+            Import Twine
+          </button>
+          <button 
             onClick={() => setShowNodeEditor(true)} 
             className="px-1 bg-slate-800 text-white rounded hover:bg-yellow-700"
           >
@@ -118,6 +126,14 @@ const AppContent: React.FC = () => {
           nodes={nodes}
           updateGraph={updateGraph}
           closeOverlay={() => setShowAssistant(false)}
+        />
+      )}
+
+      {showTwineImport && (
+        <TwineImportOverlay
+          nodes={nodes}
+          updateGraph={updateGraph}
+          closeOverlay={() => setShowTwineImport(false)}
         />
       )}
     </div>

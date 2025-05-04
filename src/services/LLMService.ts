@@ -459,6 +459,28 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   return JSON.parse(response);
 };
 
+export const analyzeTwineContent = async (content: string) => {
+  console.log('LLM Call: Analyzing Twine content');
+  
+  const analysisPrompt = `
+    /no_think I will provide you a very lengthy game file.
+    Your task is to extract from this interactive novel game the following:
+    - A detailled analysis of the file content, the themes involved.
+    - A lengthy description of the writing style, allowing another LLM to write using the same style.
+    - An example page, about 10 paragraphs, using this writing style and theme.
+
+    Do not speak like an assistant. Your output will be kept in a report.
+    
+    The file content: ${content}`;
+
+  const messages: Message[] = [
+    { role: 'system', content: analysisPrompt },
+  ];
+
+  const response = await getResponse(messages);
+  return response;
+};
+
 /**
  * Available OpenRouter Text Models:
  * - anthropic/claude-3-opus-20240229
@@ -531,7 +553,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         })),
         provider: {
           order: [openrouterProvider],
-          allow_fallbacks: false
+          allow_fallbacks: true
         },
         temperature: 1,
         top_p: 0.8,
