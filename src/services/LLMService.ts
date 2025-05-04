@@ -214,6 +214,8 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   Generate appropriate dialogue based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
   You will make the world progress by itself at every round, in addition to any action the player make in the world. Each user action should have a significant impact.
 
+  Do not mention any node updates/change/deletion, as another LLM call will handle this.
+
   ## Game Content:
   ### Current Nodes:
   ${nodesDescription}
@@ -531,7 +533,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
           order: [openrouterProvider],
           allow_fallbacks: false
         },
-        temperature: 0.7,
+        temperature: 1,
         top_p: 0.8,
         top_k: 20,
         min_p: 0,

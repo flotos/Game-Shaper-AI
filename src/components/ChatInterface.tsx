@@ -63,16 +63,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       const storyStartTime = Date.now();
       console.log('Starting new interaction at:', timestamp);
 
-      // Only add user message if this is not a regeneration
-      if (!actionTriggered) {
-        const userMessage: Message = {
-          role: "user",
-          content: input,
-          timestamp: timestamp.toString()
-        };
-        addMessage(userMessage);
-        setInput(''); // Clear input immediately after sending
-      }
+      // Add user message
+      const userMessage: Message = {
+        role: "user",
+        content: input,
+        timestamp: timestamp.toString()
+      };
+      addMessage(userMessage);
+      setInput(''); // Clear input immediately after sending
+
+      // Add a streaming message placeholder
+      const streamingMessage: Message = {
+        role: "assistant",
+        content: "",
+        timestamp: timestamp.toString(),
+        isStreaming: true
+      };
+      addMessage(streamingMessage);
 
       let detailedNodeIds;
       const tempUserMessage: Message = {
@@ -81,8 +88,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         timestamp: timestamp.toString()
       };
 
-      // Use the current chat history for regeneration, or include the new message for normal sends
-      const contextHistory = actionTriggered ? chatHistory : [...chatHistory, tempUserMessage];
+      // Use the current chat history including the new message
+      const contextHistory = [...chatHistory, tempUserMessage];
 
       if (nodes.length < 15) {
         detailedNodeIds = nodes
@@ -101,15 +108,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       const chatTextResponse = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
       console.log('Chat text generation completed in:', Date.now() - chatTextStartTime, 'ms');
       
-      // Add a streaming message placeholder
-      const streamingMessage: Message = {
-        role: "assistant",
-        content: "",
-        timestamp: timestamp.toString(),
-        isStreaming: true
-      };
-      addMessage(streamingMessage);
-
       // Handle the streamed response
       if (chatTextResponse instanceof Response) {
         const reader = chatTextResponse.body?.getReader();
@@ -262,13 +260,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
 
     if (lastUserMessageIndex === -1 || !lastUserMessage) return;
 
-    // Remove all messages after the last user message
-    const newChatHistory = chatHistory.slice(0, lastUserMessageIndex + 1);
+    // Remove all messages after and including the last user message
+    const newChatHistory = chatHistory.slice(0, lastUserMessageIndex);
     setChatHistory(newChatHistory);
 
-    // Set the input to the last user message and trigger a new response
+    // Set the input to the last user message but don't trigger send
     setInput(lastUserMessage.content);
-    setActionTriggered(true); // This will trigger handleSend in the useEffect
   };
 
   return (
