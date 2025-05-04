@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Node } from '../models/Node';
-import { generateNodesFromPrompt } from '../services/LLMService';
 
 interface NodeEditorOverlayProps {
   nodes: Node[];
@@ -14,8 +13,6 @@ interface NodeEditorOverlayProps {
 const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, updateNode, deleteNode, closeOverlay, updateGraph }) => {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [newNode, setNewNode] = useState<Partial<Node>>({});
-  const [prompt, setPrompt] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const generateRandomId = () => {
     return Math.random().toString(36).substring(2, 6);
@@ -48,17 +45,9 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
     }
   };
 
-  const handleGenerateNodes = async () => {
-    setIsLoading(true);
-    try {
-      const queryOutput = await generateNodesFromPrompt(prompt, nodes);
-      updateGraph(queryOutput);
-      setIsLoading(false);
-      closeOverlay();
-    } catch (error) {
-      console.error('Failed to generate nodes:', error);
-      setIsLoading(false);
-    }
+  const handleAddNew = () => {
+    setSelectedNode(null);
+    setNewNode({});
   };
 
   return (
@@ -94,6 +83,8 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
           value={selectedNode ? selectedNode.longDescription : newNode.longDescription || ''}
           onChange={(e) => selectedNode ? setSelectedNode({ ...selectedNode, longDescription: e.target.value }) : setNewNode({ ...newNode, longDescription: e.target.value })}
           className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
+          rows={30}
+          style={{ minHeight: '200px' }}
         />
         <textarea
           placeholder="Rules (will be hidden to players later on)"
@@ -101,15 +92,22 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
           onChange={(e) => selectedNode ? setSelectedNode({ ...selectedNode, rules: e.target.value }) : setNewNode({ ...newNode, rules: e.target.value })}
           className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
         />
-        <textarea
-          placeholder="Prompt to generate nodes"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900"
-        />
+        <div className="mb-4">
+          <label className="block text-gray-100 bg-grey-900">Node Type:</label>
+          <input
+            type="text"
+            placeholder="Enter node type"
+            value={selectedNode ? selectedNode.type : newNode.type || ''}
+            onChange={(e) => selectedNode ? setSelectedNode({ ...selectedNode, type: e.target.value }) : setNewNode({ ...newNode, type: e.target.value })}
+            className="w-full p-2 border border-gray-700 rounded bg-gray-900"
+          />
+        </div>
         <div className="flex justify-between">
           <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
             Save
+          </button>
+          <button onClick={handleAddNew} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+            Add New Node
           </button>
           {selectedNode && (
             <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
@@ -118,13 +116,6 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
           )}
           <button onClick={closeOverlay} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">
             Cancel
-          </button>
-          <button 
-            onClick={handleGenerateNodes} 
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center"
-            disabled={isLoading}
-          >
-            {isLoading ? <div className="loader"></div> : 'Generate Nodes'}
           </button>
         </div>
       </div>

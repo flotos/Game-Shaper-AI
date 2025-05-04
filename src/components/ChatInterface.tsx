@@ -32,7 +32,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     imagePrompts: number[];
     imageGeneration: number[];
   }>({ story: 0, imagePrompts: [], imageGeneration: [] });
-  const [imageGenerationLock, setImageGenerationLock] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -153,7 +152,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         // Start the other operations in parallel
         const [actions, nodeEdition] = await Promise.all([
           generateActions(accumulatedContent, nodes, input),
-          generateNodeEdition(accumulatedContent, [], nodes, input)
+          generateNodeEdition(accumulatedContent, [], nodes, input, true)
         ]);
         
         console.log('Parallel operations completed in:', Date.now() - storyStartTime, 'ms');

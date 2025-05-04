@@ -209,7 +209,6 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   }, "");
 
   const chatTextPrompt = `
-   /no_think
   # TASK:
   You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
   Generate appropriate dialogue based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
@@ -282,7 +281,7 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
   return parsed.actions;
 }
 
-export const generateNodeEdition = async(chatText: string, actions: string[], nodes: Node[], userInput: string) => {
+export const generateNodeEdition = async(chatText: string, actions: string[], nodes: Node[], userInput: string, isUserInteraction: boolean = false) => {
   console.log('LLM Call: Generating node edition');
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "image_generation") {
@@ -300,7 +299,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   }, "");
 
   const nodeEditionPrompt = `
-  /no_think
+  ${isUserInteraction ? '/no_think' : '/think'}
   # TASK:
   Based on the following game state, narrative, and possible actions, update the game graph.
   Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
@@ -384,7 +383,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   // Run processes in parallel
   const [actions, nodeEdition] = await Promise.all([
     generateActions(chatText, nodes, userInput),
-    generateNodeEdition(chatText, [], nodes, userInput)
+    generateNodeEdition(chatText, [], nodes, userInput, true)
   ]);
   
   // Return the results
@@ -537,7 +536,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         top_k: 20,
         min_p: 0,
         enable_thinking: includeReasoning,
-        include_reasoning: false,
+        include_reasoning: true,
         presence_penalty: 1,
         reasoning: {
           effort: "low"
