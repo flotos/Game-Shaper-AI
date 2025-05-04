@@ -463,7 +463,7 @@ export const analyzeTwineContent = async (content: string) => {
   console.log('LLM Call: Analyzing Twine content');
   
   const analysisPrompt = `
-    /no_think I will provide you a very lengthy game file.
+    I will provide you a very lengthy game file.
     Your task is to extract from this interactive novel game the following:
     - A detailled analysis of the file content, the themes involved.
     - A lengthy description of the writing style, allowing another LLM to write using the same style.
@@ -479,6 +479,182 @@ export const analyzeTwineContent = async (content: string) => {
 
   const response = await getResponse(messages);
   return response;
+};
+
+export const generateNodesFromTwine = async (content: string, nodes: Node[], mode: 'new_game' | 'merge_story') => {
+  console.log('LLM Call: Generating nodes from Twine content in mode:', mode);
+  
+  const nodesDescription = nodes.reduce((acc, node) => {
+    return acc + `
+    id: ${node.id}
+    name: ${node.name}
+    longDescription: ${node.longDescription}
+    rules: ${node.rules}
+    type: ${node.type}
+    child: ${node.child}
+    parent: ${node.parent}
+    `;
+  }, "");
+
+  const prompt = mode === 'new_game' ? `
+  You are a Game Engine. The user has imported a Twine story and wants to create a completely new game based on it.
+  Your task is to analyze the Twine content and create a fresh set of nodes that represent a new game world.
+  The existing nodes should only be used as reference for structure and format, but the content should be entirely new.
+
+  IMPORTANT RULES FOR NEW GAME CREATION:
+  1. Create a new game world based on the Twine story's themes, characters, and setting
+  2. Use the existing node structure only as a template for formatting
+  3. Generate a complete new set of nodes that form a coherent game world
+  4. Include at least one "Game Rule" node to establish core mechanics
+  5. Ensure proper relationships between nodes using parent/child fields
+  6. Set updateImage to true for nodes that represent physical entities
+
+  The Twine content to analyze:
+  ---
+  ${content}
+  ---
+
+  Here are the existing nodes (for structure reference only):
+  ---
+  ${nodesDescription}
+
+  Return a JSON object with the following structure:
+  {
+    "merge": [
+      {
+        "id": "unique-id",
+        "name": "node name",
+        "longDescription": "detailed description",
+        "rules": "rules and internal info",
+        "type": "node type",
+        "parent": "parent id",
+        "child": ["child ids"],
+        "updateImage": true/false
+      },
+      ...
+    ]
+  }
+
+  Note: You don't need to specify the "delete" or "newNodes" arrays as they will be handled programmatically.
+  ` : `
+  You are a Game Engine. The user has imported a Twine story and wants to merge it into the existing game world.
+  Your task is to analyze the Twine content and update the current nodes to incorporate the new story elements.
+
+  IMPORTANT RULES FOR STORY MERGING:
+  1. First, analyze the existing game world and identify which nodes are still relevant
+  2. For each existing node:
+     - Keep it if it's still relevant to the merged story
+     - Update it if it needs changes to fit the new story
+     - Mark it for deletion if it's no longer relevant
+  3. For new elements from the Twine story:
+     - Create new nodes with unique IDs
+     - Ensure they connect properly with existing nodes
+     - Set updateImage to true for physical entities
+  4. Maintain consistency:
+     - Preserve existing game rules unless they conflict with the new story
+     - Update relationships between nodes to reflect the merged story
+     - Ensure the merged world makes logical sense
+  5. Special handling:
+     - If a node's type changes, create a new node instead of updating
+     - If a node's core identity changes, create a new node
+     - Preserve important game mechanics and rules
+
+  The Twine content to analyze:
+  ---
+  ${content}
+  ---
+
+  Here are the existing nodes to merge with:
+  ---
+  ${nodesDescription}
+
+  Return a JSON object with the following structure:
+  {
+    "merge": [
+      {
+        "id": "unique-id",
+        "name": "node name",
+        "longDescription": "detailed description",
+        "rules": "rules and internal info",
+        "type": "node type",
+        "parent": "parent id",
+        "child": ["child ids"],
+        "updateImage": true/false
+      },
+      ...
+    ],
+    "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
+  }
+
+  The "merge" array should include:
+  - Existing nodes that need updates (using their original IDs)
+  - New nodes for new story elements (with new IDs)
+  - Nodes that need to be recreated due to significant changes
+
+  The "delete" array should contain IDs of nodes that:
+  - Are no longer relevant to the story
+  - Have been replaced by new versions
+  - Would cause inconsistencies if kept
+  `;
+
+  const messages: Message[] = [
+    { role: 'system', content: prompt },
+  ];
+
+  const response = await getResponse(messages, 'gpt-4o', undefined, false, { type: 'json_object' });
+  
+  try {
+    // Check if response is already a parsed object
+    const parsedResponse = typeof response === 'string' ? JSON.parse(response) : response;
+    
+    // Ensure the response has the correct structure
+    if (!parsedResponse.merge || !Array.isArray(parsedResponse.merge)) {
+      throw new Error('Invalid response structure: missing or invalid merge array');
+    }
+    
+    // Handle different modes
+    if (mode === 'new_game') {
+      // For new game, all existing nodes will be deleted
+      parsedResponse.delete = nodes.map(node => node.id);
+      // All nodes in merge are new nodes
+      parsedResponse.newNodes = parsedResponse.merge.map((node: any) => node.id);
+    } else if (mode === 'merge_story') {
+      // For merge mode, ensure delete array exists
+      if (!parsedResponse.delete) {
+        parsedResponse.delete = [];
+      }
+      // Calculate newNodes by comparing with existing nodes
+      const existingNodeIds = new Set(nodes.map(node => node.id));
+      parsedResponse.newNodes = parsedResponse.merge
+        .filter((node: any) => !existingNodeIds.has(node.id))
+        .map((node: any) => node.id);
+    } else {
+      throw new Error(`Invalid mode: ${mode}. Must be either 'new_game' or 'merge_story'`);
+    }
+    
+    // Ensure each node in merge has all required fields
+    parsedResponse.merge.forEach((node: any) => {
+      const missingFields = [];
+      if (!node.id) missingFields.push('id');
+      if (!node.name) missingFields.push('name');
+      if (!node.longDescription) missingFields.push('longDescription');
+      if (!node.rules) missingFields.push('rules');
+      if (!node.type) missingFields.push('type');
+      if (node.parent === undefined) missingFields.push('parent');
+      if (!Array.isArray(node.child)) missingFields.push('child (must be an array)');
+      
+      if (missingFields.length > 0) {
+        console.error('Problematic node data:', JSON.stringify(node, null, 2));
+        throw new Error(`Invalid node structure: missing required fields in node ${node.id || 'unknown'}: ${missingFields.join(', ')}`);
+      }
+    });
+    
+    return parsedResponse;
+  } catch (error) {
+    console.error('Error parsing Twine import response:', error);
+    console.error('Response content:', response);
+    throw new Error('Failed to parse Twine import response as JSON. Please ensure the response is properly formatted.');
+  }
 };
 
 /**

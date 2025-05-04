@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Node } from '../models/Node';
-import { generateNodesFromPrompt, analyzeTwineContent } from '../services/LLMService';
+import { generateNodesFromTwine } from '../services/LLMService';
 
 interface TagStats {
   [key: string]: number;
@@ -21,6 +21,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [tagStats, setTagStats] = useState<TagStats>({});
+  const [importMode, setImportMode] = useState<'new_game' | 'merge_story'>('new_game');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const analyzeTags = (content: string): TagStats => {
@@ -262,23 +263,11 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     setError('');
     
     try {
-      // First prompt to analyze the content
-      const analysisResponse = await analyzeTwineContent(twineContent);
-      
-      // Second prompt to create GameShaper nodes, using the analysis response
-      const nodeCreationPrompt = `Step 2.\n\nNow the analysis of this story is complete, you will need to create a GameShaper compatible file.\nGameShaper is a game engine allowing to play stories using an AI assisted narrator. The nodes are elements which help the AI remember and focus on the rules and persistent objects.\n\nHere is the analysis of the story:\n${analysisResponse}\n\nI will provide an example node for a different basic game, and you will output a new node graph, for the Twine game I provided you before.\n\n${JSON.stringify(nodes, null, 2)}`;
-      
-      const nodeResponse = await generateNodesFromPrompt(nodeCreationPrompt, nodes);
-      
-      // Convert the response to the expected format
-      const nodeEdition = {
-        merge: nodeResponse.merge || [],
-        delete: nodeResponse.delete || [],
-        newNodes: nodeResponse.merge?.map((node: Node) => node.id) || []
-      };
+      // Use the new function to generate nodes from Twine content with the selected mode
+      const nodeResponse = await generateNodesFromTwine(twineContent, nodes, importMode);
       
       // Update the graph and close the overlay immediately
-      await updateGraph(nodeEdition);
+      await updateGraph(nodeResponse);
       closeOverlay();
     } catch (err) {
       setError('Failed to process the Twine content. Please try again.');
@@ -289,7 +278,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-slate-900 p-6 rounded shadow-md w-3/4 max-w-4xl max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl mb-4 text-white">Import Twine Game</h2>
         
@@ -308,6 +297,34 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
             className="hidden"
           />
         </div>
+
+        {twineContent && (
+          <div className="mb-4">
+            <h3 className="text-lg mb-2 text-white">Import Mode:</h3>
+            <div className="flex space-x-4 mb-4">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  value="new_game"
+                  checked={importMode === 'new_game'}
+                  onChange={(e) => setImportMode(e.target.value as 'new_game' | 'merge_story')}
+                  className="form-radio text-blue-600"
+                />
+                <span className="text-white">Create New Game</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  value="merge_story"
+                  checked={importMode === 'merge_story'}
+                  onChange={(e) => setImportMode(e.target.value as 'new_game' | 'merge_story')}
+                  className="form-radio text-blue-600"
+                />
+                <span className="text-white">Merge with Existing Story</span>
+              </label>
+            </div>
+          </div>
+        )}
 
         {Object.keys(tagStats).length > 0 && (
           <div className="mb-4 p-4 bg-gray-800 rounded">
