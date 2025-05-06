@@ -53,6 +53,9 @@ You are a Game Engine. Your task is to create a completely new game based on the
 3. Generate a complete new set of nodes that form a coherent game world
 4. Ensure proper relationships between nodes using parent/child fields
 5. Set updateImage to true for nodes that represent physical entities
+6. When using the extracted story data:
+  - All the listed events are possible outcomes in the game. These are NOT memories or past events.
+  - All the locations are possible encounters, but consider these have not yet been visited by the player.
 
 [Additional Instructions will be inserted here]
 
@@ -84,9 +87,12 @@ Return a JSON object with the following structure:
   ]
 }`;
 
-export const TWINE_NODE_GENERATION_PROMPT_MERGE = `You are a Game Engine. Using the extracted story data, merge it into the existing game world.
+export const TWINE_NODE_GENERATION_PROMPT_MERGE = `
 
-IMPORTANT RULES FOR STORY MERGING:
+# Instructions
+You are a Game Engine. Your task is to merge the extracted story data into the existing game world.
+
+# Rules
 1. Analyze how the extracted story elements fit with existing nodes
 2. For each existing node:
    - Keep it if it's still relevant
@@ -97,18 +103,24 @@ IMPORTANT RULES FOR STORY MERGING:
    - Ensure they connect properly with existing nodes
    - Set updateImage to true for physical entities
 4. Maintain consistency between old and new elements
+5. When using the extracted story data:
+  - All the listed events are possible outcomes in the game. These are NOT memories or past events.
+  - All the locations are possible encounters, but consider these have not yet been visited by the player.
+6. In the newly generated nodes, NEVER mention "added" or "updated". You should return the new node as it should be.
 
 [Additional Instructions will be inserted here]
 
-The extracted story data:
+# Extracted Story Data
 ---
 [Extracted data will be inserted here]
 ---
 
-Here are the existing nodes to merge with:
+# Existing Nodes to Merge With
 ---
 [Nodes description will be inserted here]
 ---
+
+# Return format
 
 Return a JSON object with the following structure:
 {
@@ -494,6 +506,17 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
     if (!parsedResponse.newNodes) {
       parsedResponse.newNodes = [];
     }
+
+    // Preserve type for image_generation nodes
+    if (parsedResponse.merge) {
+      parsedResponse.merge = parsedResponse.merge.map((node: any) => {
+        const existingNode = nodes.find(n => n.id === node.id);
+        if (existingNode && existingNode.type === "image_generation") {
+          return { ...node, type: "image_generation" };
+        }
+        return node;
+      });
+    }
     
     return parsedResponse;
   } catch (error) {
@@ -528,6 +551,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
     return acc + `
     id: ${node.id}
     name: ${node.name}
+    longDescription: ${node.longDescription}
     rules: ${node.rules}
     type: ${node.type}
     child: ${node.child}
@@ -551,15 +575,18 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   2. You must explicitly include ALL content you want to preserve in the updated node. Any content not included will be lost.
   3. Each node update should be self-contained and complete, with no dependencies on previous states.
   4. If you want to keep any information from the previous state, you must explicitly copy it into the new node.
-  5. For the "appendEnd" operation, you can specify nodes where the content will be appended to the end of existing fields. This is useful for adding new information without replacing the entire content.
-  6. The updateImage field MUST be included for each node and set to true if there are significant visual changes that should trigger a new image generation (but game systems or lore nodes shouldn't have an image).
+  5. The updateImage field MUST be included for each node and set to true if there are significant visual changes that should trigger a new image generation (but game systems or lore nodes shouldn't have an image).
+  6. If there are instructions about "merging multiple nodes together", choose one of the existing node to update, and delete the others.
+  7. A node is worthy to exist only if it contains at least a full paragraph, otherwise another node should cover its content. For example for room containing lot of object, the objects should be stored in the "room" node if they aren't too detailled each. Or use a "hand of cards" node for a deck related node-graph instead of each card separately.
+  8. Maintain one or few nodes for the global game systems, trying not to disseminate game rules into too many nodes. If multiple node, each should focus on a concept, but at least one node should summarize all the game systems and serve as a high-level reference.
+  9. Do not update the image_generation type nodes unless explicitely mentionned.
+  10. All node should represent a game system, a lore entry, character, or an object. These should NOT be used to describe events or time-limited things. If a specific event need to be remembered, store it in a "memory" game system node.
 
   Each node should be described in a JSON format with the following properties:
   {
     "id": "unique-id",
     "name": "node name",
-    "shortDescription": "short description",
-    "longDescription": "long description",
+    "longDescription": "Lengthy description, detailling the node completely. For game Systems, be exhaustive. For content or characters, generate at least a full paragraph.",
     "rules": "rules, written in a concise, compressed way.",
     "type": "node type",
     "parent": "parent id",
@@ -584,34 +611,13 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   return JSON.parse(response);
 };
 
-export const analyzeTwineContent = async (content: string) => {
-  console.log('LLM Call: Analyzing Twine content');
-  
-  const analysisPrompt = `
-    I will provide you a very lengthy game file.
-    Your task is to extract from this interactive novel game the following:
-    - A detailled analysis of the file content, the themes involved.
-    - A lengthy description of the writing style, allowing another LLM to write using the same style.
-    - An example page, about 10 paragraphs, using this writing style and theme.
-
-    Do not speak like an assistant. Your output will be kept in a report.
-    
-    The file content: ${content}`;
-
-  const messages: Message[] = [
-    { role: 'system', content: analysisPrompt },
-  ];
-
-  const response = await getResponse(messages);
-  return response;
-};
-
 export const generateNodesFromTwine = async (
   content: string,
   nodes: Node[],
   mode: 'new_game' | 'merge_story',
   dataExtractionInstructions?: string,
-  nodeGenerationInstructions?: string
+  nodeGenerationInstructions?: string,
+  extractionCount: number = 1
 ) => {
   console.log('LLM Call: Generating nodes from Twine content in mode:', mode);
   
@@ -627,17 +633,39 @@ export const generateNodesFromTwine = async (
     `;
   }, "");
 
-  // Step 1: Data Extraction
-  const extractionPrompt = TWINE_DATA_EXTRACTION_PROMPT
-    .replace('[Additional Instructions will be inserted here]', dataExtractionInstructions || '')
-    .replace('[Content will be inserted here]', content);
+  // Step 1: Split content into chunks and perform parallel data extraction
+  const totalLength = content.length;
+  const chunkSize = Math.ceil(totalLength / extractionCount);
+  const chunks: string[] = [];
+  
+  for (let i = 0; i < extractionCount; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(start + chunkSize, totalLength);
+    chunks.push(content.slice(start, end));
+  }
 
-  const extractionMessages: Message[] = [
-    { role: 'system', content: extractionPrompt },
-  ];
+  const extractionPromises = chunks.map((chunk, index) => {
+    const extractionPrompt = TWINE_DATA_EXTRACTION_PROMPT
+      .replace('[Additional Instructions will be inserted here]', dataExtractionInstructions || '')
+      .replace('[Content will be inserted here]', chunk);
 
-  const extractedData = await getResponse(extractionMessages, 'gpt-4o', undefined, false, { type: 'json_object' });
-  const parsedExtractedData = typeof extractedData === 'string' ? JSON.parse(extractedData) : extractedData;
+    const extractionMessages: Message[] = [
+      { role: 'system', content: extractionPrompt },
+    ];
+
+    return getResponse(extractionMessages, 'gpt-4o', undefined, false, { type: 'json_object' });
+  });
+
+  // Wait for all extractions to complete
+  const extractionResults = await Promise.all(extractionPromises);
+  
+  // Combine all extracted data while maintaining chunk structure
+  const combinedExtractedData = {
+    chunks: extractionResults.map(result => {
+      const parsedResult = typeof result === 'string' ? JSON.parse(result) : result;
+      return parsedResult.elements || [];
+    })
+  };
 
   // Step 2: Node Generation
   const generationPromptTemplate = mode === 'new_game' ? 
@@ -646,7 +674,7 @@ export const generateNodesFromTwine = async (
 
   const generationPrompt = generationPromptTemplate
     .replace('[Additional Instructions will be inserted here]', nodeGenerationInstructions || '')
-    .replace('[Extracted data will be inserted here]', JSON.stringify(parsedExtractedData, null, 2))
+    .replace('[Extracted data will be inserted here]', JSON.stringify(combinedExtractedData, null, 2))
     .replace('[Nodes description will be inserted here]', nodesDescription);
 
   const generationMessages: Message[] = [
@@ -688,10 +716,14 @@ export const generateNodesFromTwine = async (
       if (!node.id) missingFields.push('id');
       if (!node.name) missingFields.push('name');
       if (!node.longDescription) missingFields.push('longDescription');
-      if (!node.rules) missingFields.push('rules');
       if (!node.type) missingFields.push('type');
       if (node.parent === undefined) missingFields.push('parent');
       if (!Array.isArray(node.child)) missingFields.push('child (must be an array)');
+      
+      // Add default empty string for missing rules
+      if (!node.rules) {
+        node.rules = '';
+      }
       
       if (missingFields.length > 0) {
         console.error('Problematic node data:', JSON.stringify(node, null, 2));
@@ -730,6 +762,8 @@ export const generateNodesFromTwine = async (
 const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined, stream = false, responseFormat?: { type: string }) => {
   const apiType = import.meta.env.VITE_LLM_API;
   const includeReasoning = import.meta.env.VITE_LLM_INCLUDE_REASONING !== 'false';
+  const maxRetries = 3;
+  const retryDelay = 1000; // 1 second
 
   // Ensure there's at least one user message for OpenRouter
   if (apiType === 'openrouter') {
@@ -739,150 +773,173 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
     }
   }
 
-  let response;
-  if (apiType === 'openai') {
-    response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_OAI_KEY}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: messages,
-        stream: stream,
-        response_format: responseFormat
-      })
-    });
-  } else if (apiType === 'openrouter') {
-    // Get the configured model or use a default
-    const openrouterModel = import.meta.env.VITE_OPENROUTER_MODEL || 'anthropic/claude-3-opus-20240229';
-    const openrouterProvider = import.meta.env.VITE_OPENROUTER_PROVIDER;
-    console.log('Using OpenRouter model:', openrouterModel, 'from provider:', openrouterProvider);
-
-    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY}`,
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'Game Shaper AI'
-      },
-      body: JSON.stringify({
-        model: openrouterModel,
-        messages: messages.map(msg => ({
-          role: msg.role,
-          content: [{
-            type: "text",
-            text: msg.content
-          }]
-        })),
-        provider: {
-          order: [openrouterProvider],
-          allow_fallbacks: true
-        },
-        temperature: 1,
-        top_p: 0.8,
-        top_k: 20,
-        min_p: 0,
-        enable_thinking: includeReasoning,
-        include_reasoning: true,
-        presence_penalty: 1,
-        reasoning: {
-          effort: "low"
-        },
-        stream: stream,
-        response_format: responseFormat
-      })
-    });
-  } else if (apiType === 'koboldcpp') {
-    const prompt = messages.map(message => `${message.role}: ${message.content}`).join('\n');
-    const requestBody = {
-      max_context_length: 4096,
-      max_length: 768,
-      prompt: prompt,
-      quiet: false,
-      rep_pen: 1.0,
-      rep_pen_range: 256,
-      rep_pen_slope: 1.0,
-      temperature: 0.2,
-      tfs: 1,
-      top_a: 0,
-      top_k: 80,
-      top_p: 0.9,
-      typical: 1,
-      password:"nodegame",
-      grammar,
-      stream: stream
-    };
-
-    response = await fetch(`${import.meta.env.VITE_LLM_HOST}/api/v1/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `nodegame`
-      },
-      body: JSON.stringify(requestBody)
-    });
-  } else {
-    throw new Error('Unknown API type');
-  }
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('API Error Response:', errorText);
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
-  }
-
-  if (stream) {
-    return response;
-  }
-
-  const data = await response.json();
-  console.log('API Response:', data); // Debug log
-
-  let llmResult;
-  if (apiType === 'openai') {
-    if (!data.choices?.[0]?.message?.content) {
-      console.error('Invalid OpenAI response structure:', data);
-      throw new Error('Invalid OpenAI response structure');
-    }
-    llmResult = data.choices[0].message.content;
-  } else if (apiType === 'openrouter') {
-    if (!data.choices?.[0]?.message?.content) {
-      console.error('Invalid OpenRouter response structure:', data);
-      throw new Error('Invalid OpenRouter response structure');
-    }
-    const content = data.choices[0].message.content;
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // If response_format is json_object, the content is already a JSON string
-      if (responseFormat?.type === 'json_object') {
-        // Remove any markdown code block formatting if present
-        const cleanContent = content.replace(/```json\n|\n```/g, '').trim();
-        return cleanContent;
-      }
-      const parsedContent = JSON.parse(content);
-      if (!includeReasoning && parsedContent.reasoning !== undefined) {
-        delete parsedContent.reasoning;
-        llmResult = JSON.stringify(parsedContent);
+      let response;
+      if (apiType === 'openai') {
+        response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_OAI_KEY}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: messages,
+            stream: stream,
+            response_format: responseFormat
+          })
+        });
+      } else if (apiType === 'openrouter') {
+        // Get the configured model or use a default
+        const openrouterModel = import.meta.env.VITE_OPENROUTER_MODEL || 'anthropic/claude-3-opus-20240229';
+        const openrouterProvider = import.meta.env.VITE_OPENROUTER_PROVIDER;
+        console.log('Using OpenRouter model:', openrouterModel, 'from provider:', openrouterProvider);
+
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_KEY}`,
+            'HTTP-Referer': window.location.origin,
+            'X-Title': 'Game Shaper AI'
+          },
+          body: JSON.stringify({
+            model: openrouterModel,
+            messages: messages.map(msg => ({
+              role: msg.role,
+              content: [{
+                type: "text",
+                text: msg.content
+              }]
+            })),
+            provider: {
+              order: [openrouterProvider],
+              allow_fallbacks: true
+            },
+            temperature: 1,
+            top_p: 0.8,
+            top_k: 20,
+            min_p: 0,
+            enable_thinking: includeReasoning,
+            include_reasoning: true,
+            presence_penalty: 1,
+            reasoning: {
+              effort: "low"
+            },
+            stream: stream,
+            response_format: responseFormat
+          })
+        });
+      } else if (apiType === 'koboldcpp') {
+        const prompt = messages.map(message => `${message.role}: ${message.content}`).join('\n');
+        const requestBody = {
+          max_context_length: 4096,
+          max_length: 768,
+          prompt: prompt,
+          quiet: false,
+          rep_pen: 1.0,
+          rep_pen_range: 256,
+          rep_pen_slope: 1.0,
+          temperature: 0.2,
+          tfs: 1,
+          top_a: 0,
+          top_k: 80,
+          top_p: 0.9,
+          typical: 1,
+          password:"nodegame",
+          grammar,
+          stream: stream
+        };
+
+        response = await fetch(`${import.meta.env.VITE_LLM_HOST}/api/v1/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `nodegame`
+          },
+          body: JSON.stringify(requestBody)
+        });
       } else {
-        llmResult = content;
+        throw new Error('Unknown API type');
       }
-    } catch (e) {
-      llmResult = content;
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
+
+      if (stream) {
+        return response;
+      }
+
+      const data = await response.json();
+      console.log('API Response:', data); // Debug log
+
+      let llmResult;
+      if (apiType === 'openai') {
+        if (!data.choices?.[0]?.message?.content) {
+          console.error('Invalid OpenAI response structure:', data);
+          throw new Error('Invalid OpenAI response structure');
+        }
+        llmResult = data.choices[0].message.content;
+      } else if (apiType === 'openrouter') {
+        if (!data.choices?.[0]?.message?.content) {
+          console.error('Invalid OpenRouter response structure:', data);
+          throw new Error('Invalid OpenRouter response structure');
+        }
+        const content = data.choices[0].message.content;
+        try {
+          // If response_format is json_object, the content is already a JSON string
+          if (responseFormat?.type === 'json_object') {
+            // Remove any markdown code block formatting if present
+            const cleanContent = content.replace(/```json\n|\n```/g, '').trim();
+            return cleanContent;
+          }
+          const parsedContent = JSON.parse(content);
+          if (!includeReasoning && parsedContent.reasoning !== undefined) {
+            delete parsedContent.reasoning;
+            llmResult = JSON.stringify(parsedContent);
+          } else {
+            llmResult = content;
+          }
+        } catch (e) {
+          llmResult = content;
+        }
+      } else if (apiType === 'koboldcpp') {
+        if (!data.results?.[0]?.text) {
+          console.error('Invalid KoboldCPP response structure:', data);
+          throw new Error('Invalid KoboldCPP response structure');
+        }
+        llmResult = data.results[0].text;
+      }
+
+      if (!llmResult) {
+        console.error('No valid response from LLM API:', data);
+        throw new Error('No valid response received from LLM API');
+      }
+
+      return llmResult;
+    } catch (error) {
+      lastError = error;
+      console.warn(`Attempt ${attempt} failed:`, error);
+      
+      // Don't retry if it's not a network error
+      if (error instanceof TypeError && error.message.includes('NetworkError')) {
+        if (attempt < maxRetries) {
+          console.log(`Retrying in ${retryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+      }
+      
+      // For other errors or if we've exhausted retries, throw the error
+      throw error;
     }
-  } else if (apiType === 'koboldcpp') {
-    if (!data.results?.[0]?.text) {
-      console.error('Invalid KoboldCPP response structure:', data);
-      throw new Error('Invalid KoboldCPP response structure');
-    }
-    llmResult = data.results[0].text;
   }
 
-  if (!llmResult) {
-    console.error('No valid response from LLM API:', data);
-    throw new Error('No valid response received from LLM API');
-  }
-
-  return llmResult;
+  // If we've exhausted all retries, throw the last error
+  throw lastError;
 }

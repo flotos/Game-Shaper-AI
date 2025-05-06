@@ -282,7 +282,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             
             const previewNode = {
               ...originalNode,
-              shortDescription: originalNode.shortDescription + (nodeToAppend.shortDescription || ''),
               longDescription: originalNode.longDescription + (nodeToAppend.longDescription || ''),
               rules: originalNode.rules + (nodeToAppend.rules || ''),
               name: originalNode.name + (nodeToAppend.name || ''),

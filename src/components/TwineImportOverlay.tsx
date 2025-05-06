@@ -6,6 +6,17 @@ interface TagStats {
   [key: string]: number;
 }
 
+interface PreviewState {
+  showPreview: boolean;
+  changes?: {
+    merge?: Partial<Node>[];
+    delete?: string[];
+    newNodes?: string[];
+  };
+  originalNodes: Node[];
+  content?: string;
+}
+
 interface TwineImportOverlayProps {
   nodes: Node[];
   updateGraph: (nodeEdition: { 
@@ -15,6 +26,93 @@ interface TwineImportOverlayProps {
   }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
   closeOverlay: () => void;
 }
+
+// Helper function to create diff spans
+const createDiffSpans = (original: string, updated: string, isCurrent: boolean) => {
+  // Split into words and normalize whitespace
+  const originalWords = original.trim().split(/\s+/);
+  const updatedWords = updated.trim().split(/\s+/);
+  const result = [];
+  
+  // Find the longest common subsequence
+  const lcs = [];
+  const dp = Array(originalWords.length + 1).fill(0).map(() => Array(updatedWords.length + 1).fill(0));
+  
+  for (let i = 1; i <= originalWords.length; i++) {
+    for (let j = 1; j <= updatedWords.length; j++) {
+      if (originalWords[i - 1] === updatedWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  
+  let i = originalWords.length;
+  let j = updatedWords.length;
+  
+  while (i > 0 && j > 0) {
+    if (originalWords[i - 1] === updatedWords[j - 1]) {
+      lcs.unshift(originalWords[i - 1]);
+      i--;
+      j--;
+    } else if (dp[i - 1][j] > dp[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  
+  // Now render the differences
+  i = 0;
+  j = 0;
+  let lcsIndex = 0;
+  
+  if (isCurrent) {
+    // Left side - show original with deletions in red
+    while (i < originalWords.length) {
+      if (lcsIndex < lcs.length && originalWords[i] === lcs[lcsIndex]) {
+        result.push(<span key={`common-${i}`} className="text-white">{lcs[lcsIndex]} </span>);
+        i++;
+        lcsIndex++;
+      } else {
+        result.push(
+          <span key={`old-${i}`} className="bg-red-900 text-white">
+            {originalWords[i]}{' '}
+          </span>
+        );
+        i++;
+      }
+    }
+  } else {
+    // Right side - show updated with additions in green
+    while (j < updatedWords.length) {
+      if (lcsIndex < lcs.length && updatedWords[j] === lcs[lcsIndex]) {
+        result.push(<span key={`common-${j}`} className="text-white">{lcs[lcsIndex]} </span>);
+        j++;
+        lcsIndex++;
+      } else {
+        result.push(
+          <span key={`new-${j}`} className="bg-green-900 text-white">
+            {updatedWords[j]}{' '}
+          </span>
+        );
+        j++;
+      }
+    }
+  }
+  
+  return result;
+};
+
+// Helper function to calculate height based on content length
+const calculateHeight = (text: string, isLongDescription: boolean = false, defaultRows: number = 10) => {
+  if (!isLongDescription) return `${defaultRows * 1.5}rem`;
+  const lineCount = (text || '').split('\n').length;
+  const minHeight = '15rem';
+  const calculatedHeight = `${Math.max(15, lineCount * 1.5)}rem`;
+  return calculatedHeight;
+};
 
 const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGraph, closeOverlay }) => {
   const [rawContent, setRawContent] = useState('');
@@ -27,8 +125,13 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   const [importMode, setImportMode] = useState<'new_game' | 'merge_story'>('new_game');
   const [useAggressiveTrim, setUseAggressiveTrim] = useState(false);
   const [trimPercentage, setTrimPercentage] = useState(0);
+  const [extractionCount, setExtractionCount] = useState(1);
   const [nextPromptInstructions, setNextPromptInstructions] = useState('');
   const [secondPromptInstructions, setSecondPromptInstructions] = useState('');
+  const [preview, setPreview] = useState<PreviewState>({
+    showPreview: false,
+    originalNodes: nodes
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const analyzeTags = (content: string): TagStats => {
@@ -72,9 +175,48 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     const passages = Array.from(doc.querySelectorAll('tw-passagedata'));
     
     // Process all passages and combine them
-    const processedContent = passages.map(passage => {
+    let processedContent = passages.map(passage => {
       const name = passage.getAttribute('name') || 'Untitled';
       let text = passage.textContent || '';
+      
+      // Skip script files and JavaScript content
+      if (name.toLowerCase().endsWith('.js') || 
+          name.toLowerCase().includes('script') ||
+          text.trim().startsWith('(()') ||
+          text.trim().startsWith('function') ||
+          text.trim().startsWith('const') ||
+          text.trim().startsWith('let') ||
+          text.trim().startsWith('var') ||
+          text.trim().startsWith('/*') ||
+          text.trim().startsWith('//')) {
+        return '';
+      }
+      
+      // Remove macro blocks and macro-related content
+      text = text
+        // Remove [Macros] blocks and everything after them until a double newline or end
+        .replace(/\[Macros\][\s\S]*?(?=\n\n|$)/g, '')
+        // Remove any line containing only parentheses and macro-like content
+        .split('\n')
+        .filter(line => {
+          const trimmed = line.trim();
+          // Skip lines that are just parentheses, numbers, or macro-like content
+          if (/^[()\d\s,]+$/.test(trimmed)) return false;
+          if (/^\)+$/.test(trimmed)) return false;
+          if (/^\(forget-undos:/.test(trimmed)) return false;
+          if (/^\(for:/.test(trimmed)) return false;
+          if (/^\(print:/.test(trimmed)) return false;
+          if (/^\(link:/.test(trimmed)) return false;
+          if (/^\(dm:/.test(trimmed)) return false;
+          return true;
+        })
+        .join('\n')
+        // Remove any remaining macro-like patterns
+        .replace(/\([^)]*\)/g, '')  // Remove simple parentheses content
+        .replace(/\)+/g, '')        // Remove any remaining closing parentheses
+        .replace(/\(+/g, '')        // Remove any remaining opening parentheses
+        .replace(/\s+/g, ' ')       // Normalize whitespace
+        .trim();
       
       // Aggressive cleaning
       text = text
@@ -117,12 +259,90 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
             !trimmedLine.startsWith('widget') &&
             !trimmedLine.includes('layer') &&
             !trimmedLine.includes('class=') &&
-            !trimmedLine.match(/^SAVES from version/);
+            !trimmedLine.match(/^SAVES from version/) &&
+            // Additional script-related filters
+            !trimmedLine.startsWith('/*') &&
+            !trimmedLine.startsWith('//') &&
+            !trimmedLine.startsWith('function') &&
+            !trimmedLine.startsWith('const') &&
+            !trimmedLine.startsWith('let') &&
+            !trimmedLine.startsWith('var') &&
+            !trimmedLine.includes('=>') &&
+            !trimmedLine.includes('{') &&
+            !trimmedLine.includes('}') &&
+            !trimmedLine.includes(';') &&
+            !trimmedLine.includes('()') &&
+            !trimmedLine.includes('return') &&
+            // Skip lines that are just prices (e.g., "25$")
+            !line.match(/^\d+\$$/) &&
+            // Skip lines containing image directory references
+            !line.includes('img$image_dir+');
         })
         .join('\n');
 
-      return `[${name}]\n${text}\n`;
+      // Remove repetitive and low-content lines
+      const lines = text.split('\n');
+      const cleanedLines = [];
+      let shortLineCount = 0;
+      let lastLine = '';
+      let groupStartIndex = 0;
+      let groupCharCount = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        // Skip empty lines
+        if (!line) continue;
+        
+        // Skip lines that are just passage() or similar
+        if (line.match(/^[^a-zA-Z]*passage\(\)[^a-zA-Z]*$/)) continue;
+        
+        // Skip lines that are just prices (e.g., "25$")
+        if (line.match(/^\d+\$$/)) continue;
+        
+        // Skip lines that are just repeated content
+        if (line === lastLine) continue;
+        
+        // Skip lines containing image directory references
+        if (line.includes('img$image_dir+')) continue;
+
+        // Check character density in groups of 15 lines
+        groupCharCount += line.length;
+        if (i - groupStartIndex >= 14) { // We have a group of 15 lines
+          if (groupCharCount < 250) {
+            // Remove all lines in this group
+            cleanedLines.splice(groupStartIndex, i - groupStartIndex + 1);
+          }
+          groupStartIndex = i + 1;
+          groupCharCount = 0;
+        }
+        
+        // Count consecutive short lines
+        if (line.length < 20) {
+          shortLineCount++;
+        } else {
+          shortLineCount = 0;
+        }
+        
+        // Only add the line if we haven't seen 5 consecutive short lines
+        if (shortLineCount < 5) {
+          cleanedLines.push(line);
+          lastLine = line;
+        }
+      }
+
+      // Check the last group if it's not a full 15 lines
+      if (lines.length - groupStartIndex > 0) {
+        if (groupCharCount < 250) {
+          cleanedLines.splice(groupStartIndex);
+        }
+      }
+
+      return cleanedLines.length > 0 ? `[${name}]\n${cleanedLines.join('\n')}\n` : '';
     }).join('\n');
+
+    // Remove multiple consecutive line breaks
+    processedContent = processedContent.replace(/\n{3,}/g, '\n\n');
 
     // Apply middle trimming to the final combined string
     if (trimPercent > 0) {
@@ -174,6 +394,92 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     reader.readAsText(file);
   };
 
+  const renderNodeComparison = (originalNode: Node | null, updatedNode: Partial<Node>) => {
+    return (
+      <div className="mb-4 p-4 bg-gray-800 rounded">
+        <h3 className="text-lg font-bold mb-2">{updatedNode.name}</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-sm font-semibold mb-1">Current</h4>
+            <div className="text-sm space-y-2">
+              <div>
+                <span className="font-semibold block mb-1">Long Description:</span>
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ 
+                      height: calculateHeight(originalNode?.longDescription || '', true),
+                      overflowY: 'auto'
+                    }}
+                  >
+                    {createDiffSpans(originalNode?.longDescription || '', updatedNode.longDescription || '', true)}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <span className="font-semibold block mb-1">Rules:</span>
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ height: '7.5rem', overflowY: 'auto' }}
+                  >
+                    {createDiffSpans(originalNode?.rules || '', updatedNode.rules || '', true)}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <span className="font-semibold block mb-1">Type:</span>
+                <div className="relative">
+                  <div className="w-full p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
+                    {createDiffSpans(originalNode?.type || '', updatedNode.type || '', true)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold mb-1">New</h4>
+            <div className="text-sm space-y-2">
+              <div>
+                <span className="font-semibold block mb-1">Long Description:</span>
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ 
+                      height: calculateHeight(updatedNode.longDescription || '', true),
+                      overflowY: 'auto'
+                    }}
+                  >
+                    {createDiffSpans(originalNode?.longDescription || '', updatedNode.longDescription || '', false)}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <span className="font-semibold block mb-1">Rules:</span>
+                <div className="relative">
+                  <div
+                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
+                    style={{ height: '7.5rem', overflowY: 'auto' }}
+                  >
+                    {createDiffSpans(originalNode?.rules || '', updatedNode.rules || '', false)}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <span className="font-semibold block mb-1">Type:</span>
+                <div className="relative">
+                  <div className="w-full p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
+                    {createDiffSpans(originalNode?.type || '', updatedNode.type || '', false)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const handleNext = async () => {
     if (!selectedContent) return;
     
@@ -186,10 +492,15 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         nodes,
         importMode,
         nextPromptInstructions,
-        secondPromptInstructions
+        secondPromptInstructions,
+        extractionCount
       );
-      await updateGraph(nodeResponse);
-      closeOverlay();
+      setPreview({
+        showPreview: true,
+        changes: nodeResponse,
+        originalNodes: nodes,
+        content: selectedContent
+      });
     } catch (err) {
       setError('Failed to process the Twine content. Please try again.');
       console.error(err);
@@ -197,6 +508,84 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
       setIsLoading(false);
     }
   };
+
+  const handleConfirm = () => {
+    if (preview.changes) {
+      // Convert Partial<Node>[] to Node[] for updateGraph
+      const changes = {
+        merge: preview.changes.merge?.map(node => ({
+          id: node.id || '',
+          name: node.name || '',
+          longDescription: node.longDescription || '',
+          rules: node.rules || '',
+          type: node.type || '',
+          parent: node.parent || '',
+          child: node.child || [],
+          image: node.image || '',
+          updateImage: node.updateImage || false,
+          imageSeed: node.imageSeed || 0
+        } as Node)) || [],
+        delete: preview.changes.delete || [],
+        newNodes: preview.changes.newNodes || []
+      };
+      updateGraph(changes);
+      closeOverlay();
+    }
+  };
+
+  if (preview.showPreview && preview.changes) {
+    return (
+      <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
+        <div className="bg-slate-900 p-6 rounded shadow-md w-5/6 max-w-[100vw] max-h-[95vh] overflow-y-auto">
+          <h2 className="text-xl mb-4 text-white">Preview Changes</h2>
+          
+          {preview.content && (
+            <div className="mb-4 p-4 bg-gray-800 rounded">
+              <h3 className="text-sm font-semibold mb-2 text-gray-300">Twine Content:</h3>
+              <div 
+                className="w-full p-2 bg-gray-700 rounded text-white whitespace-pre-wrap overflow-y-auto"
+                style={{ maxHeight: '200px' }}
+              >
+                {preview.content}
+              </div>
+            </div>
+          )}
+          
+          {preview.changes.delete && preview.changes.delete.length > 0 && (
+            <div className="mb-4 p-4 bg-red-900/50 rounded">
+              <h3 className="text-lg font-bold mb-2">Nodes to be deleted:</h3>
+              <ul className="list-disc list-inside">
+                {preview.changes.delete.map(id => {
+                  const node = preview.originalNodes.find(n => n.id === id);
+                  return <li key={id}>{node?.name || id}</li>;
+                })}
+              </ul>
+            </div>
+          )}
+
+          {preview.changes.merge && preview.changes.merge.map(updatedNode => {
+            const originalNode = preview.originalNodes.find(n => n.id === updatedNode.id) || null;
+            return renderNodeComparison(originalNode, updatedNode);
+          })}
+
+          <div className="flex justify-end space-x-4 mt-4">
+            <button
+              onClick={() => setPreview({ showPreview: false, originalNodes: nodes })}
+              className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
+            >
+              Back
+            </button>
+            <button
+              onClick={handleConfirm}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -335,7 +724,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
               <input
                 type="range"
                 min="0"
-                max="80"
+                max="95"
                 value={trimPercentage}
                 onChange={(e) => setTrimPercentage(Number(e.target.value))}
                 className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -404,6 +793,23 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         )}
 
         {error && <p className="text-red-500 mb-4">{error}</p>}
+
+        <div className="mb-4">
+          <label className="text-white block mb-2">
+            Number of Parallel Extractions: {extractionCount}
+            <span className="ml-2 text-blue-400">
+              ({Math.ceil((useAggressiveTrim ? aggressiveContent.length : basicContent.length) / extractionCount)} characters per extraction)
+            </span>
+          </label>
+          <input
+            type="range"
+            min="1"
+            max="10"
+            value={extractionCount}
+            onChange={(e) => setExtractionCount(Number(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+          />
+        </div>
 
         <div className="flex justify-end space-x-4 sticky bottom-0 bg-slate-900 pt-4">
           <button
