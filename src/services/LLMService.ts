@@ -2,6 +2,20 @@ import { Node } from '../models/Node';
 import prompts from '../../prompts.json';
 import { Message } from '../context/ChatContext';
 
+interface ExtractedElement {
+  type: string;
+  name: string;
+  content: string;
+  relationships?: Array<{
+    target: string;
+    type: string;
+  }>;
+}
+
+interface ExtractedData {
+  chunks: ExtractedElement[][];
+}
+
 // Twine import prompts
 export const TWINE_DATA_EXTRACTION_PROMPT = `
 
@@ -611,29 +625,14 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   return JSON.parse(response);
 };
 
-export const generateNodesFromTwine = async (
+export const extractDataFromTwine = async (
   content: string,
-  nodes: Node[],
-  mode: 'new_game' | 'merge_story',
   dataExtractionInstructions?: string,
-  nodeGenerationInstructions?: string,
   extractionCount: number = 1
 ) => {
-  console.log('LLM Call: Generating nodes from Twine content in mode:', mode);
+  console.log('LLM Call: Extracting data from Twine content');
   
-  const nodesDescription = nodes.reduce((acc, node) => {
-    return acc + `
-    id: ${node.id}
-    name: ${node.name}
-    longDescription: ${node.longDescription}
-    rules: ${node.rules}
-    type: ${node.type}
-    child: ${node.child}
-    parent: ${node.parent}
-    `;
-  }, "");
-
-  // Step 1: Split content into chunks and perform parallel data extraction
+  // Split content into chunks and perform parallel data extraction
   const totalLength = content.length;
   const chunkSize = Math.ceil(totalLength / extractionCount);
   const chunks: string[] = [];
@@ -667,14 +666,36 @@ export const generateNodesFromTwine = async (
     })
   };
 
-  // Step 2: Node Generation
+  return combinedExtractedData;
+};
+
+export const generateNodesFromExtractedData = async (
+  extractedData: ExtractedData,
+  nodes: Node[],
+  mode: 'new_game' | 'merge_story',
+  nodeGenerationInstructions?: string
+) => {
+  console.log('LLM Call: Generating nodes from extracted data in mode:', mode);
+  
+  const nodesDescription = nodes.reduce((acc, node) => {
+    return acc + `
+    id: ${node.id}
+    name: ${node.name}
+    longDescription: ${node.longDescription}
+    rules: ${node.rules}
+    type: ${node.type}
+    child: ${node.child}
+    parent: ${node.parent}
+    `;
+  }, "");
+
   const generationPromptTemplate = mode === 'new_game' ? 
     TWINE_NODE_GENERATION_PROMPT_NEW_GAME : 
     TWINE_NODE_GENERATION_PROMPT_MERGE;
 
   const generationPrompt = generationPromptTemplate
     .replace('[Additional Instructions will be inserted here]', nodeGenerationInstructions || '')
-    .replace('[Extracted data will be inserted here]', JSON.stringify(combinedExtractedData, null, 2))
+    .replace('[Extracted data will be inserted here]', JSON.stringify(extractedData, null, 2))
     .replace('[Nodes description will be inserted here]', nodesDescription);
 
   const generationMessages: Message[] = [
@@ -737,6 +758,19 @@ export const generateNodesFromTwine = async (
     console.error('Response content:', response);
     throw new Error('Failed to parse Twine import response as JSON. Please ensure the response is properly formatted.');
   }
+};
+
+// Keep the original function for backward compatibility, but make it use the new split functions
+export const generateNodesFromTwine = async (
+  content: string,
+  nodes: Node[],
+  mode: 'new_game' | 'merge_story',
+  dataExtractionInstructions?: string,
+  nodeGenerationInstructions?: string,
+  extractionCount: number = 1
+) => {
+  const extractedData = await extractDataFromTwine(content, dataExtractionInstructions, extractionCount);
+  return generateNodesFromExtractedData(extractedData, nodes, mode, nodeGenerationInstructions);
 };
 
 /**

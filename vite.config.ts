@@ -1,8 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import yaml from '@rollup/plugin-yaml';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    yaml()
+  ],
   define: {
     'import.meta.env': {
       VITE_LLM_API: process.env.VITE_LLM_API,
@@ -13,6 +17,11 @@ export default defineConfig({
       VITE_OPENROUTER_IMAGE_MODEL: process.env.VITE_OPENROUTER_IMAGE_MODEL,
       VITE_LLM_HOST: process.env.VITE_LLM_HOST,
       VITE_IMG_HOST: process.env.VITE_IMG_HOST
+    }
+  },
+  resolve: {
+    alias: {
+      '@': '/src'
     }
   }
 });

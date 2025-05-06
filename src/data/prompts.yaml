@@ -1,0 +1,51 @@
+prompts:
+  - name: "Default"
+    description: "Standard prompt for general game design"
+    data_extraction: |
+      Extract the following information from the provided text:
+      1. Main story elements and plot points
+      2. Character descriptions and relationships
+      3. Key locations and settings
+      4. Important items or objects
+      5. Game mechanics or rules mentioned
+    node_generation: |
+      Create a Twine story structure based on the extracted information:
+      1. Create a main story node
+      2. Add character introduction nodes
+      3. Create location-based nodes
+      4. Add item interaction nodes
+      5. Implement branching paths based on story elements
+
+  - name: "Adventure Game"
+    description: "Optimized for adventure and exploration games"
+    data_extraction: |
+      Extract the following information from the provided text:
+      1. Main quest or mission objectives
+      2. Character abilities and skills
+      3. Exploration areas and secrets
+      4. Inventory items and their uses
+      5. Puzzle elements and solutions
+    node_generation: |
+      Create a Twine adventure game structure:
+      1. Create a hub world node
+      2. Add quest/mission nodes
+      3. Create exploration area nodes
+      4. Add inventory management nodes
+      5. Implement puzzle and solution paths
+
+  - name: "Visual Novel"
+    description: "Designed for character-driven visual novel style games"
+    data_extraction: |
+      Extract the following information from the provided text:
+      1. Character personalities and backgrounds
+      2. Dialogue and conversation paths
+      3. Relationship dynamics
+      4. Emotional beats and story arcs
+      5. Choice points and consequences
+    node_generation: |
+      Create a Twine visual novel structure:
+      1. Create character introduction nodes
+      2. Add dialogue sequence nodes
+      3. Create relationship development paths
+      4. Add choice and consequence nodes
+      5. Implement multiple ending paths 

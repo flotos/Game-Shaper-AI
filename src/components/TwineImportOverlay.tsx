@@ -1,6 +1,43 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Node } from '../models/Node';
-import { generateNodesFromTwine, TWINE_DATA_EXTRACTION_PROMPT, TWINE_NODE_GENERATION_PROMPT_NEW_GAME, TWINE_NODE_GENERATION_PROMPT_MERGE } from '../services/LLMService';
+import { extractDataFromTwine, generateNodesFromExtractedData, TWINE_DATA_EXTRACTION_PROMPT, TWINE_NODE_GENERATION_PROMPT_NEW_GAME, TWINE_NODE_GENERATION_PROMPT_MERGE } from '../services/LLMService';
+import { Message } from '../context/ChatContext';
+import { PromptSelector } from './PromptSelector';
+
+// Throttle hook
+function useThrottle<T>(value: T, delay: number): T {
+  const [throttledValue, setThrottledValue] = useState<T>(value);
+  const lastRun = useRef(Date.now());
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (Date.now() - lastRun.current >= delay) {
+        setThrottledValue(value);
+        lastRun.current = Date.now();
+      }
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return throttledValue;
+}
+
+interface ExtractedElement {
+  type: string;
+  name: string;
+  content: string;
+  relationships?: Array<{
+    target: string;
+    type: string;
+  }>;
+}
+
+interface ExtractedData {
+  chunks: ExtractedElement[][];
+}
 
 interface TagStats {
   [key: string]: number;
@@ -8,6 +45,7 @@ interface TagStats {
 
 interface PreviewState {
   showPreview: boolean;
+  step: 'extraction' | 'generation' | 'preview';
   changes?: {
     merge?: Partial<Node>[];
     delete?: string[];
@@ -15,6 +53,7 @@ interface PreviewState {
   };
   originalNodes: Node[];
   content?: string;
+  extractedData?: ExtractedData;
 }
 
 interface TwineImportOverlayProps {
@@ -125,11 +164,13 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   const [importMode, setImportMode] = useState<'new_game' | 'merge_story'>('new_game');
   const [useAggressiveTrim, setUseAggressiveTrim] = useState(false);
   const [trimPercentage, setTrimPercentage] = useState(0);
+  const throttledTrimPercentage = useThrottle(trimPercentage, 200); // 200ms throttle
   const [extractionCount, setExtractionCount] = useState(1);
   const [nextPromptInstructions, setNextPromptInstructions] = useState('');
   const [secondPromptInstructions, setSecondPromptInstructions] = useState('');
   const [preview, setPreview] = useState<PreviewState>({
     showPreview: false,
+    step: 'extraction',
     originalNodes: nodes
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -148,12 +189,12 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   };
 
   // Function to process content with basic cleaning
-  const processBasicContent = (content: string) => {
+  const processBasicContent = (content: string, trimPercent: number = trimPercentage) => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(content, 'text/html');
     const passages = Array.from(doc.querySelectorAll('tw-passagedata'));
     
-    return passages.map(passage => {
+    let processedContent = passages.map(passage => {
       const name = passage.getAttribute('name') || 'Untitled';
       let text = passage.textContent || '';
       
@@ -166,6 +207,20 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
 
       return `[${name}]\n${text}\n`;
     }).join('\n');
+
+    // Apply middle trimming to the final combined string
+    if (trimPercent > 0) {
+      const lines = processedContent.split('\n');
+      const totalLines = lines.length;
+      const linesToRemove = Math.floor(totalLines * (trimPercent / 100));
+      const startIndex = Math.floor((totalLines - linesToRemove) / 2);
+      const trimmedLines = lines.filter((_, index) => 
+        index < startIndex || index >= startIndex + linesToRemove
+      );
+      return trimmedLines.join('\n');
+    }
+
+    return processedContent;
   };
 
   // Function to process content with aggressive cleaning
@@ -367,11 +422,22 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   // Update content when trim percentage changes
   useEffect(() => {
     if (rawContent) {
-      const newAggressiveContent = processAggressiveContent(rawContent, trimPercentage);
+      const newBasicContent = processBasicContent(rawContent, throttledTrimPercentage);
+      const newAggressiveContent = processAggressiveContent(rawContent, throttledTrimPercentage);
+      setBasicContent(newBasicContent);
       setAggressiveContent(newAggressiveContent);
-      setSelectedContent(useAggressiveTrim ? newAggressiveContent : basicContent);
+      
+      // Update selectedContent based on which type is currently selected
+      if (selectedContent === basicContent) {
+        setSelectedContent(newBasicContent);
+      } else if (selectedContent === aggressiveContent) {
+        setSelectedContent(newAggressiveContent);
+      } else {
+        // If no content is selected yet, default to basic
+        setSelectedContent(newBasicContent);
+      }
     }
-  }, [trimPercentage, rawContent, useAggressiveTrim, basicContent]);
+  }, [throttledTrimPercentage, rawContent, basicContent, aggressiveContent, selectedContent]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -480,29 +546,58 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     );
   };
 
-  const handleNext = async () => {
+  const handleExtractData = async () => {
     if (!selectedContent) return;
     
     setIsLoading(true);
     setError('');
     
     try {
-      const nodeResponse = await generateNodesFromTwine(
+      const extractedData = await extractDataFromTwine(
         selectedContent,
-        nodes,
-        importMode,
         nextPromptInstructions,
-        secondPromptInstructions,
         extractionCount
       );
+
       setPreview({
         showPreview: true,
-        changes: nodeResponse,
+        step: 'generation',
         originalNodes: nodes,
-        content: selectedContent
+        content: selectedContent,
+        extractedData: extractedData
       });
     } catch (err) {
-      setError('Failed to process the Twine content. Please try again.');
+      setError('Failed to extract data. Please try again.');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGenerateNodes = async () => {
+    if (!preview.extractedData) {
+      setError('Please extract data first before generating nodes.');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const nodeResponse = await generateNodesFromExtractedData(
+        preview.extractedData,
+        nodes,
+        importMode,
+        secondPromptInstructions
+      );
+
+      setPreview(prev => ({
+        ...prev,
+        step: 'preview',
+        changes: nodeResponse
+      }));
+    } catch (err) {
+      setError('Failed to generate nodes. Please try again.');
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -533,274 +628,110 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     }
   };
 
-  if (preview.showPreview && preview.changes) {
-    return (
-      <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
-        <div className="bg-slate-900 p-6 rounded shadow-md w-5/6 max-w-[100vw] max-h-[95vh] overflow-y-auto">
-          <h2 className="text-xl mb-4 text-white">Preview Changes</h2>
-          
-          {preview.content && (
-            <div className="mb-4 p-4 bg-gray-800 rounded">
-              <h3 className="text-sm font-semibold mb-2 text-gray-300">Twine Content:</h3>
-              <div 
-                className="w-full p-2 bg-gray-700 rounded text-white whitespace-pre-wrap overflow-y-auto"
-                style={{ maxHeight: '200px' }}
-              >
-                {preview.content}
-              </div>
-            </div>
-          )}
-          
-          {preview.changes.delete && preview.changes.delete.length > 0 && (
-            <div className="mb-4 p-4 bg-red-900/50 rounded">
-              <h3 className="text-lg font-bold mb-2">Nodes to be deleted:</h3>
-              <ul className="list-disc list-inside">
-                {preview.changes.delete.map(id => {
-                  const node = preview.originalNodes.find(n => n.id === id);
-                  return <li key={id}>{node?.name || id}</li>;
-                })}
-              </ul>
-            </div>
-          )}
-
-          {preview.changes.merge && preview.changes.merge.map(updatedNode => {
-            const originalNode = preview.originalNodes.find(n => n.id === updatedNode.id) || null;
-            return renderNodeComparison(originalNode, updatedNode);
-          })}
-
-          <div className="flex justify-end space-x-4 mt-4">
-            <button
-              onClick={() => setPreview({ showPreview: false, originalNodes: nodes })}
-              className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
-            >
-              Back
-            </button>
-            <button
-              onClick={handleConfirm}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const handlePromptSelect = (dataExtraction: string, nodeGeneration: string) => {
+    setNextPromptInstructions(dataExtraction);
+    setSecondPromptInstructions(nodeGeneration);
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-slate-900 p-6 rounded shadow-md w-[98%] h-[96vh] max-h-[96vh] overflow-y-auto">
-        <h2 className="text-xl mb-4 text-white">Import Twine Game</h2>
-        
-        <div className="mb-4">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Upload Twine HTML File
+      <div className="bg-gray-800 p-6 rounded-lg w-3/4 max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Import Twine Story</h2>
+          <button onClick={closeOverlay} className="text-gray-400 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
+        </div>
+
+        {/* File Upload Section */}
+        <div className="mb-6">
           <input
             type="file"
-            accept=".html"
             ref={fileInputRef}
             onChange={handleFileUpload}
+            accept=".html,.twee"
             className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+          >
+            Upload Twine File
+          </button>
+        </div>
+
+        {/* Content Display Section */}
+        {rawContent && (
+          <div className="mb-6">
+            <div className="flex space-x-4 mb-4">
+              <button
+                onClick={() => setSelectedContent(basicContent)}
+                className={`px-4 py-2 rounded ${selectedContent === basicContent ? 'bg-blue-600' : 'bg-gray-700'}`}
+              >
+                Basic Clean
+              </button>
+              <button
+                onClick={() => setSelectedContent(aggressiveContent)}
+                className={`px-4 py-2 rounded ${selectedContent === aggressiveContent ? 'bg-blue-600' : 'bg-gray-700'}`}
+              >
+                Aggressive Clean
+              </button>
+            </div>
+            <textarea
+              value={selectedContent}
+              readOnly
+              className="w-full h-64 p-2 bg-gray-700 text-white rounded"
+              placeholder="Processed content will appear here..."
+            />
+          </div>
+        )}
+
+        {/* Import Mode Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-2">Import Mode</label>
+          <div className="flex space-x-4">
+            <button
+              onClick={() => setImportMode('new_game')}
+              className={`px-4 py-2 rounded ${importMode === 'new_game' ? 'bg-blue-600' : 'bg-gray-700'}`}
+            >
+              New Game
+            </button>
+            <button
+              onClick={() => setImportMode('merge_story')}
+              className={`px-4 py-2 rounded ${importMode === 'merge_story' ? 'bg-blue-600' : 'bg-gray-700'}`}
+            >
+              Merge with Existing
+            </button>
+          </div>
+        </div>
+
+        {/* Trim Percentage Slider */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-2">
+            Content Trim: {trimPercentage}%
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="95"
+            value={trimPercentage}
+            onChange={(e) => setTrimPercentage(Number(e.target.value))}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
           />
         </div>
 
-        {rawContent && (
-          <div className="mb-4">
-            <h3 className="text-lg mb-2 text-white">Import Mode (Always use your currently loaded nodes as examples)</h3>
-            <div className="flex space-x-4 mb-4">
-              <label className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  value="new_game"
-                  checked={importMode === 'new_game'}
-                  onChange={(e) => setImportMode(e.target.value as 'new_game' | 'merge_story')}
-                  className="form-radio text-blue-600"
-                />
-                <span className="text-white">Create New Game</span>
-              </label>
-              <label className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  value="merge_story"
-                  checked={importMode === 'merge_story'}
-                  onChange={(e) => setImportMode(e.target.value as 'new_game' | 'merge_story')}
-                  className="form-radio text-blue-600"
-                />
-                <span className="text-white">Merge with Existing Nodes</span>
-              </label>
-            </div>
-
-            <div className="mb-4">
-              <div className="flex items-center mb-2">
-                <label className="text-white block">
-                  Instructions for Data Extraction (First Prompt):
-                </label>
-                <div className="relative ml-2">
-                  <button
-                    className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
-                    onMouseEnter={(e) => {
-                      const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                      if (tooltip) tooltip.style.display = 'block';
-                    }}
-                    onMouseLeave={(e) => {
-                      const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                      if (tooltip) tooltip.style.display = 'none';
-                    }}
-                  >
-                    View Prompt
-                  </button>
-                  <div className="hidden absolute z-50 w-[600px] left-0 mt-2 p-4 bg-gray-800 border border-gray-600 rounded shadow-lg max-w-[90vw]">
-                    <pre className="whitespace-pre-wrap text-xs text-white font-mono">
-                      {TWINE_DATA_EXTRACTION_PROMPT}
-                    </pre>
-                  </div>
-                </div>
-              </div>
-              <textarea
-                value={nextPromptInstructions}
-                onChange={(e) => setNextPromptInstructions(e.target.value)}
-                className="w-full p-2 border border-gray-700 rounded bg-gray-900 text-white"
-                placeholder="Enter specific instructions for how to extract and structure data from the Twine story..."
-                rows={3}
-              />
-            </div>
-
-            <div className="mb-4">
-              <div className="flex items-center mb-2">
-                <label className="text-white block">
-                  Instructions for Node Generation (Second Prompt):
-                </label>
-                <div className="relative ml-2">
-                  <button
-                    className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
-                    onMouseEnter={(e) => {
-                      const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                      if (tooltip) tooltip.style.display = 'block';
-                    }}
-                    onMouseLeave={(e) => {
-                      const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
-                      if (tooltip) tooltip.style.display = 'none';
-                    }}
-                  >
-                    View Prompt
-                  </button>
-                  <div className="hidden absolute z-50 w-[600px] left-0 mt-2 p-4 bg-gray-800 border border-gray-600 rounded shadow-lg max-w-[90vw]">
-                    <pre className="whitespace-pre-wrap text-xs text-white font-mono">
-                      {importMode === 'new_game' ? TWINE_NODE_GENERATION_PROMPT_NEW_GAME : TWINE_NODE_GENERATION_PROMPT_MERGE}
-                    </pre>
-                  </div>
-                </div>
-              </div>
-              <textarea
-                value={secondPromptInstructions}
-                onChange={(e) => setSecondPromptInstructions(e.target.value)}
-                className="w-full p-2 border border-gray-700 rounded bg-gray-900 text-white"
-                placeholder="Enter specific instructions for how to generate game nodes from the extracted data..."
-                rows={3}
-              />
-            </div>
-
-            <div className="flex items-center space-x-2 mb-4">
-              <input
-                type="checkbox"
-                id="useAggressiveTrim"
-                checked={useAggressiveTrim}
-                onChange={(e) => setUseAggressiveTrim(e.target.checked)}
-                className="form-checkbox h-5 w-5 text-blue-600"
-              />
-              <label htmlFor="useAggressiveTrim" className="text-white">
-                Use Aggressive Content Trimming
-              </label>
-            </div>
-
-            <div className="mb-4">
-              <label className="text-white block mb-2">
-                Middle Content Trim: {trimPercentage}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="95"
-                value={trimPercentage}
-                onChange={(e) => setTrimPercentage(Number(e.target.value))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-          </div>
-        )}
-
-        {rawContent && (
-          <div className="mb-4">
-            <h3 className="text-lg mb-2 text-white">Content Preview:</h3>
-            <div className="flex space-x-4">
-              <div className="flex-1">
-                <h4 className="text-sm text-gray-400 mb-2">
-                  Basic Content Extraction
-                  <span className="ml-2 text-blue-400">
-                    ({basicContent.length} characters)
-                  </span>
-                </h4>
-                <textarea
-                  value={basicContent}
-                  readOnly
-                  className="w-full h-[750px] p-2 border border-gray-700 rounded bg-gray-900 text-white font-mono text-sm"
-                />
-              </div>
-              <div className="flex flex-col items-center justify-center px-4">
-                <div className="text-sm text-gray-400">
-                  {basicContent.length > 0 && (
-                    <span className={`${aggressiveContent.length < basicContent.length ? 'text-red-400' : 'text-green-400'}`}>
-                      {Math.round((1 - aggressiveContent.length / basicContent.length) * 100)}% reduction
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex-1">
-                <h4 className="text-sm text-gray-400 mb-2">
-                  Aggressive Content Extraction
-                  <span className="ml-2 text-blue-400">
-                    ({aggressiveContent.length} characters)
-                  </span>
-                </h4>
-                <textarea
-                  value={aggressiveContent}
-                  readOnly
-                  className="w-full h-[750px] p-2 border border-gray-700 rounded bg-gray-900 text-white font-mono text-sm"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {Object.keys(tagStats).length > 0 && (
-          <div className="mb-4 p-4 bg-gray-800 rounded">
-            <h3 className="text-lg mb-2 text-white">Tag Statistics:</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(tagStats)
-                .sort(([, a], [, b]) => b - a)
-                .map(([tag, count]) => (
-                  <div key={tag} className="flex justify-between text-sm">
-                    <span className="text-gray-300">{tag}:</span>
-                    <span className="text-blue-400">{count}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
-
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-
-        <div className="mb-4">
-          <label className="text-white block mb-2">
-            Number of Parallel Extractions: {extractionCount}
-            <span className="ml-2 text-blue-400">
-              ({Math.ceil((useAggressiveTrim ? aggressiveContent.length : basicContent.length) / extractionCount)} characters per extraction)
+        {/* Character Count and Chunk Splitting */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-2">
+            <label className="text-sm font-medium">
+              Number of Parallel Extractions: {extractionCount}
+            </label>
+            <span className="text-sm text-blue-400">
+              ({Math.ceil(selectedContent.length / extractionCount)} characters per extraction)
             </span>
-          </label>
+          </div>
           <input
             type="range"
             min="1"
@@ -811,21 +742,113 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
           />
         </div>
 
-        <div className="flex justify-end space-x-4 sticky bottom-0 bg-slate-900 pt-4">
+        {/* Prompt Selector */}
+        <div className="mb-6">
+          <PromptSelector onPromptSelect={handlePromptSelect} />
+        </div>
+
+        {/* Prompt Instructions */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-2">Instructions for Data Extraction (First Prompt)</label>
+          <textarea
+            value={nextPromptInstructions}
+            onChange={(e) => setNextPromptInstructions(e.target.value)}
+            className="w-full h-32 p-2 bg-gray-700 text-white rounded"
+            placeholder="Enter instructions for data extraction..."
+          />
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-2">Instructions for Node Generation (Second Prompt)</label>
+          <textarea
+            value={secondPromptInstructions}
+            onChange={(e) => setSecondPromptInstructions(e.target.value)}
+            className="w-full h-32 p-2 bg-gray-700 text-white rounded"
+            placeholder="Enter instructions for node generation..."
+          />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex justify-end space-x-4">
           <button
             onClick={closeOverlay}
-            className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
           >
             Cancel
           </button>
-          <button
-            onClick={handleNext}
-            disabled={!selectedContent || isLoading}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Processing...' : 'Next'}
-          </button>
+          {preview.step === 'extraction' && (
+            <button
+              onClick={handleExtractData}
+              disabled={isLoading || !selectedContent}
+              className={`px-4 py-2 rounded ${isLoading || !selectedContent ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+            >
+              {isLoading ? 'Extracting...' : 'Extract Data'}
+            </button>
+          )}
+          {preview.step === 'generation' && (
+            <button
+              onClick={handleGenerateNodes}
+              disabled={isLoading}
+              className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+            >
+              {isLoading ? 'Generating...' : 'Generate Nodes'}
+            </button>
+          )}
+          {preview.step === 'preview' && (
+            <button
+              onClick={handleConfirm}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded"
+            >
+              Confirm
+            </button>
+          )}
         </div>
+
+        {/* Preview Section */}
+        {preview.showPreview && (
+          <div className="mt-6">
+            <h3 className="text-lg font-bold mb-4">
+              {preview.step === 'generation' ? 'Extracted Data Preview' : 
+               preview.step === 'preview' ? 'Generated Nodes Preview' : ''}
+            </h3>
+            {preview.step === 'generation' && preview.extractedData && (
+              <div className="bg-gray-700 p-4 rounded">
+                <pre className="text-white whitespace-pre-wrap">
+                  {JSON.stringify(preview.extractedData, null, 2)}
+                </pre>
+              </div>
+            )}
+            {preview.step === 'preview' && preview.changes && (
+              <div className="space-y-4">
+                {preview.changes.merge?.map((node, index) => (
+                  <div key={index}>
+                    {renderNodeComparison(
+                      nodes.find(n => n.id === node.id) || null,
+                      node
+                    )}
+                  </div>
+                ))}
+                {preview.changes.newNodes?.map((nodeId, index) => (
+                  <div key={index} className="p-4 bg-gray-700 rounded">
+                    <h4 className="text-lg font-bold">New Node: {nodeId}</h4>
+                  </div>
+                ))}
+                {preview.changes.delete?.map((nodeId, index) => (
+                  <div key={index} className="p-4 bg-red-900 rounded">
+                    <h4 className="text-lg font-bold">Node to Delete: {nodeId}</h4>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <div className="mt-4 p-4 bg-red-900 text-white rounded">
+            {error}
+          </div>
+        )}
       </div>
     </div>
   );
