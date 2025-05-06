@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Node } from '../models/Node';
-import { generateNodesFromTwine } from '../services/LLMService';
+import { generateNodesFromTwine, TWINE_DATA_EXTRACTION_PROMPT, TWINE_NODE_GENERATION_PROMPT_NEW_GAME, TWINE_NODE_GENERATION_PROMPT_MERGE } from '../services/LLMService';
 
 interface TagStats {
   [key: string]: number;
@@ -27,6 +27,8 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   const [importMode, setImportMode] = useState<'new_game' | 'merge_story'>('new_game');
   const [useAggressiveTrim, setUseAggressiveTrim] = useState(false);
   const [trimPercentage, setTrimPercentage] = useState(0);
+  const [nextPromptInstructions, setNextPromptInstructions] = useState('');
+  const [secondPromptInstructions, setSecondPromptInstructions] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const analyzeTags = (content: string): TagStats => {
@@ -179,7 +181,13 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     setError('');
     
     try {
-      const nodeResponse = await generateNodesFromTwine(selectedContent, nodes, importMode);
+      const nodeResponse = await generateNodesFromTwine(
+        selectedContent,
+        nodes,
+        importMode,
+        nextPromptInstructions,
+        secondPromptInstructions
+      );
       await updateGraph(nodeResponse);
       closeOverlay();
     } catch (err) {
@@ -235,6 +243,76 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                 />
                 <span className="text-white">Merge with Existing Nodes</span>
               </label>
+            </div>
+
+            <div className="mb-4">
+              <div className="flex items-center mb-2">
+                <label className="text-white block">
+                  Instructions for Data Extraction (First Prompt):
+                </label>
+                <div className="relative ml-2">
+                  <button
+                    className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
+                    onMouseEnter={(e) => {
+                      const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (tooltip) tooltip.style.display = 'block';
+                    }}
+                    onMouseLeave={(e) => {
+                      const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (tooltip) tooltip.style.display = 'none';
+                    }}
+                  >
+                    View Prompt
+                  </button>
+                  <div className="hidden absolute z-50 w-[600px] left-0 mt-2 p-4 bg-gray-800 border border-gray-600 rounded shadow-lg max-w-[90vw]">
+                    <pre className="whitespace-pre-wrap text-xs text-white font-mono">
+                      {TWINE_DATA_EXTRACTION_PROMPT}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+              <textarea
+                value={nextPromptInstructions}
+                onChange={(e) => setNextPromptInstructions(e.target.value)}
+                className="w-full p-2 border border-gray-700 rounded bg-gray-900 text-white"
+                placeholder="Enter specific instructions for how to extract and structure data from the Twine story..."
+                rows={3}
+              />
+            </div>
+
+            <div className="mb-4">
+              <div className="flex items-center mb-2">
+                <label className="text-white block">
+                  Instructions for Node Generation (Second Prompt):
+                </label>
+                <div className="relative ml-2">
+                  <button
+                    className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
+                    onMouseEnter={(e) => {
+                      const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (tooltip) tooltip.style.display = 'block';
+                    }}
+                    onMouseLeave={(e) => {
+                      const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                      if (tooltip) tooltip.style.display = 'none';
+                    }}
+                  >
+                    View Prompt
+                  </button>
+                  <div className="hidden absolute z-50 w-[600px] left-0 mt-2 p-4 bg-gray-800 border border-gray-600 rounded shadow-lg max-w-[90vw]">
+                    <pre className="whitespace-pre-wrap text-xs text-white font-mono">
+                      {importMode === 'new_game' ? TWINE_NODE_GENERATION_PROMPT_NEW_GAME : TWINE_NODE_GENERATION_PROMPT_MERGE}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+              <textarea
+                value={secondPromptInstructions}
+                onChange={(e) => setSecondPromptInstructions(e.target.value)}
+                className="w-full p-2 border border-gray-700 rounded bg-gray-900 text-white"
+                placeholder="Enter specific instructions for how to generate game nodes from the extracted data..."
+                rows={3}
+              />
             </div>
 
             <div className="flex items-center space-x-2 mb-4">
