@@ -3,29 +3,35 @@ import prompts from '../../prompts.json';
 import { Message } from '../context/ChatContext';
 
 // Twine import prompts
-export const TWINE_DATA_EXTRACTION_PROMPT = `You are a Game Engine. Your task is to analyze and extract structured data from a Twine story.
+export const TWINE_DATA_EXTRACTION_PROMPT = `
+
+# Instructions
+You are a Game Engine. Your task is to analyze and extract structured data from a Twine story.
   
-IMPORTANT RULES FOR DATA EXTRACTION:
+# Rules
 1. Extract key story elements, characters, locations, and events
 2. Identify relationships and connections between elements
 3. Preserve important narrative structures and branching paths
 4. Remove any technical or formatting elements not relevant to the story
 5. Structure the data in a way that can be used to generate game nodes
+6. Give two example paragraphs written in the style of the story
 
 [Additional Instructions will be inserted here]
 
-The Twine content to analyze:
----
+# Twine content
+---start of twine content---
 [Content will be inserted here]
----
+---end of twine content---
+
+# Return format
 
 Return a JSON object with the following structure:
 {
   "elements": [
     {
-      "type": "character|location|event|item|concept",
+      "type": "character|location|event|item|concept|paragraph",
       "name": "element name",
-      "description": "detailed description",
+      "content": "detailed description or content",
       "relationships": [
         {
           "target": "related element name",
@@ -36,9 +42,12 @@ Return a JSON object with the following structure:
   ]
 }`;
 
-export const TWINE_NODE_GENERATION_PROMPT_NEW_GAME = `You are a Game Engine. Using the extracted story data, create a completely new game.
-  
-IMPORTANT RULES FOR NEW GAME CREATION:
+export const TWINE_NODE_GENERATION_PROMPT_NEW_GAME = `
+
+# Instructions
+You are a Game Engine. Your task is to create a completely new game based on the extracted story data.
+
+# Rules
 1. Create a new game world based on the extracted story elements
 2. Use the existing node structure only as a template for formatting
 3. Generate a complete new set of nodes that form a coherent game world
@@ -47,15 +56,17 @@ IMPORTANT RULES FOR NEW GAME CREATION:
 
 [Additional Instructions will be inserted here]
 
-The extracted story data:
+# Extracted Story Data
 ---
 [Extracted data will be inserted here]
 ---
 
-Here are the existing nodes (for structure reference only):
+# Existing Nodes (for structure reference only)
 ---
 [Nodes description will be inserted here]
 ---
+
+# Return format
 
 Return a JSON object with the following structure:
 {
