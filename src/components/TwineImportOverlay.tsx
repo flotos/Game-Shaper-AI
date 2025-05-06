@@ -213,7 +213,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
 
         {rawContent && (
           <div className="mb-4">
-            <h3 className="text-lg mb-2 text-white">Import Mode:</h3>
+            <h3 className="text-lg mb-2 text-white">Import Mode (Always use your currently loaded nodes as examples)</h3>
             <div className="flex space-x-4 mb-4">
               <label className="flex items-center space-x-2">
                 <input
@@ -233,7 +233,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                   onChange={(e) => setImportMode(e.target.value as 'new_game' | 'merge_story')}
                   className="form-radio text-blue-600"
                 />
-                <span className="text-white">Merge with Existing Story</span>
+                <span className="text-white">Merge with Existing Nodes</span>
               </label>
             </div>
 
