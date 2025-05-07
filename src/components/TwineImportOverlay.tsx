@@ -29,10 +29,6 @@ interface ExtractedElement {
   type: string;
   name: string;
   content: string;
-  relationships?: Array<{
-    target: string;
-    type: string;
-  }>;
 }
 
 interface ExtractedData {
@@ -153,6 +149,212 @@ const calculateHeight = (text: string, isLongDescription: boolean = false, defau
   return calculatedHeight;
 };
 
+// Add Web Worker for content processing
+const createContentProcessor = () => {
+  const workerCode = `
+    self.onmessage = function(e) {
+      const { content, type, trimPercent } = e.data;
+      
+      function processContent(content, type, trimPercent) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(content, 'text/html');
+        const passages = Array.from(doc.querySelectorAll('tw-passagedata'));
+        
+        // Process passages in chunks to prevent blocking
+        const chunkSize = 10;
+        const chunks = [];
+        for (let i = 0; i < passages.length; i += chunkSize) {
+          chunks.push(passages.slice(i, i + chunkSize));
+        }
+        
+        let processedContent = '';
+        
+        function processChunk(chunk, index) {
+          const processedChunk = chunk.map(passage => {
+            const name = passage.getAttribute('name') || 'Untitled';
+            let text = passage.textContent || '';
+            
+            if (type === 'aggressive') {
+              // Skip script files and JavaScript content
+              if (name.toLowerCase().endsWith('.js') || 
+                  name.toLowerCase().includes('script') ||
+                  text.trim().startsWith('(()') ||
+                  text.trim().startsWith('function') ||
+                  text.trim().startsWith('const') ||
+                  text.trim().startsWith('let') ||
+                  text.trim().startsWith('var') ||
+                  text.trim().startsWith('/*') ||
+                  text.trim().startsWith('//')) {
+                return '';
+              }
+              
+              // Combine all regex patterns into a single pass
+              const patterns = [
+                /\[Macros\][\s\S]*?(?=\n\n|$)/g,
+                /\([^)]*\)/g,
+                /\)+/g,
+                /\(+/g,
+                /\s+/g,
+                /<[^>]+>/g,
+                /<<[^>]+>>/g,
+                /\[img\[[^\]]+\]\[[^\]]+\]\]/g,
+                /\[\[[^\]]+\]\]/g,
+                /<style[^>]*>[\s\S]*?<\/style>/g,
+                /<script[^>]*>[\s\S]*?<\/script>/g,
+                /&[^;]+;/g,
+                /^>\s*/g,
+                />/g,
+                /</g,
+                /[\[\]]/g
+              ];
+              
+              // Apply all patterns in a single pass
+              text = patterns.reduce((acc, pattern) => acc.replace(pattern, ''), text).trim();
+              
+              // Split into lines and filter in a single pass
+              const lines = text.split('\\n');
+              const cleanedLines = [];
+              let groupCharCount = 0;
+              let groupStartIndex = 0;
+              let shortLineCount = 0;
+              let lastLine = '';
+              
+              // Pre-compile regex patterns for line filtering
+              const skipPatterns = [
+                /^[^a-zA-Z]*passage\(\)[^a-zA-Z]*$/,
+                /^\\d+\\$$/,
+                /^[()\\d\\s,]+$/,
+                /^case \\d+SET Scene to \\d+$/,
+                /^defaultSET Scene to \\d+$/
+              ];
+              
+              // Process lines in a single pass
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Skip empty lines and lines matching skip patterns
+                if (!line || skipPatterns.some(pattern => pattern.test(line))) continue;
+                
+                // Skip lines with specific content
+                if (line === '/button' ||
+                    line.startsWith('src=') ||
+                    line.startsWith('widget') ||
+                    line.includes('layer') ||
+                    line.includes('class=') ||
+                    line.includes('img$image_dir+') ||
+                    line.startsWith('/IF') ||
+                    line.startsWith('ELSE') ||
+                    line.startsWith('SET') ||
+                    line.startsWith('/*') ||
+                    line.startsWith('//') ||
+                    line.startsWith('function') ||
+                    line.startsWith('const') ||
+                    line.startsWith('let') ||
+                    line.startsWith('var') ||
+                    line.includes('=>') ||
+                    line.includes('{') ||
+                    line.includes('}') ||
+                    line.includes(';') ||
+                    line.includes('()') ||
+                    line.includes('return')) {
+                  continue;
+                }
+                
+                // Skip repeated lines
+                if (line === lastLine) continue;
+                
+                // Process character density
+                groupCharCount += line.length;
+                if (i - groupStartIndex >= 14) {
+                  if (groupCharCount >= 250) {
+                    // Keep the lines in this group
+                    for (let j = groupStartIndex; j <= i; j++) {
+                      if (lines[j].trim()) {
+                        cleanedLines.push(lines[j].trim());
+                      }
+                    }
+                  }
+                  groupStartIndex = i + 1;
+                  groupCharCount = 0;
+                }
+                
+                // Handle short lines
+                if (line.length < 20) {
+                  shortLineCount++;
+                  if (shortLineCount >= 5) continue;
+                } else {
+                  shortLineCount = 0;
+                }
+                
+                cleanedLines.push(line);
+                lastLine = line;
+              }
+              
+              // Process the last group
+              if (lines.length - groupStartIndex > 0 && groupCharCount >= 250) {
+                for (let j = groupStartIndex; j < lines.length; j++) {
+                  if (lines[j].trim()) {
+                    cleanedLines.push(lines[j].trim());
+                  }
+                }
+              }
+              
+              return cleanedLines.length > 0 ? \`[\${name}]\\n\${cleanedLines.join('\\n')}\\n\` : '';
+            } else {
+              // Basic cleaning
+              text = text
+                .split('\\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0)
+                .join('\\n');
+              
+              return \`[\${name}]\\n\${text}\\n\`;
+            }
+          }).join('');
+          
+          processedContent += processedChunk;
+          
+          // Report progress
+          self.postMessage({
+            type: 'progress',
+            progress: Math.round((index + 1) / chunks.length * 100)
+          });
+          
+          // Process next chunk if available
+          if (index + 1 < chunks.length) {
+            setTimeout(() => processChunk(chunks[index + 1], index + 1), 0);
+          } else {
+            // Apply trimming if needed
+            if (trimPercent > 0) {
+              const lines = processedContent.split('\\n');
+              const totalLines = lines.length;
+              const linesToRemove = Math.floor(totalLines * (trimPercent / 100));
+              const startIndex = Math.floor((totalLines - linesToRemove) / 2);
+              processedContent = lines
+                .filter((_, index) => index < startIndex || index >= startIndex + linesToRemove)
+                .join('\\n');
+            }
+            
+            // Send final result
+            self.postMessage({
+              type: 'complete',
+              content: processedContent
+            });
+          }
+        }
+        
+        // Start processing first chunk
+        processChunk(chunks[0], 0);
+      }
+      
+      processContent(content, type, trimPercent);
+    };
+  `;
+  
+  const blob = new Blob([workerCode], { type: 'application/javascript' });
+  return new Worker(URL.createObjectURL(blob));
+};
+
 const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGraph, closeOverlay }) => {
   const [rawContent, setRawContent] = useState('');
   const [basicContent, setBasicContent] = useState('');
@@ -174,6 +376,52 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     originalNodes: nodes
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const workerRef = useRef<Worker | null>(null);
+  const [isContentTruncated, setIsContentTruncated] = useState(false);
+  const [isContentTrimmed, setIsContentTrimmed] = useState(false);
+  const [trimmedLinesCount, setTrimmedLinesCount] = useState(0);
+  const MAX_PREVIEW_LENGTH = 1000000; // 1 million characters
+  const MAX_CONTENT_LENGTH = 1000000; // 1 million characters
+  const [extractionProgress, setExtractionProgress] = useState(0);
+
+  // Initialize worker
+  useEffect(() => {
+    workerRef.current = createContentProcessor();
+    
+    workerRef.current.onmessage = (e) => {
+      const { type, content, progress } = e.data;
+      
+      if (type === 'progress') {
+        setProcessingProgress(progress);
+      } else if (type === 'complete') {
+        if (useAggressiveTrim) {
+          setAggressiveContent(content);
+          setSelectedContent(content);
+        } else {
+          setBasicContent(content);
+          setSelectedContent(content);
+        }
+        setProcessingProgress(0);
+      }
+    };
+    
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
+
+  // Update content processing when trim percentage changes
+  useEffect(() => {
+    if (rawContent && workerRef.current) {
+      setProcessingProgress(0);
+      workerRef.current.postMessage({
+        content: rawContent,
+        type: useAggressiveTrim ? 'aggressive' : 'basic',
+        trimPercent: throttledTrimPercentage
+      });
+    }
+  }, [throttledTrimPercentage, rawContent, useAggressiveTrim]);
 
   const analyzeTags = (content: string): TagStats => {
     const stats: TagStats = {};
@@ -439,6 +687,52 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     }
   }, [throttledTrimPercentage, rawContent, basicContent, aggressiveContent, selectedContent]);
 
+  // Add helper function to truncate content
+  const truncateContent = (content: string): string => {
+    if (content.length > MAX_PREVIEW_LENGTH) {
+      setIsContentTruncated(true);
+      return content.substring(0, MAX_PREVIEW_LENGTH) + '\n\n[Content truncated due to size...]';
+    }
+    setIsContentTruncated(false);
+    return content;
+  };
+
+  // Add helper function to automatically trim content
+  const autoTrimContent = (content: string): string => {
+    if (content.length <= MAX_CONTENT_LENGTH) {
+      setIsContentTrimmed(false);
+      setTrimmedLinesCount(0);
+      return content;
+    }
+
+    // Calculate how much to remove
+    const excessLength = content.length - MAX_CONTENT_LENGTH;
+    const removeFromEachSide = Math.floor(excessLength / 2);
+
+    // Split content into lines
+    const lines = content.split('\n');
+    const totalLines = lines.length;
+    
+    // Calculate how many lines to remove from each side
+    const linesToRemove = Math.floor(removeFromEachSide / (content.length / totalLines));
+    const removeFromStart = Math.floor(linesToRemove / 2);
+    const removeFromEnd = linesToRemove - removeFromStart;
+
+    // Set state for trimmed content
+    setIsContentTrimmed(true);
+    setTrimmedLinesCount(linesToRemove);
+
+    // Remove lines from middle
+    const trimmedLines = [
+      ...lines.slice(0, removeFromStart),
+      `\n[Content trimmed: ${linesToRemove} lines removed from middle]\n`,
+      ...lines.slice(-removeFromEnd)
+    ];
+
+    return trimmedLines.join('\n');
+  };
+
+  // Update the handleFileUpload function
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -447,10 +741,45 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        setRawContent(content);
-        setBasicContent(processBasicContent(content));
-        setAggressiveContent(processAggressiveContent(content));
-        setSelectedContent(useAggressiveTrim ? processAggressiveContent(content) : processBasicContent(content));
+        
+        // Trim the content first if it's too large
+        let trimmedContent = content;
+        if (content.length > MAX_CONTENT_LENGTH) {
+          // Calculate how much to remove
+          const excessLength = content.length - MAX_CONTENT_LENGTH;
+          const removeFromEachSide = Math.floor(excessLength / 2);
+
+          // Split content into lines
+          const lines = content.split('\n');
+          const totalLines = lines.length;
+          
+          // Calculate how many lines to remove from each side
+          const linesToRemove = Math.floor(removeFromEachSide / (content.length / totalLines));
+          const removeFromStart = Math.floor(linesToRemove / 2);
+          const removeFromEnd = linesToRemove - removeFromStart;
+
+          // Set state for trimmed content
+          setIsContentTrimmed(true);
+          setTrimmedLinesCount(linesToRemove);
+
+          // Remove lines from middle
+          trimmedContent = [
+            ...lines.slice(0, removeFromStart),
+            `\n[Content trimmed: ${linesToRemove} lines removed from middle]\n`,
+            ...lines.slice(-removeFromEnd)
+          ].join('\n');
+        } else {
+          setIsContentTrimmed(false);
+          setTrimmedLinesCount(0);
+        }
+
+        // Process only the trimmed content
+        setRawContent(trimmedContent);
+        const basicProcessed = processBasicContent(trimmedContent);
+        const aggressiveProcessed = processAggressiveContent(trimmedContent);
+        setBasicContent(basicProcessed);
+        setAggressiveContent(aggressiveProcessed);
+        setSelectedContent(useAggressiveTrim ? aggressiveProcessed : basicProcessed);
         setError('');
       } catch (err) {
         setError('Failed to parse Twine file. Please ensure it is a valid Twine HTML export.');
@@ -551,13 +880,22 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     
     setIsLoading(true);
     setError('');
+    setExtractionProgress(0);
     
     try {
       const extractedData = await extractDataFromTwine(
         selectedContent,
         nextPromptInstructions,
-        extractionCount
+        extractionCount,
+        (completed) => {
+          setExtractionProgress(completed);
+        }
       );
+
+      // If there were failed chunks, show a warning
+      if (extractedData.failedChunks > 0) {
+        setError(`Warning: ${extractedData.failedChunks} out of ${extractionCount} chunks failed to process. The extraction will continue with the successful chunks.`);
+      }
 
       setPreview({
         showPreview: true,
@@ -571,6 +909,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
       console.error(err);
     } finally {
       setIsLoading(false);
+      setExtractionProgress(0);
     }
   };
 
@@ -679,6 +1018,15 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                 Aggressive Clean
               </button>
             </div>
+            {isContentTrimmed && (
+              <div className="mb-2 p-2 bg-yellow-900 text-yellow-200 rounded">
+                <p className="text-sm">
+                  Warning: Content was too large and has been automatically trimmed. {trimmedLinesCount} lines were removed from the middle of the content to fit within the 1 million character limit.
+                  This represents approximately {Math.round((trimmedLinesCount / (trimmedLinesCount + selectedContent.split('\n').length)) * 100)}% of the original content.
+                  Only the trimmed content will be processed.
+                </p>
+              </div>
+            )}
             <textarea
               value={selectedContent}
               readOnly
@@ -729,7 +1077,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
               Number of Parallel Extractions: {extractionCount}
             </label>
             <span className="text-sm text-blue-400">
-              ({Math.ceil(selectedContent.length / extractionCount)} characters per extraction)
+              ({Math.ceil(Math.min(selectedContent.length, MAX_CONTENT_LENGTH) / extractionCount)} characters per extraction)
             </span>
           </div>
           <input
@@ -768,6 +1116,21 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
           />
         </div>
 
+        {/* Add progress indicator */}
+        {processingProgress > 0 && (
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm">Processing content: {processingProgress}%</span>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${processingProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex justify-end space-x-4">
           <button
@@ -782,7 +1145,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
               disabled={isLoading || !selectedContent}
               className={`px-4 py-2 rounded ${isLoading || !selectedContent ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
             >
-              {isLoading ? 'Extracting...' : 'Extract Data'}
+              {isLoading ? `Extracting... ${extractionProgress}/${extractionCount}` : 'Extract Data'}
             </button>
           )}
           {preview.step === 'generation' && (
@@ -808,8 +1171,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         {preview.showPreview && (
           <div className="mt-6">
             <h3 className="text-lg font-bold mb-4">
-              {preview.step === 'generation' ? 'Extracted Data Preview' : 
-               preview.step === 'preview' ? 'Generated Nodes Preview' : ''}
+              {preview.step === 'generation' ? 'Extracted Data Preview' : ''}
             </h3>
             {preview.step === 'generation' && preview.extractedData && (
               <div className="bg-gray-700 p-4 rounded">
@@ -820,6 +1182,16 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
             )}
             {preview.step === 'preview' && preview.changes && (
               <div className="space-y-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold">Generated Nodes Preview</h3>
+                  <button
+                    onClick={handleGenerateNodes}
+                    disabled={isLoading}
+                    className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+                  >
+                    {isLoading ? 'Regenerating...' : 'Regenerate Nodes'}
+                  </button>
+                </div>
                 {preview.changes.merge?.map((node, index) => (
                   <div key={index}>
                     {renderNodeComparison(
@@ -854,4 +1226,4 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   );
 };
 
-export default TwineImportOverlay; 
+export default TwineImportOverlay;

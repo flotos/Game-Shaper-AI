@@ -6,10 +6,6 @@ interface ExtractedElement {
   type: string;
   name: string;
   content: string;
-  relationships?: Array<{
-    target: string;
-    type: string;
-  }>;
 }
 
 interface ExtractedData {
@@ -24,11 +20,10 @@ You are a Game Engine. Your task is to analyze and extract structured data from 
   
 # Rules
 1. Extract key story elements, characters, locations, and events
-2. Identify relationships and connections between elements
-3. Preserve important narrative structures and branching paths
-4. Remove any technical or formatting elements not relevant to the story
-5. Structure the data in a way that can be used to generate game nodes
-6. Give two example paragraphs written in the style of the story
+2. Preserve important narrative structures and branching paths
+3. Remove any technical or formatting elements not relevant to the story
+4. Structure the data in a way that can be used to generate game nodes
+5. Give two example paragraphs written in the style of the story
 
 [Additional Instructions will be inserted here]
 
@@ -45,13 +40,7 @@ Return a JSON object with the following structure:
     {
       "type": "character|location|event|item|concept|paragraph",
       "name": "element name",
-      "content": "detailed description or content",
-      "relationships": [
-        {
-          "target": "related element name",
-          "type": "relationship type"
-        }
-      ]
+      "content": "detailed description or content"
     }
   ]
 }`;
@@ -120,7 +109,7 @@ You are a Game Engine. Your task is to merge the extracted story data into the e
 5. When using the extracted story data:
   - All the listed events are possible outcomes in the game. These are NOT memories or past events.
   - All the locations are possible encounters, but consider these have not yet been visited by the player.
-6. In the newly generated nodes, NEVER mention "added" or "updated". You should return the new node as it should be.
+6. In the newly generated nodes, NEVER mention "added", "updated" "expanded" or "new". You should return the new node as it should be, with no mention of changes.
 
 [Additional Instructions will be inserted here]
 
@@ -628,7 +617,8 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
 export const extractDataFromTwine = async (
   content: string,
   dataExtractionInstructions?: string,
-  extractionCount: number = 1
+  extractionCount: number = 1,
+  onProgress?: (completed: number) => void
 ) => {
   console.log('LLM Call: Extracting data from Twine content');
   
@@ -643,7 +633,7 @@ export const extractDataFromTwine = async (
     chunks.push(content.slice(start, end));
   }
 
-  const extractionPromises = chunks.map((chunk, index) => {
+  const processChunk = async (chunk: string, index: number, retryCount: number = 0): Promise<ExtractedElement[]> => {
     const extractionPrompt = TWINE_DATA_EXTRACTION_PROMPT
       .replace('[Additional Instructions will be inserted here]', dataExtractionInstructions || '')
       .replace('[Content will be inserted here]', chunk);
@@ -652,19 +642,52 @@ export const extractDataFromTwine = async (
       { role: 'system', content: extractionPrompt },
     ];
 
-    return getResponse(extractionMessages, 'gpt-4o', undefined, false, { type: 'json_object' });
-  });
+    try {
+      const result = await getResponse(extractionMessages, 'gpt-4o', undefined, false, { type: 'json_object' });
+      const parsedResult = typeof result === 'string' ? JSON.parse(result) : result;
+      
+      if (!parsedResult.elements || !Array.isArray(parsedResult.elements)) {
+        throw new Error('Invalid response structure: missing or invalid elements array');
+      }
 
-  // Wait for all extractions to complete
-  const extractionResults = await Promise.all(extractionPromises);
+      if (onProgress) {
+        onProgress(index + 1);
+      }
+
+      return parsedResult.elements;
+    } catch (error) {
+      console.error(`Error processing chunk ${index + 1}:`, error);
+      
+      // Retry once if we haven't already
+      if (retryCount === 0) {
+        console.log(`Retrying chunk ${index + 1}...`);
+        return processChunk(chunk, index, retryCount + 1);
+      }
+      
+      // If retry failed or we've already retried, return empty array and log the error
+      console.error(`Failed to process chunk ${index + 1} after retry:`, error);
+      return [];
+    }
+  };
+
+  // Process all chunks
+  const extractionResults = await Promise.all(
+    chunks.map((chunk, index) => processChunk(chunk, index))
+  );
+
+  // Count failed chunks
+  const failedChunks = extractionResults.filter(result => result.length === 0).length;
   
   // Combine all extracted data while maintaining chunk structure
   const combinedExtractedData = {
-    chunks: extractionResults.map(result => {
-      const parsedResult = typeof result === 'string' ? JSON.parse(result) : result;
-      return parsedResult.elements || [];
-    })
+    chunks: extractionResults,
+    failedChunks: failedChunks
   };
+
+  // If any chunks failed, log a warning
+  if (failedChunks > 0) {
+    console.warn(`${failedChunks} out of ${extractionCount} chunks failed to process. The extraction will continue with the successful chunks.`);
+  }
 
   return combinedExtractedData;
 };

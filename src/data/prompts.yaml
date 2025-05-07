@@ -1,20 +1,30 @@
 prompts:
-  - name: "Default"
-    description: "Standard prompt for general game design"
+  - name: "Expansion"
+    description: "Expand current game"
     data_extraction: |
       Extract the following information from the provided text:
-      1. Main story elements and plot points
-      2. Character descriptions and relationships
-      3. Key locations and settings
-      4. Important items or objects
-      5. Game mechanics or rules mentioned
+      1. First element should be a high-level overview of the game.
+      2. Main story elements and plot points
+      3. Character descriptions and relationships
+      4. Key locations and settings
+      5. Important items or objects
+      6. Game mechanics, systems, or rules mentioned
+      The focus should be on the systems and content, which would serve as implementing them into another game.
+      Explain how the content and systems work together.
+      The data extraction should contain a lot of information to proceed, your objective is to extract as much details as possible.
     node_generation: |
-      Create a Twine story structure based on the extracted information:
-      1. Create a main story node
-      2. Add character introduction nodes
-      3. Create location-based nodes
-      4. Add item interaction nodes
-      5. Implement branching paths based on story elements
+      You are expanding the existing game to develop a full expansion.
+      The extracted data show the concept, systems, and content that you have to include.
+      You can add new nodes, but your focus should be on:
+      - Implementing the new system found in the extracted data
+      - Add new side content by updating the currently existing nodes to make them compatible with these new concepts
+      - Add a new main content featuring the characters, object, or systems form the extracted data
+      - Ensure the new systems are properly integrated into the existing game world, but you can offer new paths which diverge from the original game
+      - Make the nodes intertwined, ensuring each node expand some part of the other systems.
+      - Is is very imported to preserve the already implemented systems, only expand on them. Focus on adding to the nodes, more than changing their whole behavior.
+      - Be creative and enhance most of the existing nodes, be it characters, objects or systems.
+
+      The end goal of this step is to ADD to the game, without removing any of the existing content.
 
   - name: "Adventure Game"
     description: "Optimized for adventure and exploration games"
