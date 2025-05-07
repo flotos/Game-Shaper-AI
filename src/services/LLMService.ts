@@ -93,20 +93,25 @@ export const TWINE_NODE_GENERATION_PROMPT_MERGE = `
 You are a Game Engine. Your task is to merge the extracted story data into the existing game world.
 
 # Rules
-1. Analyze how the extracted story elements fit with existing nodes
-2. For each existing node:
-   - Keep it if it's still relevant
-   - Update it if it needs changes to fit the new story
-   - Mark it for deletion if it's no longer relevant
-3. For new story elements:
+1. Your PRIMARY task is to UPDATE EXISTING NODES rather than create new ones
+2. For each element in the extracted data:
+   - First identify which existing node it relates to
+   - Update that node to incorporate the new content
+   - Only create a new node if there is NO existing node that could reasonably incorporate the concept
+3. When updating nodes:
+   - Preserve all existing content
+   - Add new content that expands and enhances the existing concepts
+   - Ensure new content integrates seamlessly with existing content
+   - Set updateImage to true if the visual appearance has changed significantly
+4. For new story elements that truly cannot fit in existing nodes:
    - Create new nodes with unique IDs
    - Ensure they connect properly with existing nodes
    - Set updateImage to true for physical entities
-4. Maintain consistency between old and new elements
-5. When using the extracted story data:
-  - All the listed events are possible outcomes in the game. These are NOT memories or past events.
-  - All the locations are possible encounters, but consider these have not yet been visited by the player.
-6. In the newly generated nodes, NEVER mention "added", "updated" "expanded" or "new". You should return the new node as it should be, with no mention of changes.
+5. Maintain consistency between old and new elements
+6. When using the extracted story data:
+   - All the listed events are possible outcomes in the game. These are NOT memories or past events.
+   - All the locations are possible encounters, but consider these have not yet been visited by the player.
+7. In the newly generated nodes, NEVER mention "added", "updated" "expanded" or "new". You should return the new node as it should be, with no mention of changes.
 
 [Additional Instructions will be inserted here]
 
@@ -625,7 +630,7 @@ export const extractDataFromTwine = async (
     }
   };
 
-  // Process all chunks
+  // Process all chunks in parallel
   const extractionResults = await Promise.all(
     chunks.map((chunk, index) => processChunk(chunk, index))
   );
@@ -694,7 +699,12 @@ export const generateNodesFromExtractedData = async (
       // For new game, all existing nodes will be deleted
       parsedResponse.delete = nodes.map(node => node.id);
     } else if (mode === 'merge_story') {
-      // For merge mode, ensure delete array exists
+      // For merge mode, ensure both new and update arrays exist
+      if (!parsedResponse.update || !Array.isArray(parsedResponse.update)) {
+        throw new Error('Invalid response structure: missing or invalid update array in merge mode');
+      }
+      
+      // Ensure delete array exists
       if (!parsedResponse.delete) {
         parsedResponse.delete = [];
       }

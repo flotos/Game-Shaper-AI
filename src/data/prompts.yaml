@@ -13,6 +13,7 @@ prompts:
       Explain how the content and systems work together.
       The data extraction should contain a lot of information to proceed, your objective is to extract as much details as possible.
     node_generation: |
+      ### "Expansion" Task explanation
       You are expanding the existing game to develop a full expansion.
       The extracted data show the concept, systems, and content that you have to include.
       You can add new nodes, but your focus should be on:
@@ -23,39 +24,23 @@ prompts:
       - Make the nodes intertwined, ensuring each node expand some part of the other systems.
       - Is is very imported to preserve the already implemented systems, only expand on them. Focus on adding to the nodes, more than changing their whole behavior.
       - Be creative and enhance most of the existing nodes, be it characters, objects or systems.
+      - Store in a dedicated node the writing style, as a library of example paragraphs. Store up to 10 paragraph there, but you can have fewer. If there are already 10, adjust them.
+
+      Example: When updating the "concept-transformation" node to include nanite technology,
+      take the existing description and expand it with new elements rather than creating
+      a separate "nanite-technology" node.
+
+      ### CRITICAL INSTRUCTION
+      Your primary task is to UPDATE EXISTING NODES rather than create new ones.
+      For each theme in the extracted data, identify the corresponding existing node and
+      expand its description and rules. Only create new nodes for concepts that have
+      NO OVERLAP with existing ones.
+      First, analyze which existing nodes relate to each element in the extracted data.
+      For example: 
+      - "Transformation Mechanics" data should update "concept-transformation"
+      - "Surveillance & Scanning" should update "char-watcher-unit"
+      Create new nodes ONLY IF you cannot find ANY existing node that could reasonably
+      incorporate the concept. Before creating a new node, explain why no existing node
+      could be updated instead.
 
       The end goal of this step is to ADD to the game, without removing any of the existing content.
-
-  - name: "Adventure Game"
-    description: "Optimized for adventure and exploration games"
-    data_extraction: |
-      Extract the following information from the provided text:
-      1. Main quest or mission objectives
-      2. Character abilities and skills
-      3. Exploration areas and secrets
-      4. Inventory items and their uses
-      5. Puzzle elements and solutions
-    node_generation: |
-      Create a Twine adventure game structure:
-      1. Create a hub world node
-      2. Add quest/mission nodes
-      3. Create exploration area nodes
-      4. Add inventory management nodes
-      5. Implement puzzle and solution paths
-
-  - name: "Visual Novel"
-    description: "Designed for character-driven visual novel style games"
-    data_extraction: |
-      Extract the following information from the provided text:
-      1. Character personalities and backgrounds
-      2. Dialogue and conversation paths
-      3. Relationship dynamics
-      4. Emotional beats and story arcs
-      5. Choice points and consequences
-    node_generation: |
-      Create a Twine visual novel structure:
-      1. Create character introduction nodes
-      2. Add dialogue sequence nodes
-      3. Create relationship development paths
-      4. Add choice and consequence nodes
-      5. Implement multiple ending paths 
