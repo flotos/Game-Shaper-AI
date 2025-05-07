@@ -46,7 +46,6 @@ Return a JSON object with the following structure:
 }`;
 
 export const TWINE_NODE_GENERATION_PROMPT_NEW_GAME = `
-
 # Instructions
 You are a Game Engine. Your task is to create a completely new game based on the extracted story data.
 
@@ -54,9 +53,8 @@ You are a Game Engine. Your task is to create a completely new game based on the
 1. Create a new game world based on the extracted story elements
 2. Use the existing node structure only as a template for formatting
 3. Generate a complete new set of nodes that form a coherent game world
-4. Ensure proper relationships between nodes using parent/child fields
-5. Set updateImage to true for nodes that represent physical entities
-6. When using the extracted story data:
+4. Set updateImage to true for nodes that represent physical entities
+5. When using the extracted story data:
   - All the listed events are possible outcomes in the game. These are NOT memories or past events.
   - All the locations are possible encounters, but consider these have not yet been visited by the player.
 
@@ -76,18 +74,17 @@ You are a Game Engine. Your task is to create a completely new game based on the
 
 Return a JSON object with the following structure:
 {
-  "merge": [
+  "new": [
     {
       "id": "unique-id",
       "name": "node name",
       "longDescription": "detailed description",
       "rules": "rules and internal info",
       "type": "node type",
-      "parent": "parent id",
-      "child": ["child ids"],
       "updateImage": true/false
     }
-  ]
+  ],
+  "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
 }`;
 
 export const TWINE_NODE_GENERATION_PROMPT_MERGE = `
@@ -127,15 +124,21 @@ You are a Game Engine. Your task is to merge the extracted story data into the e
 
 Return a JSON object with the following structure:
 {
-  "merge": [
+  "new": [
     {
       "id": "unique-id",
       "name": "node name",
       "longDescription": "detailed description",
       "rules": "rules and internal info",
       "type": "node type",
-      "parent": "parent id",
-      "child": ["child ids"],
+      "updateImage": true/false
+    }
+  ],
+  "update": [
+    {
+      "id": "existing-node-id",
+      "longDescription": "updated description that merges existing and new content",
+      "rules": "updated rules",
       "updateImage": true/false
     }
   ],
@@ -250,15 +253,12 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     name: ${node.name}
     rules: ${node.rules}
     type: ${node.type}
-    child: ${node.child}
-    parent: ${node.parent}
-    
     `;
   }, "");
 
   const prompt = `
     Given the following nodes from a graph, find the ones that are relevant to the user's action.
-    You should consider the nodes descriptions, and their relationships using ID in "child" and "parent" values.
+    You should consider the nodes descriptions and their content.
 
     Return a JSON object with a single field "relevantNodes" containing an array of node IDs.
     Each ID entry in the array should be enclosed in quotes.
@@ -270,15 +270,11 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     name: A playing card
     rules: The card has heavy wear and can be distinguished
     type: Card
-    child: []
-    parent: 10eg
     ---
     id: "10eg"
     name: A deck of cards
     rules: Only one card (the 10 of heart) is not mint.
     type: Object
-    child: ["98ak"]
-    parent: 121
 
     ## User message history with the narrator
     assistant: You are in a dark room and can only the one card
@@ -331,8 +327,6 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
         longDescription: ${node.longDescription}
         rules: ${node.rules}
         type: ${node.type}
-        child: ${node.child}
-        parent: ${node.parent}
         `;
     } else {
       // Original behavior for 15 or more nodes
@@ -342,8 +336,6 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
         longDescription: ${node.longDescription}
         rules: ${node.rules}${node.id in detailledNodeIds || node.type == "Game Rule" ? `\n${node.longDescription}\n` : ""}
         type: ${node.type}
-        child: ${node.child}
-        parent: ${node.parent}
         `;
     }
   }, "");
@@ -391,8 +383,6 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
       longDescription: ${node.longDescription}
       rules: ${node.rules}
       type: ${node.type}
-      child: ${node.child}
-      parent: ${node.parent}
       `;
   }, "");
 
@@ -435,8 +425,6 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
       longDescription: ${node.longDescription}
       rules: ${node.rules}
       type: ${node.type}
-      child: ${node.child}
-      parent: ${node.parent}
       `;
   }, "");
 
@@ -444,7 +432,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   ${isUserInteraction ? '/no_think' : '/think'}
   # TASK:
   Based on the following game state, narrative, and possible actions, update the game graph.
-  Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
+  Consider node content and possible actions for a coherent game state update.
 
   ## Node Properties:
   - id: Unique id string
@@ -458,8 +446,6 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
     * Game Mechanics: hidden triggers, past events impact, future developments
     * Story Generation: hints for future narrative development, character arcs, world-building opportunities
   - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
-  - parent: ID of the parent node (has to match an existing or newly created node)
-  - child: Array of child node IDs (has to match an existing or newly created node)
   - updateImage: (Optional) Set to true if the node represents a physical object, character, or location that should have a visual representation. This is particularly important for:
     * New nodes that represent physical entities (characters, items, locations)
     * Existing nodes whose visual appearance has changed significantly
@@ -470,64 +456,38 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   ## Current Game State:
   ${nodesDescription}
 
-  ## Current Narrative:
+  ## Chat History:
   ${chatText}
 
   ## Possible Actions:
-  ${JSON.stringify(actions)}
+  ${actions.join('\n')}
 
-  ## User's Last Input:
+  ## User Input:
   ${userInput}
 
-  Return a JSON object with:
+  Return a JSON object with the following structure:
   {
-    "merge": "(Array of nodes object) List of nodes to be updated or created. If a new id is specified it will create new nodes. If a node has a new behaviour, update it by specifying its id. Each node MUST include: id, name, longDescription, rules, type, parent, and child fields. Include updateImage: true for nodes that need a new image.",
-    "delete": "(Array of node id) List nodes to be removed and justify their removal. Nodes that became irrelevant for a while should be deleted.",
-    "newNodes": "(Array of node ids) List of newly created node IDs that should have their images generated. This should include all nodes in 'merge' that have new IDs not present in the current game state."
+    "merge": [
+      {
+        "id": "node-id",
+        "name": "updated name",
+        "longDescription": "updated description",
+        "rules": "updated rules",
+        "type": "updated type",
+        "updateImage": true/false
+      }
+    ],
+    "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
   }
-
-  IMPORTANT: Your response must be a valid JSON object and nothing else. Do not include any markdown formatting, code blocks, or additional text before or after the JSON object.
-  The response should start with { and end with } with no additional characters.
-  Each node in the "merge" array MUST include ALL required fields: id, name, longDescription, rules, type, parent, and child.
-  The type field is mandatory and should be one of: 'item', 'location', 'character', 'event', 'Game Rule', etc.
-
-  Try to not to exceed 10 nodes in the graph, either by merging existing ones that share same concepts instead of creating new nodes, or deleting irelevant ones.
-  Keep the logic properly scoped in each node. Prefer to store information in the node that is impacted by the change rather by the one triggering it.
-  When creating new nodes, be creative and surprise the user with its content. You have to create an interesting game for the player.
-  You VERY MUCH have to enforce the world rules and not comply with the user action if it doesn't fit with the Game Rule.
   `;
 
-  const nodeEditionMessages: Message[] = [
+  const messages: Message[] = [
     { role: 'system', content: nodeEditionPrompt },
   ];
 
-  const nodeEditionResponse = await getResponse(nodeEditionMessages, 'gpt-4o', undefined, false, { type: 'json_object' });
-  try {
-    const parsedResponse = JSON.parse(nodeEditionResponse);
-    
-    // Ensure newNodes field exists and is an array
-    if (!parsedResponse.newNodes) {
-      parsedResponse.newNodes = [];
-    }
-
-    // Preserve type for image_generation nodes
-    if (parsedResponse.merge) {
-      parsedResponse.merge = parsedResponse.merge.map((node: any) => {
-        const existingNode = nodes.find(n => n.id === node.id);
-        if (existingNode && existingNode.type === "image_generation") {
-          return { ...node, type: "image_generation" };
-        }
-        return node;
-      });
-    }
-    
-    return parsedResponse;
-  } catch (error) {
-    console.error('Error parsing node edition response:', error);
-    console.error('Response content:', nodeEditionResponse);
-    throw new Error('Failed to parse node edition response as JSON. Please ensure the response is properly formatted.');
-  }
-}
+  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' });
+  return JSON.parse(response);
+};
 
 export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   // First generate chat text
@@ -549,7 +509,6 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
 }
 
 export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => {
-  
   const nodesDescription = nodes.reduce((acc, node) => {
     return acc + `
     id: ${node.id}
@@ -557,8 +516,6 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
     longDescription: ${node.longDescription}
     rules: ${node.rules}
     type: ${node.type}
-    child: ${node.child}
-    parent: ${node.parent}
     `;
   }, "");
 
@@ -592,8 +549,6 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
     "longDescription": "Lengthy description, detailling the node completely. For game Systems, be exhaustive. For content or characters, generate at least a full paragraph.",
     "rules": "rules, written in a concise, compressed way.",
     "type": "node type",
-    "parent": "parent id",
-    "child": ["child ids"],
     "updateImage": true/false  // Set to true if the node's visual appearance has changed significantly, false otherwise
   }
 
@@ -610,7 +565,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
     { role: 'system', content: promptMessage },
   ];
 
-  const response = await getResponse(messages, 'gpt-4o');
+  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' });
   return JSON.parse(response);
 };
 
@@ -707,8 +662,6 @@ export const generateNodesFromExtractedData = async (
     longDescription: ${node.longDescription}
     rules: ${node.rules}
     type: ${node.type}
-    child: ${node.child}
-    parent: ${node.parent}
     `;
   }, "");
 
@@ -732,37 +685,54 @@ export const generateNodesFromExtractedData = async (
     const parsedResponse = typeof response === 'string' ? JSON.parse(response) : response;
     
     // Ensure the response has the correct structure
-    if (!parsedResponse.merge || !Array.isArray(parsedResponse.merge)) {
-      throw new Error('Invalid response structure: missing or invalid merge array');
+    if (!parsedResponse.new || !Array.isArray(parsedResponse.new)) {
+      throw new Error('Invalid response structure: missing or invalid new array');
     }
     
     // Handle different modes
     if (mode === 'new_game') {
       // For new game, all existing nodes will be deleted
       parsedResponse.delete = nodes.map(node => node.id);
-      // All nodes in merge are new nodes
-      parsedResponse.newNodes = parsedResponse.merge.map((node: any) => node.id);
     } else if (mode === 'merge_story') {
       // For merge mode, ensure delete array exists
       if (!parsedResponse.delete) {
         parsedResponse.delete = [];
       }
-      // Calculate newNodes by comparing with existing nodes
-      const existingNodeIds = new Set(nodes.map(node => node.id));
-      parsedResponse.newNodes = parsedResponse.merge
-        .filter((node: any) => !existingNodeIds.has(node.id))
-        .map((node: any) => node.id);
+      
+      // Handle updates - if an update node doesn't exist, move it to new
+      if (parsedResponse.update) {
+        const existingNodeIds = new Set(nodes.map(node => node.id));
+        const validUpdates = [];
+        const newNodes = [...parsedResponse.new];
+        
+        for (const update of parsedResponse.update) {
+          if (existingNodeIds.has(update.id)) {
+            validUpdates.push(update);
+          } else {
+            // If the node doesn't exist, move it to new nodes
+            const existingNode = nodes.find(n => n.id === update.id);
+            if (existingNode) {
+              newNodes.push({
+                ...existingNode,
+                ...update
+              });
+            }
+          }
+        }
+        
+        parsedResponse.update = validUpdates;
+        parsedResponse.new = newNodes;
+      }
     }
     
-    // Ensure each node in merge has all required fields
-    parsedResponse.merge.forEach((node: any) => {
+    // Ensure each node in new has all required fields
+    parsedResponse.new.forEach((node: any) => {
       const missingFields = [];
       if (!node.id) missingFields.push('id');
       if (!node.name) missingFields.push('name');
       if (!node.longDescription) missingFields.push('longDescription');
       if (!node.type) missingFields.push('type');
-      if (node.parent === undefined) missingFields.push('parent');
-      if (!Array.isArray(node.child)) missingFields.push('child (must be an array)');
+      if (node.updateImage === undefined) missingFields.push('updateImage');
       
       // Add default empty string for missing rules
       if (!node.rules) {
@@ -774,6 +744,18 @@ export const generateNodesFromExtractedData = async (
         throw new Error(`Invalid node structure: missing required fields in node ${node.id || 'unknown'}: ${missingFields.join(', ')}`);
       }
     });
+    
+    // Ensure each node in update has required fields
+    if (parsedResponse.update) {
+      parsedResponse.update.forEach((node: any) => {
+        if (!node.id) {
+          throw new Error('Invalid update node: missing id field');
+        }
+        if (!node.longDescription && !node.rules && node.updateImage === undefined) {
+          throw new Error(`Invalid update node ${node.id}: must have at least one of longDescription, rules, or updateImage`);
+        }
+      });
+    }
     
     return parsedResponse;
   } catch (error) {

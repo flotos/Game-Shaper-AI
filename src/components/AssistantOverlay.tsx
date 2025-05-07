@@ -285,9 +285,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               longDescription: originalNode.longDescription + (nodeToAppend.longDescription || ''),
               rules: originalNode.rules + (nodeToAppend.rules || ''),
               name: originalNode.name + (nodeToAppend.name || ''),
-              type: originalNode.type + (nodeToAppend.type || ''),
-              child: [...originalNode.child, ...(nodeToAppend.child || [])],
-              parent: nodeToAppend.parent || originalNode.parent
+              type: originalNode.type + (nodeToAppend.type || '')
             };
             
             return (

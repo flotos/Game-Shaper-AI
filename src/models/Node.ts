@@ -6,7 +6,5 @@ export interface Node {
   image: string;
   updateImage?: boolean;
   type: string;
-  parent: string;
-  child: string[];
   imageSeed?: number;
 }

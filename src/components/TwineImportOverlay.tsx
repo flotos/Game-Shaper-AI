@@ -43,9 +43,14 @@ interface PreviewState {
   showPreview: boolean;
   step: 'extraction' | 'generation' | 'preview';
   changes?: {
-    merge?: Partial<Node>[];
+    new?: Partial<Node>[];
+    update?: {
+      id: string;
+      longDescription?: string;
+      rules?: string;
+      updateImage?: boolean;
+    }[];
     delete?: string[];
-    newNodes?: string[];
   };
   originalNodes: Node[];
   content?: string;
@@ -945,22 +950,34 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
 
   const handleConfirm = () => {
     if (preview.changes) {
-      // Convert Partial<Node>[] to Node[] for updateGraph
+      // Convert the changes to the format expected by updateGraph
       const changes = {
-        merge: preview.changes.merge?.map(node => ({
-          id: node.id || '',
-          name: node.name || '',
-          longDescription: node.longDescription || '',
-          rules: node.rules || '',
-          type: node.type || '',
-          parent: node.parent || '',
-          child: node.child || [],
-          image: node.image || '',
-          updateImage: node.updateImage || false,
-          imageSeed: node.imageSeed || 0
-        } as Node)) || [],
+        merge: [
+          // Convert new nodes to full Node objects
+          ...(preview.changes.new?.map(node => ({
+            id: node.id || '',
+            name: node.name || '',
+            longDescription: node.longDescription || '',
+            rules: node.rules || '',
+            type: node.type || '',
+            image: node.image || '',
+            updateImage: node.updateImage || false,
+            imageSeed: node.imageSeed || 0
+          } as Node)) || []),
+          // Convert update nodes to full Node objects by merging with existing nodes
+          ...(preview.changes.update?.map(update => {
+            const existingNode = nodes.find(n => n.id === update.id);
+            if (!existingNode) return null;
+            return {
+              ...existingNode,
+              longDescription: update.longDescription || existingNode.longDescription,
+              rules: update.rules || existingNode.rules,
+              updateImage: update.updateImage ?? existingNode.updateImage
+            };
+          }).filter(Boolean) as Node[]) || []
+        ],
         delete: preview.changes.delete || [],
-        newNodes: preview.changes.newNodes || []
+        newNodes: (preview.changes.new?.map(node => node.id).filter((id): id is string => id !== undefined) || [])
       };
       updateGraph(changes);
       closeOverlay();
@@ -1192,7 +1209,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                     {isLoading ? 'Regenerating...' : 'Regenerate Nodes'}
                   </button>
                 </div>
-                {preview.changes.merge?.map((node, index) => (
+                {preview.changes.new?.map((node, index) => (
                   <div key={index}>
                     {renderNodeComparison(
                       nodes.find(n => n.id === node.id) || null,
@@ -1200,11 +1217,23 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                     )}
                   </div>
                 ))}
-                {preview.changes.newNodes?.map((nodeId, index) => (
-                  <div key={index} className="p-4 bg-gray-700 rounded">
-                    <h4 className="text-lg font-bold">New Node: {nodeId}</h4>
-                  </div>
-                ))}
+                {preview.changes.update?.map((update, index) => {
+                  const existingNode = nodes.find(n => n.id === update.id);
+                  if (!existingNode) return null;
+                  return (
+                    <div key={index}>
+                      {renderNodeComparison(
+                        existingNode,
+                        {
+                          ...existingNode,
+                          longDescription: update.longDescription || existingNode.longDescription,
+                          rules: update.rules || existingNode.rules,
+                          updateImage: update.updateImage ?? existingNode.updateImage
+                        }
+                      )}
+                    </div>
+                  );
+                })}
                 {preview.changes.delete?.map((nodeId, index) => (
                   <div key={index} className="p-4 bg-red-900 rounded">
                     <h4 className="text-lg font-bold">Node to Delete: {nodeId}</h4>

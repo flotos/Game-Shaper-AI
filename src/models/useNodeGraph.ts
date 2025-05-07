@@ -14,9 +14,7 @@ const initNodes: Node[] = [
       AvoidToUpdateImageOnLocations;DescribeNewCharactersInNewNodes_WithHairClothesAndBodyShape;Always_DisplayPlayerAppearanceOnItsDescription`,
     longDescription: "",
     image: 'https://i.ibb.co/rvy5zgd/fec82e01-b0ad-4c96-a79f-745f675b4d15.webp',
-    type: 'Game Rule',
-    parent: '',
-    child: ['8545', "8phg"]
+    type: 'Game Rule'
   },
   {
     id: '854euh',
@@ -26,9 +24,7 @@ const initNodes: Node[] = [
       The room is filled with a diverse crowd, from adventurers to townsfolk. Rustic decorations and a roaring fire add to the cozy ambiance. 
       Despite the joyful environment, there's a subtle tension, as if the joy hides something sinister.`,
     image: 'https://popmenucloud.com/cdn-cgi/image/width%3D1200%2Cheight%3D1200%2Cfit%3Dscale-down%2Cformat%3Dauto%2Cquality%3D60/tsycfvqg/1325dd76-60a9-431f-b53d-a95ad105af43.jpg',
-    type: 'Location',
-    parent: '0tg',
-    child: []
+    type: 'Location'
   },
   {
     id: '8phg',
@@ -36,9 +32,7 @@ const initNodes: Node[] = [
     rules: 'Stats:HP Healthy; Strength Low; Agility Low; Intelligence Low; Charisma Low;',
     longDescription: "You are a man, aged 25 with an average appearance, wearing used clothes.",
     image: 'https://i.ibb.co/WBYTzDZ/DALL-E-2024-06-13-17-46-08-A-character-sheet-icon-with-a-fantasy-theme-The-icon-should-depict-a-scro.webp',
-    type: 'Game Rules',
-    parent: '0tg',
-    child: []
+    type: 'Game Rules'
   },
 ];
 
@@ -160,8 +154,6 @@ function useNodeGraph() {
           type: node.type || 'Game Object',
           longDescription: node.longDescription || '',
           rules: node.rules || '',
-          child: Array.isArray(node.child) ? node.child : [],
-          parent: typeof node.parent === 'string' ? node.parent : '',
           image: node.image || '',
           updateImage: node.updateImage || false
         };

@@ -29,9 +29,7 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
         rules: newNode.rules || '',
         longDescription: newNode.longDescription || '',
         image: newNode.image || '',
-        type: newNode.type || 'Default',
-        parent: newNode.parent || '',
-        child: newNode.child || []
+        type: newNode.type || 'Default'
       } as Node;
       addNode(nodeWithId);
     }

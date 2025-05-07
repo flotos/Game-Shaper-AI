@@ -6,11 +6,6 @@
       "longDescription": "Engage in a strategic trading card game where players use decks of cards representing creatures, spells, and other abilities to battle each other. The goal is to reduce your opponent's life points to zero.",
       "rules": "PlayersPrepareDecks;TurnBasedGameplay;LifePointsSystem;SummonAndCast;ResourceManagement;WinByReducingOpponentLifePoints;",
       "type": "Game System",
-      "parent": "",
-      "child": [
-        "tcg-setup",
-        "tcg-rules"
-      ],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-mYsWT4gE0Z5xBkFAb1Dq1ngI.png?st=2024-06-14T12%3A27%3A19Z&se=2024-06-14T14%3A27%3A19Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A47%3A45Z&ske=2024-06-14T18%3A47%3A45Z&sks=b&skv=2023-11-03&sig=lmlyFDpnaL5nYDiOZRvQjVzVpqjtvFEfT2cDG52am5o%3D"
     },
     {
@@ -19,10 +14,6 @@
       "longDescription": "The process of setting up the Trading Card Game involves several key steps. Both players shuffle their decks thoroughly and then draw five cards to form their initial hands. A coin flip determines who will take the first turn. The game is now ready to begin with the drawn hands displayed for initial strategizing.",
       "rules": "DeckSizeLimits;InitialHandDraw:FiveCards;CoinFlipForFirstTurn;DeckShuffling;",
       "type": "Game Rules",
-      "parent": "tcg-main",
-      "child": [
-        "tcg-starting-hand"
-      ],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-ZJhRMzO36fXzaGT28ZpVKRG2.png?st=2024-06-14T12%3A27%3A27Z&se=2024-06-14T14%3A27%3A27Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A52%3A37Z&ske=2024-06-14T18%3A52%3A37Z&sks=b&skv=2023-11-03&sig=BVp/kfGAVKJa1AfEbryCZEzHThxKUSu/KVdLW30o9WA%3D"
     },
     {
@@ -31,10 +22,6 @@
       "longDescription": "Players take turns to play cards, generate resources, and launch attacks. Each turn consists of draw, main, battle, and end phases. Players can summon creatures, cast spells, and use other card abilities.",
       "rules": "TurnStructure:DrawMainBattleEnd;CardTypes:CreaturesSpells;ResourceGeneration;AttackingAndDefending;",
       "type": "Game Rules",
-      "parent": "tcg-main",
-      "child": [
-        "tcg-cards"
-      ],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-Cy28FGkyeBlnqgN7n579TqBs.png?st=2024-06-14T12%3A27%3A37Z&se=2024-06-14T14%3A27%3A37Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A51%3A47Z&ske=2024-06-14T18%3A51%3A47Z&sks=b&skv=2023-11-03&sig=BzPjY/h7dmfszmITHjLps2RneAX2wHv/QV1FO5BrpMg%3D"
     },
     {
@@ -43,12 +30,6 @@
       "longDescription": "The game includes various card types such as Creatures, Spells, and Resources. Creatures can attack and defend, Spells have one-time effects, and Resources generate the necessary points for playing other cards.",
       "rules": "CreatureCards:AttackDefenseStats;SpellCards:OneTimeEffects;ResourceCards:GeneratePoints;",
       "type": "Card",
-      "parent": "tcg-rules",
-      "child": [
-        "tcg-creature-card",
-        "tcg-spell-card",
-        "tcg-resource-card"
-      ],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-1G9wg8487oTz7iuZLEiC5jbR.png?st=2024-06-14T12%3A27%3A48Z&se=2024-06-14T14%3A27%3A48Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A55%3A13Z&ske=2024-06-14T18%3A55%3A13Z&sks=b&skv=2023-11-03&sig=WZgJWr%2BoTL7LcKoVqAEUB9heGqRoKbTKjDIyP8RrfMQ%3D"
     },
     {
@@ -57,14 +38,6 @@
       "longDescription": "A crucial step in the game where each player shuffles their deck and draws five random cards to form their opening hand. This hand forms the basis of their initial strategy.",
       "rules": "InitialHandDraw:FiveCards;DeckShufflingBeforeDraw;CardNodeCreationOnDraw",
       "type": "Game Rules",
-      "parent": "tcg-setup",
-      "child": [
-        "tcg-card1",
-        "tcg-card2",
-        "tcg-card3",
-        "tcg-card4",
-        "tcg-card5"
-      ],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-XAXnbjVnBrso3vaArC8kkBPQ.png?st=2024-06-14T12%3A29%3A25Z&se=2024-06-14T14%3A29%3A25Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-14T06%3A59%3A34Z&ske=2024-06-15T06%3A59%3A34Z&sks=b&skv=2023-11-03&sig=VJK/1jZnbRr9a5%2B%2Blz8LaUXm0Yu80bXovEGHJK6wo%2B4%3D"
     },
     {
@@ -73,8 +46,6 @@
       "longDescription": "The opponent is considering their next move, assessing the possibilities to counter the Mystic Elf. They are carefully looking through their hand of cards, weighing their options.",
       "rules": "OpponentPlayer:UsageOfOpposingDeck;LifePointsObjective;StrategyAdjustment;NextMovePreparation",
       "type": "Game Entity",
-      "parent": "tcg-main",
-      "child": [],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-ElfeDt7TyNWFZLBrmaEkQynC.png?st=2024-06-14T12%3A29%3A37Z&se=2024-06-14T14%3A29%3A37Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A50%3A25Z&ske=2024-06-14T18%3A50%3A25Z&sks=b&skv=2023-11-03&sig=Fblysgxo3T3MreuxLzfJmsotccW8EH0FfQEIZTqT4uA%3D"
     },
     {
@@ -83,8 +54,6 @@
       "longDescription": "Each card played or drawn in the game will have an associated node that allows tracking of its HP, attack, and effect. These nodes will be updated as the game progresses.",
       "rules": "TrackCardHP;TrackCardAttack;TrackCardEffect;NodeCreationOnDraw;NodeVisibleOnOppPlay;",
       "type": "Game System",
-      "child": [],
-      "parent": "tcg-rules",
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-ISiqySDergUPWU99cnrBjGXY.png?st=2024-06-14T12%3A40%3A54Z&se=2024-06-14T14%3A40%3A54Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A50%3A22Z&ske=2024-06-14T18%3A50%3A22Z&sks=b&skv=2023-11-03&sig=68BAIKHSPeFtiJ0Wc%2BwnVV5wADPD8n3Zd5%2BrbCZH9X0%3D"
     },
     {
@@ -93,8 +62,6 @@
       "longDescription": "The Mystic Elf, with an attack power of 4, defense of 6, and a cost of 3, possesses a special stealth ability that protects it from direct counterattacks.",
       "rules": "CreatureCard;Attack:4;Defense:6;Cost:3;SpecialAbility:Stealth;Summoned:true",
       "type": "Card",
-      "parent": "tcg-card-node",
-      "child": [],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-BIqOlP7KDkAGyLnmoA2a8x1u.png?st=2024-06-14T12%3A43%3A22Z&se=2024-06-14T14%3A43%3A22Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A58%3A21Z&ske=2024-06-14T18%3A58%3A21Z&sks=b&skv=2023-11-03&sig=G/3jYl2HW7T2K9qKNbl4m%2BVH5azjR%2BCtRL5UQgXpE3U%3D"
     },
     {
@@ -103,8 +70,6 @@
       "longDescription": "Fireball is a spell card. When cast, it deals 7 damage to any opponent creature or player directly. It costs 4 mana to cast.",
       "rules": "SpellCard;Damage:7;Cost:4;OneTimeEffect",
       "type": "Card",
-      "parent": "tcg-card-node",
-      "child": [],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-nnMXNICr2T0wfESH7AxvsmfH.png?st=2024-06-14T12%3A41%3A54Z&se=2024-06-14T14%3A41%3A54Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T19%3A06%3A57Z&ske=2024-06-14T19%3A06%3A57Z&sks=b&skv=2023-11-03&sig=/oUwAxFi%2BKIqXz5Zyl%2BiMx8/EpBDRNySQjjEAJLxtlI%3D"
     },
     {
@@ -113,8 +78,6 @@
       "longDescription": "Healing Light is a spell card that restores 6 health points to any player or creature. It costs 3 mana to cast and can turn the tide of battle in critical moments.",
       "rules": "SpellCard;Heal:6;Cost:3;OneTimeEffect",
       "type": "Card",
-      "parent": "tcg-card-node",
-      "child": [],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-ihKKHHrKTnyeXgqeg4luq9WP.png?st=2024-06-14T12%3A42%3A04Z&se=2024-06-14T14%3A42%3A04Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T19%3A12%3A08Z&ske=2024-06-14T19%3A12%3A08Z&sks=b&skv=2023-11-03&sig=51Hndcm/ZRX6DnmqEdeBDiYc9qfQ18awM6CR4emtd/c%3D"
     },
     {
@@ -123,8 +86,6 @@
       "longDescription": "Mana Crystal is a resource card that adds 2 mana to your pool when played. Essential for summoning more powerful creatures or casting high-cost spells.",
       "rules": "ResourceCard;AddMana:2;Cost:0",
       "type": "Card",
-      "parent": "tcg-card-node",
-      "child": [],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-XBWsxBXE33RkSdqRilH58Ggm.png?st=2024-06-14T12%3A42%3A14Z&se=2024-06-14T14%3A42%3A14Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T15%3A32%3A50Z&ske=2024-06-14T15%3A32%3A50Z&sks=b&skv=2023-11-03&sig=XVQXgsVYOvTdZnWTb3wMOK4U2OI5XfkpQ3T36awUFU0%3D"
     },
     {
@@ -133,11 +94,6 @@
       "longDescription": "Tracking the cards played by both players during the game. Currently includes the Mystic Elf (attack of 4, defense of 6, stealth ability) and the Dark Knight (attack of 6, defense reduced to 3 after the Mystic Elf's attack).",
       "rules": "TrackPlayedCards;NodeCreationOnPlay",
       "type": "Game System",
-      "parent": "tcg-main",
-      "child": [
-        "tcg-card1",
-        "tcg-opponent-card"
-      ],
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-Ad7nNlXd7l8Y1ICWP1z2yucs.png?st=2024-06-14T12%3A43%3A33Z&se=2024-06-14T14%3A43%3A33Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A59%3A18Z&ske=2024-06-14T18%3A59%3A18Z&sks=b&skv=2023-11-03&sig=5qgthB0D87FLvSDdHQ0vZx4xtU9wvhCmfyumQhjjmDc%3D"
     },
     {
@@ -146,8 +102,6 @@
       "longDescription": "The Dark Knight, possessing an attack power of 6, defense of 7, and a cost of 5, is now reduced to a defense of 3 due to the Mystic Elf's attack.",
       "rules": "CreatureCard;Attack:6;Defense:3;Cost:5;Summoned:true",
       "type": "Card",
-      "child": [],
-      "parent": "tcg-cards-played",
       "image": "https://oaidalleapiprodscus.blob.core.windows.net/private/org-1ZTZhs62GMfbCACH82ZhYdpn/user-7Db6lAFJHOxBMhZlhluEIqLA/img-i5UjnyuFSk5u2bF9GNOZkgnZ.png?st=2024-06-14T12%3A57%3A34Z&se=2024-06-14T14%3A57%3A34Z&sp=r&sv=2023-11-03&sr=b&rscd=inline&rsct=image/png&skoid=6aaadede-4fb3-4698-a8f6-684d7786b067&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2024-06-13T18%3A49%3A20Z&ske=2024-06-14T18%3A49%3A20Z&sks=b&skv=2023-11-03&sig=Q%2B1lm%2BjeB6cgos373E8XbeU3FMn0cxwqMFLwrUo5siU%3D"
     },
     {
@@ -156,99 +110,7 @@
       "longDescription": "Use this node to generate ultra-realistic, visually compelling fantasy scenes or character art for your cards and world. Provides a step-by-step, modular prompt recipe and glossary, emphasizing detailed control over style, focus, lighting, environment, and subject anatomy. Negative prompts are split for precise filtering. This guide can be used to easily create polished images directly.",
       "rules": "FollowStructure:GenericPrompt;NegativeGenericPrompt;CharacterPrompt;NegativeCharacterPrompt;IncludeStyleReference;StateFocalPoint;ContrastElements;LightingDetails:ThreeLightSources;TextureAndMaterialLayering;AnatomicalAndMaterialCues;SplitNegatives:RenderingVersusCharacter;ApplyTechnicalGlossary",
       "type": "image_generation",
-      "child": [],
-      "parent": "",
-      "image": "https://raw.githubusercontent.com/flotos/Game-Shaper-AI/main/logo.jpg",
-      "extraContent": [
-        "## 🔹 Prompt Structure and Tips",
-        "### Four-Part Prompt Structure:",
-        "1. **Generic Prompt:** Controls environment, lighting, render quality, and atmosphere.",
-        "2. **Negative Generic Prompt:** Removes unwanted technical and stylistic elements from environment.",
-        "3. **Character Prompt:** Subject details: facial features, physique, clothing, accessories.",
-        "4. **Negative Character Prompt:** Removes unwanted elements from character rendering.",
-        "",
-        "#### Style, Focus, and Composition:",
-        "- Mention art styles (e.g., League of Legends style) and realism markers (e.g., hyper realistic, subsurface scattering).",
-        "- Explicitly state the intended focal point of the image.",
-        "- Use contrast and precise lighting descriptions to control the viewer's attention.",
-        "- Layer materials and textures for visual depth.",
-        "",
-        "#### Example Prompt Structure:",
-        "**Generic Prompt:**",
-        "hyper realistic, subsurface scattering, ambient occlusion, painterly. League of legends style, high fantasy. volcanic caldera at twilight with three balanced light sources: pulsing crimson magma pools casting upward illumination, deep indigo twilight sky filtering through steam vents, and ritualistic copper-flame torches arranged in concentric circles. Hyper-detailed environment: volcanic glass formations with obsidian-like reflections, sulfurous steam wisps, heat distortion affecting air density, black volcanic sand with embedded gemstone fragments. Highly detailed textures, masterful alternating sharp and soft edges. Ambient occlusion and rim light to emphasize her body. Heavy focus on depth, with further parts of her body less saturated. Face is the centerpiece: very clean, soft, and smooth, contrasting with the rest.",
-        "Promotional video game art focused on the lady.",
-        "",
-        "**Negative Generic Prompt:**",
-        "anime, cartoon, manga, JPEG artifacts, glowing edges, flat lighting, unrealistic fire, perfect symmetry, artificial-looking smoke, brush strokes",
-        "",
-        "**Character Prompt:**",
-        "girl, weathered middle-aged features with dignified expression, eyes with irises resembling cooling magma, umber skin with network of glowing orange-red cracks. Tall, imposing, broad shoulders, narrow waist, powerful legs under volcanic glass scaled skirt. Obsidian-shard ceremonial armor to neck, bound with copper wire, magma 'tattoos' on arms. Elaborate updo with volcanic glass hairpins. Right hand held palm-up with floating flame, left hand gripping volcanic glass staff topped with uncut ruby. Armor ends with brutal white teeth-like appendage around her neck, armoring most of her body.",
-        "",
-        "**Negative Character Prompt:**",
-        "anime, cartoon, manga, perfect symmetry, unrealistic proportions, glowing edges, flat lighting, artificial-looking skin, perfect hair, perfect teeth, perfect nails, perfect makeup, perfect clothing, perfect armor, perfect weapons, perfect accessories, perfect jewelry, perfect tattoos, perfect scars, perfect wounds, perfect blood, perfect fire, perfect smoke, perfect steam, perfect water, perfect ice, perfect lightning, perfect magic, perfect effects, perfect background, perfect foreground, perfect midground, perfect composition, perfect lighting, perfect shadows, perfect highlights, perfect reflections, perfect refractions, perfect transparency, perfect translucency, perfect opacity, perfect texture, perfect material, perfect surface, perfect finish, perfect polish, perfect shine, perfect gloss, perfect matte, perfect satin, perfect metallic, perfect iridescent, perfect pearlescent, perfect holographic, perfect chrome, perfect gold, perfect silver, perfect bronze, perfect copper, perfect brass, perfect steel, perfect iron, perfect aluminum, perfect titanium, perfect platinum, perfect palladium, perfect rhodium, perfect ruthenium, perfect osmium, perfect iridium, perfect tungsten, perfect molybdenum, perfect tantalum, perfect niobium, perfect zirconium, perfect hafnium, perfect vanadium, perfect chromium, perfect manganese, perfect iron, perfect cobalt, perfect nickel, perfect copper, perfect zinc, perfect gallium, perfect germanium, perfect arsenic, perfect selenium, perfect bromine, perfect krypton, perfect rubidium, perfect strontium, perfect yttrium, perfect zirconium, perfect niobium, perfect molybdenum, perfect technetium, perfect ruthenium, perfect rhodium, perfect palladium, perfect silver, perfect cadmium, perfect indium, perfect tin, perfect antimony, perfect tellurium, perfect iodine, perfect xenon, perfect cesium, perfect barium, perfect lanthanum, perfect cerium, perfect praseodymium, perfect neodymium, perfect promethium, perfect samarium, perfect europium, perfect gadolinium, perfect terbium, perfect dysprosium, perfect holmium, perfect erbium, perfect thulium, perfect ytterbium, perfect lutetium, perfect hafnium, perfect tantalum, perfect tungsten, perfect rhenium, perfect osmium, perfect iridium, perfect platinum, perfect gold, perfect mercury, perfect thallium, perfect lead, perfect bismuth, perfect polonium, perfect astatine, perfect radon, perfect francium, perfect radium, perfect actinium, perfect thorium, perfect protactinium, perfect uranium, perfect neptunium, perfect plutonium, perfect americium, perfect curium, perfect berkelium, perfect californium, perfect einsteinium, perfect fermium, perfect mendelevium, perfect nobelium, perfect lawrencium, perfect rutherfordium, perfect dubnium, perfect seaborgium, perfect bohrium, perfect hassium, perfect meitnerium, perfect darmstadtium, perfect roentgenium, perfect copernicium, perfect nihonium, perfect flerovium, perfect moscovium, perfect livermorium, perfect tennessine, perfect oganesson",
-        "",
-        "## 🔹 Technical Glossary",
-        "### Lighting Terms:",
-        "- **Subsurface Scattering:** Light penetrating and diffusing through semi-translucent materials like skin or wax.",
-        "- **Ambient Occlusion:** Soft shadows in crevices and corners where light is blocked.",
-        "- **Rim Light:** Highlight outlining the subject's edges, creating separation from the background.",
-        "- **Three-Point Lighting:** Key light (main), fill light (softens shadows), and back light (rim).",
-        "",
-        "### Material Properties:",
-        "- **Specular Reflection:** Mirror-like reflections on shiny surfaces.",
-        "- **Diffuse Reflection:** Scattered light on matte surfaces.",
-        "- **Fresnel Effect:** Increased reflectivity at grazing angles.",
-        "- **Microsurface Detail:** Fine texture variations affecting light interaction.",
-        "",
-        "### Composition Techniques:",
-        "- **Rule of Thirds:** Dividing the frame into thirds for balanced composition.",
-        "- **Leading Lines:** Using elements to guide the viewer's eye.",
-        "- **Depth Cues:** Atmospheric perspective, size variation, and overlap.",
-        "- **Focal Point:** Clear center of interest with supporting elements.",
-        "",
-        "### Style References:",
-        "- **League of Legends:** Stylized realism with strong character design.",
-        "- **Magic: The Gathering:** Rich fantasy art with dramatic lighting.",
-        "- **World of Warcraft:** Vibrant colors and distinctive character silhouettes.",
-        "- **Dungeons & Dragons:** Classic fantasy illustration with detailed environments.",
-        "",
-        "## 🔹 Common Pitfalls to Avoid",
-        "1. **Overly Symmetrical Compositions:** Creates static, uninteresting images.",
-        "2. **Flat Lighting:** Lacks depth and dimension.",
-        "3. **Unrealistic Proportions:** Breaks immersion and believability.",
-        "4. **Excessive Glow Effects:** Can look artificial and dated.",
-        "5. **Poor Material Differentiation:** All surfaces look the same.",
-        "6. **Inconsistent Lighting:** Multiple light sources without clear hierarchy.",
-        "7. **Overly Busy Backgrounds:** Distracts from the main subject.",
-        "8. **Lack of Atmospheric Perspective:** Foreground and background lack depth separation.",
-        "9. **Unnatural Poses:** Stiff or awkward character positioning.",
-        "10. **Inconsistent Style Elements:** Mixing different art styles can be jarring.",
-        "",
-        "## 🔹 Advanced Tips",
-        "1. **Use Reference Images:** Study real-world materials and lighting.",
-        "2. **Layer Textures:** Combine multiple texture passes for richness.",
-        "3. **Control Contrast:** Use it to guide the viewer's attention.",
-        "4. **Consider Color Theory:** Use complementary colors for visual interest.",
-        "5. **Add Imperfections:** Real-world objects have wear and variation.",
-        "6. **Use Depth of Field:** Blur can enhance focus on important elements.",
-        "7. **Include Atmospheric Effects:** Dust, fog, or light rays add atmosphere.",
-        "8. **Vary Edge Quality:** Mix sharp and soft edges for visual interest.",
-        "9. **Consider Scale:** Show size relationships between elements.",
-        "10. **Add Story Elements:** Include details that suggest narrative.",
-        "",
-        "## 🔹 Final Checklist",
-        "1. Does the image have a clear focal point?",
-        "2. Is the lighting consistent and purposeful?",
-        "3. Do materials look distinct and believable?",
-        "4. Is the composition balanced and interesting?",
-        "5. Does the image tell a story or suggest action?",
-        "6. Are there enough details to maintain interest?",
-        "7. Is the style consistent throughout?",
-        "8. Does the image have proper depth and dimension?",
-        "9. Are the colors harmonious and purposeful?",
-        "10. Does the image avoid common pitfalls?"
-      ]
+      "image": "https://raw.githubusercontent.com/flotos/Game-Shaper-AI/main/logo.jpg"
     }
-  ],
-  "chatHistory": []
+  ]
 }
