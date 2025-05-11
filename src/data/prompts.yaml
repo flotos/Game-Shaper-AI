@@ -24,14 +24,13 @@ prompts:
       - Make the nodes intertwined, ensuring each node expand some part of the other systems.
       - Is is very imported to preserve the already implemented systems, only expand on them. Focus on adding to the nodes, more than changing their whole behavior.
       - Be creative and enhance most of the existing nodes, be it characters, objects or systems.
-      - Store in a dedicated node the writing style, as a library of example paragraphs. Store up to 10 paragraph there, but you can have fewer. If there are already 10, adjust them.
 
       Example: When updating the "concept-transformation" node to include nanite technology,
       take the existing description and expand it with new elements rather than creating
-      a separate "nanite-technology" node.
+      a separate "nanite-technology" node. Add the new concept to the node, and don't remove the other concepts
 
       ### CRITICAL INSTRUCTION
-      Your primary task is to UPDATE EXISTING NODES rather than create new ones.
+      Your primary task is to ADD to EXISTING NODES rather than create new ones.
       For each theme in the extracted data, identify the corresponding existing node and
       expand its description and rules. Only create new nodes for concepts that have
       NO OVERLAP with existing ones.
@@ -44,3 +43,8 @@ prompts:
       could be updated instead.
 
       The end goal of this step is to ADD to the game, without removing any of the existing content.
+
+      ### Reminders to focus on
+      - Don't remove any existing content from each node.
+      - Only add content in the edited nodes. The nodes can be very large in content, adding text is not a problem.
+      - Don't mention variable, flag, command, or programming code.

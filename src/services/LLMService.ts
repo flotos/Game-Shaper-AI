@@ -14,6 +14,7 @@ interface ExtractedData {
 
 // Twine import prompts
 export const TWINE_DATA_EXTRACTION_PROMPT = `
+/think
 
 # Instructions
 You are a Game Engine. Your task is to analyze and extract structured data from a Twine story.
@@ -23,7 +24,6 @@ You are a Game Engine. Your task is to analyze and extract structured data from 
 2. Preserve important narrative structures and branching paths
 3. Remove any technical or formatting elements not relevant to the story
 4. Structure the data in a way that can be used to generate game nodes
-5. Give two example paragraphs written in the style of the story
 
 [Additional Instructions will be inserted here]
 
@@ -46,6 +46,8 @@ Return a JSON object with the following structure:
 }`;
 
 export const TWINE_NODE_GENERATION_PROMPT_NEW_GAME = `
+/think
+
 # Instructions
 You are a Game Engine. Your task is to create a completely new game based on the extracted story data.
 
@@ -58,6 +60,7 @@ You are a Game Engine. Your task is to create a completely new game based on the
   - All the listed events are possible outcomes in the game. These are NOT memories or past events.
   - All the locations are possible encounters, but consider these have not yet been visited by the player.
 
+# User's specific instructions (very important to follow)
 [Additional Instructions will be inserted here]
 
 # Extracted Story Data
@@ -88,6 +91,7 @@ Return a JSON object with the following structure:
 }`;
 
 export const TWINE_NODE_GENERATION_PROMPT_MERGE = `
+/think
 
 # Instructions
 You are a Game Engine. Your task is to merge the extracted story data into the existing game world.
@@ -111,8 +115,9 @@ You are a Game Engine. Your task is to merge the extracted story data into the e
 6. When using the extracted story data:
    - All the listed events are possible outcomes in the game. These are NOT memories or past events.
    - All the locations are possible encounters, but consider these have not yet been visited by the player.
-7. In the newly generated nodes, NEVER mention "added", "updated" "expanded" or "new". You should return the new node as it should be, with no mention of changes.
+7. In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
 
+# User's specific instructions (very important to follow)
 [Additional Instructions will be inserted here]
 
 # Extracted Story Data
@@ -148,7 +153,9 @@ Return a JSON object with the following structure:
     }
   ],
   "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
-}`;
+}
+  
+During your reasoning process, verify after every node created that you preserved ALL the original feature and did not discard any content.`;
 
 export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], chatHistory: Message[] = []) => {
   console.log('LLM Call: Generating image prompt for node:', node.id);
@@ -421,7 +428,7 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
 export const generateNodeEdition = async(chatText: string, actions: string[], nodes: Node[], userInput: string, isUserInteraction: boolean = false) => {
   console.log('LLM Call: Generating node edition');
   const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "image_generation") {
+    if (node.type === "image_generation" || node.type === "system") {
       return acc;
     }
     return acc + `
@@ -515,6 +522,9 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
 
 export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => {
   const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "system") {
+      return acc;
+    }
     return acc + `
     id: ${node.id}
     name: ${node.name}
@@ -661,6 +671,9 @@ export const generateNodesFromExtractedData = async (
   console.log('LLM Call: Generating nodes from extracted data in mode:', mode);
   
   const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "system") {
+      return acc;
+    }
     return acc + `
     id: ${node.id}
     name: ${node.name}
@@ -737,17 +750,17 @@ export const generateNodesFromExtractedData = async (
     
     // Ensure each node in new has all required fields
     parsedResponse.new.forEach((node: any) => {
+      // Set default values before validation
+      node.updateImage = node.updateImage ?? false;
+      if (!node.rules) {
+        node.rules = '';
+      }
+      
       const missingFields = [];
       if (!node.id) missingFields.push('id');
       if (!node.name) missingFields.push('name');
       if (!node.longDescription) missingFields.push('longDescription');
       if (!node.type) missingFields.push('type');
-      if (node.updateImage === undefined) missingFields.push('updateImage');
-      
-      // Add default empty string for missing rules
-      if (!node.rules) {
-        node.rules = '';
-      }
       
       if (missingFields.length > 0) {
         console.error('Problematic node data:', JSON.stringify(node, null, 2));
@@ -758,6 +771,9 @@ export const generateNodesFromExtractedData = async (
     // Ensure each node in update has required fields
     if (parsedResponse.update) {
       parsedResponse.update.forEach((node: any) => {
+        // Set default values before validation
+        node.updateImage = node.updateImage ?? false;
+        
         if (!node.id) {
           throw new Error('Invalid update node: missing id field');
         }

@@ -3,7 +3,7 @@ import { Node } from '../models/Node';
 import { extractDataFromTwine, generateNodesFromExtractedData } from '../services/LLMService';
 import { PromptSelector } from './PromptSelector';
 
-const MAX_CONTENT_LENGTH = 1000000; // 1 million characters
+const MAX_CONTENT_LENGTH = 4000000; // 4 million characters
 
 interface TwineImportOverlayProps {
   nodes: Node[];
@@ -61,81 +61,113 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   });
 
   // Add this helper function at the top of the file, after the imports
-  const createDiffSpans = (original: string, updated: string, isCurrent: boolean) => {
-    // Split into words and normalize whitespace
-    const originalWords = original.trim().split(/\s+/);
-    const updatedWords = updated.trim().split(/\s+/);
-    const result = [];
-    
-    // Find the longest common subsequence
-    const lcs = [];
-    const dp = Array(originalWords.length + 1).fill(0).map(() => Array(updatedWords.length + 1).fill(0));
-    
-    for (let i = 1; i <= originalWords.length; i++) {
-      for (let j = 1; j <= updatedWords.length; j++) {
+  const createDiffSpans = (original: string | string[] | undefined | null, updated: string | string[] | undefined | null, isCurrent: boolean) => {
+    try {
+      // Handle undefined or null values and ensure strings
+      const originalText = typeof original === 'string' ? original : 
+                          Array.isArray(original) ? original.join(', ') : '';
+      const updatedText = typeof updated === 'string' ? updated : 
+                         Array.isArray(updated) ? updated.join(', ') : '';
+      
+      // Split into words and normalize whitespace
+      const originalWords = originalText.trim().split(/\s+/);
+      const updatedWords = updatedText.trim().split(/\s+/);
+      const result = [];
+      
+      // Find the longest common subsequence
+      const lcs = [];
+      const dp = Array(originalWords.length + 1).fill(0).map(() => Array(updatedWords.length + 1).fill(0));
+      
+      for (let i = 1; i <= originalWords.length; i++) {
+        for (let j = 1; j <= updatedWords.length; j++) {
+          if (originalWords[i - 1] === updatedWords[j - 1]) {
+            dp[i][j] = dp[i - 1][j - 1] + 1;
+          } else {
+            dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+          }
+        }
+      }
+      
+      let i = originalWords.length;
+      let j = updatedWords.length;
+      
+      while (i > 0 && j > 0) {
         if (originalWords[i - 1] === updatedWords[j - 1]) {
-          dp[i][j] = dp[i - 1][j - 1] + 1;
+          lcs.unshift(originalWords[i - 1]);
+          i--;
+          j--;
+        } else if (dp[i - 1][j] > dp[i][j - 1]) {
+          i--;
         } else {
-          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+          j--;
         }
       }
-    }
-    
-    let i = originalWords.length;
-    let j = updatedWords.length;
-    
-    while (i > 0 && j > 0) {
-      if (originalWords[i - 1] === updatedWords[j - 1]) {
-        lcs.unshift(originalWords[i - 1]);
-        i--;
-        j--;
-      } else if (dp[i - 1][j] > dp[i][j - 1]) {
-        i--;
+      
+      // Now render the differences
+      i = 0;
+      j = 0;
+      let lcsIndex = 0;
+      
+      if (isCurrent) {
+        // Left side - show original with deletions in red
+        while (i < originalWords.length) {
+          if (lcsIndex < lcs.length && originalWords[i] === lcs[lcsIndex]) {
+            result.push(<span key={`common-${i}`} className="text-white">{lcs[lcsIndex]} </span>);
+            i++;
+            lcsIndex++;
+          } else {
+            result.push(
+              <span key={`old-${i}`} className="bg-red-900 text-white">
+                {originalWords[i]}{' '}
+              </span>
+            );
+            i++;
+          }
+        }
       } else {
-        j--;
-      }
-    }
-    
-    // Now render the differences
-    i = 0;
-    j = 0;
-    let lcsIndex = 0;
-    
-    if (isCurrent) {
-      // Left side - show original with deletions in red
-      while (i < originalWords.length) {
-        if (lcsIndex < lcs.length && originalWords[i] === lcs[lcsIndex]) {
-          result.push(<span key={`common-${i}`} className="text-white">{lcs[lcsIndex]} </span>);
-          i++;
-          lcsIndex++;
-        } else {
-          result.push(
-            <span key={`old-${i}`} className="bg-red-900 text-white">
-              {originalWords[i]}{' '}
-            </span>
-          );
-          i++;
+        // Right side - show updated with additions in green
+        while (j < updatedWords.length) {
+          if (lcsIndex < lcs.length && updatedWords[j] === lcs[lcsIndex]) {
+            result.push(<span key={`common-${j}`} className="text-white">{lcs[lcsIndex]} </span>);
+            j++;
+            lcsIndex++;
+          } else {
+            result.push(
+              <span key={`new-${j}`} className="bg-green-900 text-white">
+                {updatedWords[j]}{' '}
+              </span>
+            );
+            j++;
+          }
         }
       }
-    } else {
-      // Right side - show updated with additions in green
-      while (j < updatedWords.length) {
-        if (lcsIndex < lcs.length && updatedWords[j] === lcs[lcsIndex]) {
-          result.push(<span key={`common-${j}`} className="text-white">{lcs[lcsIndex]} </span>);
-          j++;
-          lcsIndex++;
-        } else {
-          result.push(
-            <span key={`new-${j}`} className="bg-green-900 text-white">
-              {updatedWords[j]}{' '}
-            </span>
-          );
-          j++;
-        }
-      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error in createDiffSpans:', error);
+      return [<span key="error" className="text-red-500">Error displaying diff</span>];
     }
-    
-    return result;
+  };
+
+  // Add this function after the createDiffSpans function
+  const toggleImageUpdate = (nodeId: string) => {
+    setPreview(prev => {
+      if (!prev.changes?.update) return prev;
+      
+      const updatedChanges = {
+        ...prev.changes,
+        update: prev.changes.update.map(update => 
+          update.id === nodeId 
+            ? { ...update, updateImage: !update.updateImage }
+            : update
+        )
+      };
+      
+      return {
+        ...prev,
+        changes: updatedChanges
+      };
+    });
   };
 
   // Basic cleaning function
@@ -164,13 +196,15 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         
         // Aggressive cleaning patterns
         const patterns = [
+          // Base64 image patterns - must be first to catch all variations
+          /data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/g,
+          /\[img\[[^\]]+\]\[[^\]]+\]\]/g,
           /\[Macros\][\s\S]*?(?=\n\n|$)/g,
           /\([^)]*\)/g,
           /\)+/g,
           /\(+/g,
           /<[^>]+>/g,
           /<<[^>]+>>/g,
-          /\[img\[[^\]]+\]\[[^\]]+\]\]/g,
           /\[\[[^\]]+\]\]/g,
           /<style[^>]*>[\s\S]*?<\/style>/g,
           /<script[^>]*>[\s\S]*?<\/script>/g,
@@ -205,10 +239,15 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
             !trimmed.startsWith('widget') &&
             !trimmed.includes('layer') &&
             !trimmed.includes('class=') &&
-            !trimmed.includes('img$image_dir+');
+            !trimmed.includes('img$image_dir+') &&
+            // Additional base64 image checks
+            !trimmed.startsWith('data:image/') &&
+            !trimmed.includes(';base64,');
         });
         
-        return cleanedLines.length > 0 ? `[${name}]\n${cleanedLines.join('\n')}\n` : '';
+        // Join lines and normalize newlines
+        const content = cleanedLines.length > 0 ? `[${name}]\n${cleanedLines.join('\n')}\n` : '';
+        return content.replace(/\n{3,}/g, '\n\n');
       } else {
         // Basic cleaning - just remove empty lines and trim
         text = text
@@ -217,9 +256,11 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
           .filter(line => line.length > 0)
           .join('\n');
         
-        return `[${name}]\n${text}\n`;
+        // Normalize newlines in basic cleaning mode too
+        const content = `[${name}]\n${text}\n`;
+        return content.replace(/\n{3,}/g, '\n\n');
       }
-    }).join('\n');
+    }).join('\n').replace(/\n{3,}/g, '\n\n');
   };
 
   // Split content into chunks
@@ -365,6 +406,24 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         secondPromptInstructions
       );
 
+      // Normalize rules to strings and ensure updateImage is set
+      if (nodeResponse) {
+        if (nodeResponse.new) {
+          nodeResponse.new = nodeResponse.new.map((node: Partial<Node>) => ({
+            ...node,
+            rules: Array.isArray(node.rules) ? node.rules.join(', ') : node.rules,
+            updateImage: node.updateImage ?? false
+          }));
+        }
+        if (nodeResponse.update) {
+          nodeResponse.update = nodeResponse.update.map((update: { id: string; longDescription?: string; rules?: string | string[]; updateImage?: boolean }) => ({
+            ...update,
+            rules: Array.isArray(update.rules) ? update.rules.join(', ') : update.rules,
+            updateImage: update.updateImage ?? false
+          }));
+        }
+      }
+
       // Only update preview if we have valid data
       if (nodeResponse && (nodeResponse.new?.length > 0 || nodeResponse.update?.length > 0)) {
         setPreview(prev => ({
@@ -392,7 +451,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
             id: node.id || '',
             name: node.name || '',
             longDescription: node.longDescription || '',
-            rules: node.rules || '',
+            rules: typeof node.rules === 'string' ? node.rules : (Array.isArray(node.rules) ? (node.rules as string[]).join(', ') : ''),
             type: node.type || '',
             image: node.image || '',
             updateImage: node.updateImage || false,
@@ -405,7 +464,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
               ...existingNode,
               longDescription: update.longDescription ?? existingNode.longDescription,
               rules: update.rules ?? existingNode.rules,
-              updateImage: update.updateImage ?? existingNode.updateImage
+              updateImage: update.updateImage === undefined ? existingNode.updateImage : update.updateImage
             };
           }).filter(Boolean) as Node[]) || []
         ],
@@ -461,7 +520,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                 ))}
               </select>
               <div className="text-sm text-gray-400 mt-1">
-                File was split into {contentChunks.length} chunks due to size. Each chunk is approximately 1 million characters.
+                File was split into {contentChunks.length} chunks due to size. Each chunk is approximately 4 million characters.
               </div>
             </div>
           )}
@@ -525,7 +584,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
           <input
             type="range"
             min="1"
-            max="10"
+            max="40"
             value={extractionCount}
             onChange={(e) => setExtractionCount(Number(e.target.value))}
             className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -649,24 +708,64 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                 {preview.changes.new?.map((node, index) => (
                   <div key={index} className="p-4 bg-gray-800 rounded">
                     <h4 className="text-lg font-bold mb-2">{node.name}</h4>
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <span className="font-semibold block mb-1">Long Description:</span>
-                        <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                          {node.longDescription}
+                        <h4 className="text-sm font-semibold mb-1">Current</h4>
+                        <div className="text-sm space-y-2">
+                          <div>
+                            <span className="font-semibold block mb-1">Long Description:</span>
+                            <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
+                              {createDiffSpans('', node.longDescription || '', true)}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold block mb-1">Rules:</span>
+                            <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
+                              {createDiffSpans('', node.rules || '', true)}
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <div>
-                        <span className="font-semibold block mb-1">Rules:</span>
-                        <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                          {node.rules}
+                        <h4 className="text-sm font-semibold mb-1">New</h4>
+                        <div className="text-sm space-y-2">
+                          <div>
+                            <span className="font-semibold block mb-1">Long Description:</span>
+                            <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
+                              {createDiffSpans('', node.longDescription || '', false)}
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold block mb-1">Rules:</span>
+                            <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
+                              {createDiffSpans('', node.rules || '', false)}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div>
-                        <span className="font-semibold block mb-1">Type:</span>
-                        <div className="p-2 bg-gray-700 rounded text-white">
-                          {node.type}
-                        </div>
+                    </div>
+                    <div className="mt-2">
+                      <span className="font-semibold block mb-1">Type:</span>
+                      <div className="p-2 bg-gray-700 rounded text-white">
+                        {node.type}
+                      </div>
+                    </div>
+                    <div className="mt-2">
+                      <span className="font-semibold block mb-1">Image Generation:</span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => toggleImageUpdate(node.id || '')}
+                          className={`px-3 py-1 rounded ${
+                            node.updateImage 
+                              ? 'bg-green-600 hover:bg-green-700' 
+                              : 'bg-gray-600 hover:bg-gray-700'
+                          } text-white transition-colors`}
+                        >
+                          {node.updateImage ? 'Will generate image' : 'No image generation needed'}
+                        </button>
+                        <span className="text-sm text-gray-400">
+                          (Click to toggle)
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -715,8 +814,20 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                       </div>
                       <div className="mt-2">
                         <span className="font-semibold block mb-1">Image Update:</span>
-                        <div className="p-2 bg-gray-700 rounded text-white">
-                          {update.updateImage ? 'Will generate new image' : 'No image update needed'}
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => toggleImageUpdate(update.id)}
+                            className={`px-3 py-1 rounded ${
+                              update.updateImage 
+                                ? 'bg-green-600 hover:bg-green-700' 
+                                : 'bg-gray-600 hover:bg-gray-700'
+                            } text-white transition-colors`}
+                          >
+                            {update.updateImage ? 'Will generate new image' : 'No image update needed'}
+                          </button>
+                          <span className="text-sm text-gray-400">
+                            (Click to toggle)
+                          </span>
                         </div>
                       </div>
                     </div>
