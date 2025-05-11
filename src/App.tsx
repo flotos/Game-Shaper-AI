@@ -107,10 +107,7 @@ const AppContent: React.FC = () => {
       </header>
       <div className="flex flex-grow overflow-y-auto">
         <ChatInterface nodes={nodes} updateGraph={updateGraph} />
-        <NodeGraphInterface 
-          nodes={nodes} 
-          onNodesSorted={(sortedNodes) => setNodes(sortedNodes)}
-        />
+        <NodeGraphInterface nodes={nodes} />
       </div>
       
       {showNodeEditor && (

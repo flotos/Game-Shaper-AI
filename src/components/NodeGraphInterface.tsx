@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Node } from '../models/Node';
 import ReactMarkdown from 'react-markdown';
-import { sortNodesByRelevance } from '../services/LLMService';
-import { useChat } from '../context/ChatContext';
+import { imageQueueService } from '../services/ImageQueueService';
 
 interface NodeGraphInterfaceProps {
   nodes: Node[];
@@ -14,12 +13,11 @@ interface NodeGraphInterfaceProps {
   }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
 }
 
-const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes, onNodesSorted }) => {
+const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [updatedNodes, setUpdatedNodes] = useState<Set<string>>(new Set());
   const [compressedImages, setCompressedImages] = useState<Map<string, string>>(new Map());
-  const [isSorting, setIsSorting] = useState(false);
-  const { chatHistory } = useChat();
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
 
   // Track node updates
   useEffect(() => {
@@ -91,55 +89,32 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes, onNodesS
     setSelectedNode(node);
   };
 
+  const handleRegenerateImage = async (node: Node) => {
+    // Set updateImage flag to true to trigger regeneration
+    const updatedNode = {
+      ...node,
+      updateImage: true
+    };
+    
+    // Add to image queue
+    await imageQueueService.addToQueue(updatedNode, nodes, []);
+  };
+
   // Function to get compressed image URL
   const getCompressedImageUrl = (nodeId: string, originalImage: string) => {
     return compressedImages.get(nodeId) || originalImage;
   };
 
-  const handleSortByRelevance = async () => {
-    setIsSorting(true);
-    try {
-      const sortedIds = await sortNodesByRelevance(nodes, chatHistory);
-      // Create a new array with nodes sorted according to the returned order
-      const sortedNodes = [...nodes].sort((a, b) => {
-        const aIndex = sortedIds.indexOf(a.id);
-        const bIndex = sortedIds.indexOf(b.id);
-        if (aIndex === -1) return 1;
-        if (bIndex === -1) return -1;
-        return aIndex - bIndex;
-      });
-      // Update the nodes prop through a callback
-      if (onNodesSorted) {
-        onNodesSorted(sortedNodes);
-      }
-    } catch (error) {
-      console.error('Error sorting nodes:', error);
-    } finally {
-      setIsSorting(false);
-    }
-  };
-
   return (
     <div className="w-1/2 p-4 flex flex-col space-y-4 relative overflow-y-auto">
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={handleSortByRelevance}
-          disabled={isSorting}
-          className={`px-4 py-2 rounded ${
-            isSorting 
-              ? 'bg-gray-600 cursor-not-allowed' 
-              : 'bg-blue-600 hover:bg-blue-700'
-          } text-white transition-colors`}
-        >
-          {isSorting ? 'Sorting...' : 'Sort by Relevance'}
-        </button>
-      </div>
       <div className="flex-grow overflow-y-auto">
         <div className="flex flex-wrap gap-4">
           {nodes.map((node) => (
             <div 
               key={node.id} 
               className="w-[calc(33.333%-1rem)] flex-shrink-0"
+              onMouseEnter={() => setHoveredNodeId(node.id)}
+              onMouseLeave={() => setHoveredNodeId(null)}
             >
               <div 
                 className={`relative cursor-pointer rounded overflow-hidden aspect-square transition-all duration-200 ${
@@ -160,6 +135,17 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes, onNodesS
                   <div className="w-full h-full" onClick={() => handleNodeSelect(node)} />
                 )}
                 <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white p-2 text-center">{node.name}</div>
+                {hoveredNodeId === node.id && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRegenerateImage(node);
+                    }}
+                    className="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-sm transition-colors"
+                  >
+                    Regenerate
+                  </button>
+                )}
               </div>
             </div>
           ))}

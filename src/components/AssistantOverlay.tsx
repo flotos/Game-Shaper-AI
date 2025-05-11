@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Node } from '../models/Node';
 import { generateNodesFromPrompt } from '../services/LLMService';
+import { Message } from '../context/ChatContext';
 
 interface AssistantOverlayProps {
   nodes: Node[];
@@ -8,7 +9,7 @@ interface AssistantOverlayProps {
     merge?: Partial<Node>[]; 
     delete?: string[];
     newNodes?: string[];
-  }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
+  }, chatHistory?: Message[], imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
   closeOverlay: () => void;
 }
 

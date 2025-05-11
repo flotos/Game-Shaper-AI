@@ -4,6 +4,8 @@ import { generateImage } from '../services/ImageService';
 import { generateImagePrompt } from '../services/LLMService';
 import LZString from 'lz-string';
 import { imageQueueService } from '../services/ImageQueueService';
+import { sortNodesByRelevance } from '../services/LLMService';
+import { useChat, Message } from '../context/ChatContext';
 
 const initNodes: Node[] = [
   {
@@ -64,10 +66,10 @@ function useNodeGraph() {
   };
 
   const updateGraph = async (nodeEdition: { 
-    merge: Node[];
-    delete: string[];
-    newNodes: string[];
-  }, imagePrompts: { nodeId: string; prompt: string }[] = []) => {
+    merge?: Partial<Node>[];
+    delete?: string[];
+    newNodes?: string[];
+  }, imagePrompts: { nodeId: string; prompt: string }[] = [], chatHistory: Message[] = []) => {
     if (!nodeEdition) return;
 
     console.log('Starting graph update with node edition:', nodeEdition);
@@ -92,6 +94,7 @@ function useNodeGraph() {
     if (nodeEdition.merge) {
       console.log('Processing merges:', nodeEdition.merge);
       nodeEdition.merge.forEach(updatedNode => {
+        if (!updatedNode.id) return; // Skip if no ID
         const index = newNodes.findIndex(node => node.id === updatedNode.id);
         if (index !== -1) {
           const existingNode = newNodes[index];
@@ -121,7 +124,23 @@ function useNodeGraph() {
       });
     }
 
-    setNodes(newNodes);
+    // Sort nodes by relevance
+    try {
+      const sortedIds = await sortNodesByRelevance(newNodes, chatHistory);
+      // Create a new array with nodes sorted according to the returned order
+      const sortedNodes = [...newNodes].sort((a, b) => {
+        const aIndex = sortedIds.indexOf(a.id);
+        const bIndex = sortedIds.indexOf(b.id);
+        if (aIndex === -1) return 1;
+        if (bIndex === -1) return -1;
+        return aIndex - bIndex;
+      });
+      setNodes(sortedNodes);
+    } catch (error) {
+      console.error('Error sorting nodes:', error);
+      setNodes(newNodes);
+    }
+
     console.log('Updating nodes with new images:', nodesToProcess);
 
     // Initialize the image queue service with the update callback

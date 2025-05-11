@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Node } from '../models/Node';
 import { extractDataFromTwine, generateNodesFromExtractedData, regenerateSingleNode } from '../services/LLMService';
 import { PromptSelector } from './PromptSelector';
+import { Message } from '../context/ChatContext';
 
 const MAX_CONTENT_LENGTH = 4000000; // 4 million characters
 
@@ -11,7 +12,7 @@ interface TwineImportOverlayProps {
     merge?: Partial<Node>[]; 
     delete?: string[];
     newNodes?: string[];
-  }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
+  }, chatHistory?: Message[], imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
   closeOverlay: () => void;
 }
 

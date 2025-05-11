@@ -12,7 +12,7 @@ interface ChatInterfaceProps {
     merge?: Partial<Node>[]; 
     delete?: string[];
     newNodes?: string[];
-  }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
+  }, chatHistory?: Message[], imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => {
@@ -225,15 +225,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
 
         // Apply the node edition to update the graph in the background
         console.log('Applying node edition to graph...');
-        updateGraph(nodeEdition, []).then(() => {
-          setWaitingForAnswer(false);
-          setLoadingMessage('');
-        }).catch((error: Error) => {
-          console.error('Error updating graph:', error);
-          setErrorMessage('Error updating game state. Please try again.');
-          setWaitingForAnswer(false);
-          setLoadingMessage('');
-        });
+        await updateGraph(nodeEdition, chatHistory, []);
       }
     } catch (error) {
       console.error('Error during chat handling:', error);
@@ -333,7 +325,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       messagesToAdd.forEach(addMessage);
       setLastNodeEdition(nodeEdition);
 
-      updateGraph(nodeEdition, []).then(() => {
+      updateGraph(nodeEdition, chatHistory, []).then(() => {
         setWaitingForAnswer(false);
         setLoadingMessage('');
         setIsLoading(false);

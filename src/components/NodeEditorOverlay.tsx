@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Node } from '../models/Node';
+import { Message } from '../context/ChatContext';
 
 interface NodeEditorOverlayProps {
   nodes: Node[];
@@ -7,7 +8,11 @@ interface NodeEditorOverlayProps {
   updateNode: (node: Node) => void;
   deleteNode: (nodeId: string) => void;
   closeOverlay: () => void;
-  updateGraph: (nodeEdition: { merge?: Partial<Node>[], delete?: string[] }) => void;
+  updateGraph: (nodeEdition: { 
+    merge?: Partial<Node>[]; 
+    delete?: string[];
+    newNodes?: string[];
+  }, chatHistory?: Message[], imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
 }
 
 const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, updateNode, deleteNode, closeOverlay, updateGraph }) => {
