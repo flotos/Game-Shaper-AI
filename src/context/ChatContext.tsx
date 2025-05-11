@@ -1,7 +1,7 @@
 import { createContext, FC, useCallback, useState, useContext, ReactNode } from 'react';
 
 export interface Message {
-  role: "assistant" | "user" | "system" | "reasoning" | "nodeEdition" | "selectedNodes" | "actions";
+  role: "assistant" | "user" | "system" | "reasoning" | "nodeEdition" | "selectedNodes" | "actions" | "userNote";
   content: string;
   timestamp?: string;
   isStreaming?: boolean;

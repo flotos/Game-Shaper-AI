@@ -353,6 +353,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     }
   };
 
+  const handleSendAsNote = () => {
+    if (!input.trim() || isLoading) return;
+
+    const timestamp = new Date().toLocaleTimeString();
+    const noteMessage: Message = {
+      role: "userNote",
+      content: input,
+      timestamp: timestamp.toString()
+    };
+    addMessage(noteMessage);
+    setInput('');
+  };
+
   return (
     <div className="w-1/2 h-full p-4 flex flex-col relative">
       <ChatHistory 
@@ -377,7 +390,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         <ChatInput 
           input={input} 
           setInput={setInput} 
-          handleSend={handleSend} 
+          handleSend={handleSend}
+          handleSendAsNote={handleSendAsNote}
           waitingForAnswer={waitingForAnswer}
           onRegenerate={handleRegenerate}
           showRegenerate={chatHistory.length > 0}

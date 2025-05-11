@@ -252,7 +252,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
 export const getRelevantNodes = async(userInput: string, chatHistory: Message[], nodes: Node[]) => {
   console.log('LLM Call: Getting relevant nodes');
   const stringHistory = chatHistory.reduce((acc, message) => {
-    if(message.role == "user" || message.role == "assistant") {
+    if(message.role == "user" || message.role == "assistant" || message.role == "userNote") {
       return acc + `${message.role}: ${message.content}\n`;
     }
     return acc;
@@ -319,7 +319,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
 export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   console.log('LLM Call: Generating chat text');
   const stringHistory = chatHistory.reduce((acc, message) => {
-    if (message.role === "user" || message.role === "assistant") {
+    if (message.role === "user" || message.role === "assistant" || message.role === "userNote") {
       return acc + `${message.role}: ${message.content}\n`;
     }
     return acc;
@@ -1149,7 +1149,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
 export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]) => {
   console.log('LLM Call: Sorting nodes by relevance');
   const stringHistory = chatHistory.reduce((acc, message) => {
-    if (message.role === "user" || message.role === "assistant") {
+    if (message.role === "user" || message.role === "assistant" || message.role === "userNote") {
       return acc + `${message.role}: ${message.content}\n`;
     }
     return acc;

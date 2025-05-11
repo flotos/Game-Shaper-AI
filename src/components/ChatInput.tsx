@@ -4,12 +4,13 @@ interface ChatInputProps {
   input: string;
   setInput: React.Dispatch<React.SetStateAction<string>>;
   handleSend: () => void;
+  handleSendAsNote: () => void;
   waitingForAnswer: boolean;
   onRegenerate: () => void;
   showRegenerate: boolean;
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, waitingForAnswer, onRegenerate, showRegenerate }) => {
+const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, handleSendAsNote, waitingForAnswer, onRegenerate, showRegenerate }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -46,6 +47,13 @@ const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, wait
           ↻
         </button>
       )}
+      <button
+        className="ml-2 px-4 py-2 bg-purple-500 text-white rounded disabled:bg-gray-600 hover:bg-purple-600"
+        onClick={handleSendAsNote}
+        disabled={waitingForAnswer}
+      >
+        Send as Note
+      </button>
       <button
         className="ml-2 px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-600"
         onClick={handleSend}
