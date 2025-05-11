@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { Node } from '../models/Node';
 import ReactMarkdown from 'react-markdown';
+import { sortNodesByRelevance } from '../services/LLMService';
+import { useChat } from '../context/ChatContext';
 
 interface NodeGraphInterfaceProps {
   nodes: Node[];
+  onNodesSorted?: (sortedNodes: Node[]) => void;
+  updateGraph?: (nodeEdition: { 
+    merge?: Partial<Node>[]; 
+    delete?: string[];
+    newNodes?: string[];
+  }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
 }
 
-const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
+const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes, onNodesSorted }) => {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [updatedNodes, setUpdatedNodes] = useState<Set<string>>(new Set());
   const [compressedImages, setCompressedImages] = useState<Map<string, string>>(new Map());
+  const [isSorting, setIsSorting] = useState(false);
+  const { chatHistory } = useChat();
 
   // Track node updates
   useEffect(() => {
@@ -86,8 +96,44 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = ({ nodes }) => {
     return compressedImages.get(nodeId) || originalImage;
   };
 
+  const handleSortByRelevance = async () => {
+    setIsSorting(true);
+    try {
+      const sortedIds = await sortNodesByRelevance(nodes, chatHistory);
+      // Create a new array with nodes sorted according to the returned order
+      const sortedNodes = [...nodes].sort((a, b) => {
+        const aIndex = sortedIds.indexOf(a.id);
+        const bIndex = sortedIds.indexOf(b.id);
+        if (aIndex === -1) return 1;
+        if (bIndex === -1) return -1;
+        return aIndex - bIndex;
+      });
+      // Update the nodes prop through a callback
+      if (onNodesSorted) {
+        onNodesSorted(sortedNodes);
+      }
+    } catch (error) {
+      console.error('Error sorting nodes:', error);
+    } finally {
+      setIsSorting(false);
+    }
+  };
+
   return (
     <div className="w-1/2 p-4 flex flex-col space-y-4 relative overflow-y-auto">
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={handleSortByRelevance}
+          disabled={isSorting}
+          className={`px-4 py-2 rounded ${
+            isSorting 
+              ? 'bg-gray-600 cursor-not-allowed' 
+              : 'bg-blue-600 hover:bg-blue-700'
+          } text-white transition-colors`}
+        >
+          {isSorting ? 'Sorting...' : 'Sort by Relevance'}
+        </button>
+      </div>
       <div className="flex-grow overflow-y-auto">
         <div className="flex flex-wrap gap-4">
           {nodes.map((node) => (

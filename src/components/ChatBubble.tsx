@@ -100,7 +100,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
                 ))}
               </div>
             ) : (
-              <div className={`text-sm leading-relaxed ${
+              <div className={`text-lg leading-relaxed ${
                 expandableMessagesTypes.includes(message.role) ? "text-gray-700" : 
                 message.role === "assistant" ? "text-justify" : ""
               }`}>
@@ -109,7 +109,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
                     {formatJsonContent(message.content)}
                   </pre>
                 ) : message.role === "assistant" ? (
-                  <div className="prose prose-invert max-w-none">
+                  <div className="prose prose-invert max-w-none text-xl">
                     <ReactMarkdown>{displayedContent}</ReactMarkdown>
                     {message.isStreaming && <span className="animate-pulse">▋</span>}
                   </div>

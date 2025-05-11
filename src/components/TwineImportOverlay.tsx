@@ -8,9 +8,9 @@ const MAX_CONTENT_LENGTH = 4000000; // 4 million characters
 interface TwineImportOverlayProps {
   nodes: Node[];
   updateGraph: (nodeEdition: { 
-    merge: Node[];
-    delete: string[];
-    newNodes: string[];
+    merge?: Partial<Node>[]; 
+    delete?: string[];
+    newNodes?: string[];
   }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
   closeOverlay: () => void;
 }

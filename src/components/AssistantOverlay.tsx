@@ -4,7 +4,11 @@ import { generateNodesFromPrompt } from '../services/LLMService';
 
 interface AssistantOverlayProps {
   nodes: Node[];
-  updateGraph: (nodeEdition: { merge?: Partial<Node>[], delete?: string[] }) => void;
+  updateGraph: (nodeEdition: { 
+    merge?: Partial<Node>[]; 
+    delete?: string[];
+    newNodes?: string[];
+  }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
   closeOverlay: () => void;
 }
 

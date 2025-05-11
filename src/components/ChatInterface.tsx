@@ -8,7 +8,11 @@ import DetailsOverlay from './DetailsOverlay';
 
 interface ChatInterfaceProps {
   nodes: Node[];
-  updateGraph: Function;
+  updateGraph: (nodeEdition: { 
+    merge?: Partial<Node>[]; 
+    delete?: string[];
+    newNodes?: string[];
+  }, imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => {
@@ -18,6 +22,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
   const [loadingMessage, setLoadingMessage] = useState('');
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [showDebug, setShowDebug] = useState(true);
+  const [inspectMode, setInspectMode] = useState(false);
+  const [disableImageGeneration, setDisableImageGeneration] = useState(false);
   const [lastNodeEdition, setLastNodeEdition] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionTriggered, setActionTriggered] = useState(false);
@@ -91,7 +97,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       // Use the current chat history including the new message
       const contextHistory = [...chatHistory, tempUserMessage];
 
-      if (nodes.length < 15) {
+      const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
+
+      if (nodes.length < maxIncludedNodes) {
         detailedNodeIds = nodes
           .filter(node => node.type !== "image_generation")
           .map(node => node.id);
@@ -155,6 +163,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         
         console.log('Parallel operations completed in:', Date.now() - storyStartTime, 'ms');
 
+        // If image generation is disabled, remove updateImage flags
+        if (disableImageGeneration) {
+          if (nodeEdition.newNodes) {
+            nodeEdition.newNodes = nodeEdition.newNodes.map((node: Partial<Node>) => ({
+              ...node,
+              updateImage: false
+            }));
+          }
+          if (nodeEdition.update) {
+            nodeEdition.update = nodeEdition.update.map((update: { id: string; longDescription?: string; rules?: string; updateImage?: boolean; name?: string; type?: string }) => ({
+              ...update,
+              updateImage: false
+            }));
+          }
+        }
+
         setLastNodeEdition(nodeEdition);
         setLastFailedRequest(null);
 
@@ -183,7 +207,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         const filteredMessages = messagesToAdd.filter(message => {
           if (!message || !message.content) return false;
           
-          if (message.role === "selectedNodes" && nodes.length < 15) {
+          if (message.role === "selectedNodes" && nodes.length < maxIncludedNodes) {
             return false; // Hide selectedNodes when all nodes are selected
           }
           if (message.role === "reasoning" && !message.content.trim()) {
@@ -196,7 +220,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         setActionTriggered(false);
 
         // Keep waitingForAnswer true until all operations are complete
-        setLoadingMessage('Generating images in the background...');
+        setLoadingMessage(disableImageGeneration ? '' : 'Generating images in the background...');
         setIsLoading(false);
 
         // Apply the node edition to update the graph in the background
@@ -268,6 +292,67 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
     setInput(lastUserMessage.content);
   };
 
+  const handleGenerateSuggestions = async () => {
+    if (isLoading) return;
+
+    setIsLoading(true);
+    setErrorMessage('');
+    setLoadingMessage('Generating suggestions...');
+    const timestamp = new Date().toLocaleTimeString();
+
+    try {
+      const contextHistory = [...chatHistory];
+      const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
+
+      let detailedNodeIds;
+      if (nodes.length < maxIncludedNodes) {
+        detailedNodeIds = nodes
+          .filter(node => node.type !== "image_generation")
+          .map(node => node.id);
+      } else {
+        detailedNodeIds = await getRelevantNodes(input, contextHistory.slice(-4), nodes);
+      }
+
+      const [actions, nodeEdition] = await Promise.all([
+        generateActions("", nodes, ""),
+        generateNodeEdition("", [], nodes, "", true)
+      ]);
+
+      const messagesToAdd: Message[] = [
+        {
+          role: "actions",
+          content: JSON.stringify(actions),
+          timestamp: timestamp.toString()
+        }, {
+          role: "nodeEdition",
+          content: JSON.stringify(nodeEdition, null, 2),
+          timestamp: timestamp.toString()
+        }
+      ];
+
+      messagesToAdd.forEach(addMessage);
+      setLastNodeEdition(nodeEdition);
+
+      updateGraph(nodeEdition, []).then(() => {
+        setWaitingForAnswer(false);
+        setLoadingMessage('');
+        setIsLoading(false);
+      }).catch((error: Error) => {
+        console.error('Error updating graph:', error);
+        setErrorMessage('Error updating game state. Please try again.');
+        setWaitingForAnswer(false);
+        setLoadingMessage('');
+        setIsLoading(false);
+      });
+    } catch (error) {
+      console.error('Error generating suggestions:', error);
+      setErrorMessage('An error occurred. Please try again.');
+      setWaitingForAnswer(false);
+      setLoadingMessage('');
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="w-1/2 h-full p-4 flex flex-col relative">
       <ChatHistory 
@@ -278,14 +363,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
         onActionClick={handleActionClick}
         showDebug={showDebug}
       />
-      <ChatInput 
-        input={input} 
-        setInput={setInput} 
-        handleSend={handleSend} 
-        waitingForAnswer={waitingForAnswer}
-        onRegenerate={handleRegenerate}
-        showRegenerate={chatHistory.length > 0}
-      />
+      {inspectMode ? (
+        <div className="flex items-center mb-2">
+          <button
+            className="flex-grow px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-600"
+            onClick={handleGenerateSuggestions}
+            disabled={isLoading}
+          >
+            Generate nodeGeneration and action suggestions
+          </button>
+        </div>
+      ) : (
+        <ChatInput 
+          input={input} 
+          setInput={setInput} 
+          handleSend={handleSend} 
+          waitingForAnswer={waitingForAnswer}
+          onRegenerate={handleRegenerate}
+          showRegenerate={chatHistory.length > 0}
+        />
+      )}
       <div className="flex space-x-4">
         <button className="py-2 text-sm text-left text-blue-500 underline" onClick={toggleCollapse}>
           {isCollapsed ? 'Show Details' : 'Hide Details'}
@@ -295,6 +392,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
           onClick={() => setShowDebug(!showDebug)}
         >
           {showDebug ? 'Hide Debug' : 'Show Debug'}
+        </button>
+        <button 
+          className="py-2 text-sm text-left text-blue-500 underline" 
+          onClick={() => setInspectMode(!inspectMode)}
+        >
+          {inspectMode ? 'Disable Inspect Mode' : 'Enable Inspect Mode'}
+        </button>
+        <button 
+          className="py-2 text-sm text-left text-blue-500 underline" 
+          onClick={() => setDisableImageGeneration(!disableImageGeneration)}
+        >
+          {disableImageGeneration ? 'Enable Image Generation' : 'Disable Image Generation'}
         </button>
       </div>
       <DetailsOverlay isCollapsed={isCollapsed} toggleCollapse={toggleCollapse} lastNodeEdition={lastNodeEdition || []} nodes={nodes} />

@@ -325,14 +325,16 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
     return acc;
   }, "");
   
+  const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
+  
   const nodesDescription = nodes.reduce((acc, node) => {
     // Skip image_generation nodes
     if (node.type === "image_generation") {
       return acc;
     }
 
-    // If there are less than 15 nodes, include full content
-    if (nodes.length < 15) {
+    // If there are less than maxIncludedNodes nodes, include full content
+    if (nodes.length < maxIncludedNodes) {
       return acc + `
         id: ${node.id}
         name: ${node.name}
@@ -341,7 +343,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
         type: ${node.type}
         `;
     } else {
-      // Original behavior for 15 or more nodes
+      // Original behavior for maxIncludedNodes or more nodes
       return acc + `
         id: ${node.id}
         name: ${node.name}
@@ -361,7 +363,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   Do not mention any node updates/change/deletion, as another LLM call will handle this.
 
   ## Game Content:
-  ### Current Nodes:
+  ### Current Nodes, sorted by relevance:
   ${nodesDescription}
   
   ### Chat History:
@@ -427,7 +429,14 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
 
 export const generateNodeEdition = async(chatText: string, actions: string[], nodes: Node[], userInput: string, isUserInteraction: boolean = false) => {
   console.log('LLM Call: Generating node edition');
-  const nodesDescription = nodes.reduce((acc, node) => {
+  
+  const sortedNodes = [...nodes].sort((a, b) => {
+    if (a.type === "system" && b.type !== "system") return -1;
+    if (a.type !== "system" && b.type === "system") return 1;
+    return 0;
+  });
+
+  const nodesDescription = sortedNodes.reduce((acc, node) => {
     if (node.type === "image_generation" || node.type === "system") {
       return acc;
     }
@@ -465,7 +474,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
     * Nodes that need an image update due to significant changes in their description or rules
     DO NOT set updateImage to true for abstract concepts, game rules, or system nodes that don't need visual representation.
 
-  ## Current Game State:
+  ## Current Game State, sorted by relevance:
   ${nodesDescription}
 
   ## Chat History:
@@ -481,7 +490,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   {
     "merge": [
       {
-        "id": "node-id",
+        "id": "node-id (specify a new one if you want to create a new node)",
         "name": "updated name",
         "longDescription": "updated description",
         "rules": "updated rules",
@@ -491,6 +500,8 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
     ],
     "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
   }
+
+  Update up to 3 nodes maximum, and you can create up to one new node.
   `;
 
   const messages: Message[] = [
@@ -1134,3 +1145,56 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
   // If we've exhausted all retries, throw the last error
   throw lastError;
 }
+
+export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]) => {
+  console.log('LLM Call: Sorting nodes by relevance');
+  const stringHistory = chatHistory.reduce((acc, message) => {
+    if (message.role === "user" || message.role === "assistant") {
+      return acc + `${message.role}: ${message.content}\n`;
+    }
+    return acc;
+  }, "");
+
+  const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "image_generation") {
+      return acc;
+    }
+    return acc + `
+      id: ${node.id}
+      name: ${node.name}
+      longDescription: ${node.longDescription}
+      rules: ${node.rules}
+      type: ${node.type}
+      `;
+  }, "");
+
+  const prompt = `
+  # TASK:
+  You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.
+  Consider both the content of the nodes and the context of the conversation.
+
+  ## Chat History:
+  ${stringHistory}
+
+  ## Nodes to Sort:
+  ${nodesDescription}
+
+  Return a JSON object with a single field "sortedIds" containing an array of node IDs in order of relevance (most relevant first).
+  Each ID entry in the array should be enclosed in quotes.
+
+  Example response:
+  {
+    "sortedIds": ["node1", "node2", "node3"]
+  }
+
+  Your focus is to order the nodes to sort them, from the most related to the chatHistory, to the least. This will be used to have the Story Generation AI focus on the first.
+  `;
+
+  const messages: Message[] = [
+    { role: 'system', content: prompt },
+  ];
+
+  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' });
+  const parsed = JSON.parse(response);
+  return parsed.sortedIds;
+};
