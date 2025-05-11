@@ -18,7 +18,7 @@
   
 /* Markdown styles */
 .prose {
-  @apply text-sm;
+  @apply text-xl;
 }
 
 .prose p {
