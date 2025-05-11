@@ -145,15 +145,19 @@ function useNodeGraph() {
 
     // Initialize the image queue service with the update callback
     imageQueueService.setUpdateNodeCallback((updatedNode: Node) => {
-      const index = newNodes.findIndex(n => n.id === updatedNode.id);
-      if (index !== -1) {
-        newNodes[index] = {
-          ...newNodes[index],
-          image: updatedNode.image,
-          updateImage: false // Reset the flag after image is generated
-        };
-        setNodes([...newNodes]);
-      }
+      setNodes(currentNodes => {
+        const index = currentNodes.findIndex(n => n.id === updatedNode.id);
+        if (index !== -1) {
+          const updatedNodes = [...currentNodes];
+          updatedNodes[index] = {
+            ...updatedNodes[index],
+            image: updatedNode.image,
+            updateImage: false // Reset the flag after image is generated
+          };
+          return updatedNodes;
+        }
+        return currentNodes;
+      });
     });
 
     // Queue image generation for nodes that need it

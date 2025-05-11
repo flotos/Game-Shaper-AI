@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '../context/ChatContext';
 
@@ -19,6 +19,8 @@ interface ChatBubbleProps {
   showDebug?: boolean;
   onToggleDebug?: () => void;
   isWaiting?: boolean;
+  onMessageEdit?: (index: number, newContent: string) => void;
+  messageIndex: number;
 }
 
 const ChatBubble: React.FC<ChatBubbleProps> = ({ 
@@ -26,19 +28,53 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
   onActionClick,
   showDebug = true,
   onToggleDebug,
-  isWaiting = false
+  isWaiting = false,
+  onMessageEdit,
+  messageIndex
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(expandableMessagesTypes.includes(message.role));
   const [displayedContent, setDisplayedContent] = useState(message.content);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (message.isStreaming) {
-      setDisplayedContent(message.content);
+    setDisplayedContent(message.content);
+  }, [message.content]);
+
+  useEffect(() => {
+    if (isEditing && editTextareaRef.current) {
+      editTextareaRef.current.focus();
+      editTextareaRef.current.style.height = 'auto';
+      editTextareaRef.current.style.height = `${editTextareaRef.current.scrollHeight}px`;
     }
-  }, [message.content, message.isStreaming]);
+  }, [isEditing]);
 
   const toggleCollapse = () => {
     setIsCollapsed(!isCollapsed);
+  };
+
+  const handleDoubleClick = () => {
+    if (message.role === "assistant" && !message.isStreaming) {
+      setIsEditing(true);
+      setEditContent(message.content);
+    }
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+    }
+  };
+
+  const handleSaveEdit = () => {
+    if (onMessageEdit && editContent !== message.content) {
+      onMessageEdit(messageIndex, editContent);
+      setDisplayedContent(editContent);
+    }
+    setIsEditing(false);
   };
 
   // Don't render debug messages if showDebug is false
@@ -48,13 +84,16 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
 
   return (
     <div className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} mb-3`}>
-      <div className={`w-[90%] p-3 rounded-xl shadow-sm relative transition-all duration-200 ${
-        message.role === "user" ? "bg-slate-600 text-white shadow-slate-500/30 animate-vibrate" :
-        message.role === "userNote" ? "bg-purple-600 text-white shadow-purple-500/30" :
-        message.role === "assistant" ? `bg-slate-700 text-white shadow-slate-500/30 ${isWaiting || message.isStreaming ? '' : ''}` :
-        expandableMessagesTypes.includes(message.role) ? "bg-gray-50/50 border border-gray-100 text-gray-700" :
-        "bg-transparent text-gray-600"
-      }`}>
+      <div 
+        className={`w-[90%] p-3 rounded-xl shadow-sm relative transition-all duration-200 ${
+          message.role === "user" ? "bg-slate-600 text-white shadow-slate-500/30 animate-vibrate" :
+          message.role === "userNote" ? "bg-purple-600 text-white shadow-purple-500/30" :
+          message.role === "assistant" ? `bg-slate-700 text-white shadow-slate-500/30 ${isWaiting || message.isStreaming ? '' : 'cursor-pointer hover:bg-slate-600'}` :
+          expandableMessagesTypes.includes(message.role) ? "bg-gray-50/50 border border-gray-100 text-gray-700" :
+          "bg-transparent text-gray-600"
+        }`}
+        onDoubleClick={handleDoubleClick}
+      >
         {expandableMessagesTypes.includes(message.role) && (
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-2">
@@ -110,10 +149,26 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
                     {formatJsonContent(message.content)}
                   </pre>
                 ) : message.role === "assistant" ? (
-                  <div className="prose prose-invert max-w-none text-xl">
-                    <ReactMarkdown>{displayedContent}</ReactMarkdown>
-                    {message.isStreaming && <span className="animate-pulse">▋</span>}
-                  </div>
+                  isEditing ? (
+                    <div className="relative">
+                      <textarea
+                        ref={editTextareaRef}
+                        className="w-full p-2 bg-gray-800 text-white rounded resize-none"
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        onKeyDown={handleEditKeyDown}
+                        onBlur={handleSaveEdit}
+                      />
+                      <div className="absolute bottom-2 right-2 text-xs text-gray-400">
+                        Press Ctrl+Enter to save, Esc to cancel
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="prose prose-invert max-w-none text-xl">
+                      <ReactMarkdown>{displayedContent}</ReactMarkdown>
+                      {message.isStreaming && <span className="animate-pulse">▋</span>}
+                    </div>
+                  )
                 ) : (
                   <ReactMarkdown>{message.content}</ReactMarkdown>
                 )}

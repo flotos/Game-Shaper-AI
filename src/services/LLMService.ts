@@ -1026,7 +1026,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
             min_p: 0,
             enable_thinking: includeReasoning,
             include_reasoning: true,
-            presence_penalty: 1,
+            presence_penalty: 0,
             reasoning: {
               effort: "low"
             },
@@ -1188,6 +1188,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   }
 
   Your focus is to order the nodes to sort them, from the most related to the chatHistory, to the least. This will be used to have the Story Generation AI focus on the first.
+  For example, the main character and active characters should be first, then the location, then ongoing game systems, ...
   `;
 
   const messages: Message[] = [

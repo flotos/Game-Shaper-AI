@@ -14,6 +14,7 @@ interface ChatContextType {
   clearChatHistory: () => void;
   updateStreamingMessage: (content: string) => void;
   endStreaming: () => void;
+  editMessage: (index: number, newContent: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -74,6 +75,18 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
     setChatHistoryState([]);
   }, []);
 
+  const editMessage = useCallback((index: number, newContent: string) => {
+    setChatHistoryState((prevChatHistory) => {
+      if (index >= 0 && index < prevChatHistory.length) {
+        const updatedChatHistory = [...prevChatHistory];
+        updatedChatHistory[index] = { ...updatedChatHistory[index], content: newContent };
+        localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
+        return updatedChatHistory;
+      }
+      return prevChatHistory;
+    });
+  }, []);
+
   return (
     <ChatContext.Provider value={{ 
       chatHistory, 
@@ -81,7 +94,8 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
       setChatHistory, 
       clearChatHistory,
       updateStreamingMessage,
-      endStreaming
+      endStreaming,
+      editMessage
     }}>
       {children}
     </ChatContext.Provider>
@@ -90,7 +104,7 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
 export const useChat = () => {
   const context = useContext(ChatContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useChat must be used within a ChatProvider');
   }
   return context;

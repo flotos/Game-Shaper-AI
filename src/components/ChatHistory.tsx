@@ -19,7 +19,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
   onRetry,
   showDebug 
 }) => {
-  const { chatHistory } = useChat();
+  const { chatHistory, editMessage } = useChat();
 
   return (
     <div className="flex-grow overflow-y-auto mb-4 space-y-2">
@@ -29,6 +29,8 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
           message={msg} 
           onActionClick={onActionClick}
           showDebug={showDebug}
+          messageIndex={index}
+          onMessageEdit={editMessage}
         />
       ))}
       {waitingForAnswer && (
