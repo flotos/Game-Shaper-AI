@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Node } from '../models/Node';
-import { extractDataFromTwine, generateNodesFromExtractedData } from '../services/LLMService';
+import { extractDataFromTwine, generateNodesFromExtractedData, regenerateSingleNode } from '../services/LLMService';
 import { PromptSelector } from './PromptSelector';
 
 const MAX_CONTENT_LENGTH = 4000000; // 4 million characters
@@ -28,6 +28,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   const [error, setError] = useState('');
   const [processingProgress, setProcessingProgress] = useState(0);
   const [extractionProgress, setExtractionProgress] = useState(0);
+  const [regenerationProgress, setRegenerationProgress] = useState<{ [key: string]: number }>({});
 
   // Import settings
   const [importMode, setImportMode] = useState<'new_game' | 'merge_story'>('merge_story');
@@ -51,13 +52,17 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         longDescription?: string;
         rules?: string;
         updateImage?: boolean;
+        name?: string;
+        type?: string;
       }[];
       delete?: string[];
     };
+    editedNodes?: Map<string, Partial<Node>>;
   }>({
     showPreview: false,
     step: 'extraction',
-    originalNodes: nodes
+    originalNodes: nodes,
+    editedNodes: new Map()
   });
 
   // Add this helper function at the top of the file, after the imports
@@ -168,6 +173,82 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         changes: updatedChanges
       };
     });
+  };
+
+  // Add this function after the toggleImageUpdate function
+  const handleNodeEdit = (nodeId: string, field: keyof Node, value: string | boolean) => {
+    setPreview(prev => {
+      const newEditedNodes = new Map(prev.editedNodes || new Map());
+      const existingEdit = newEditedNodes.get(nodeId) || {};
+      
+      newEditedNodes.set(nodeId, {
+        ...existingEdit,
+        [field]: value
+      });
+
+      return {
+        ...prev,
+        editedNodes: newEditedNodes
+      };
+    });
+  };
+
+  // Add new function to regenerate a single node
+  const handleRegenerateNode = async (nodeId: string, isNewNode: boolean) => {
+    if (!preview.extractedData) return;
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      // Get the existing node data
+      const existingNode = isNewNode 
+        ? preview.changes?.new?.find(n => n.id === nodeId)
+        : nodes.find(n => n.id === nodeId);
+
+      if (!existingNode) {
+        throw new Error('Node not found');
+      }
+
+      const updatedNode = await regenerateSingleNode(
+        nodeId,
+        existingNode,
+        preview.extractedData,
+        nodes,
+        importMode,
+        secondPromptInstructions
+      );
+
+      if (updatedNode) {
+        setPreview(prev => {
+          if (!prev.changes) return prev;
+
+          const newChanges = { ...prev.changes };
+          
+          if (isNewNode) {
+            // Update the new node
+            newChanges.new = prev.changes.new?.map((n: Partial<Node>) => 
+              n.id === nodeId ? { ...n, ...updatedNode } : n
+            );
+          } else {
+            // Update the existing node
+            newChanges.update = prev.changes.update?.map((n: { id: string; longDescription?: string; rules?: string; updateImage?: boolean; name?: string; type?: string }) => 
+              n.id === nodeId ? { ...n, ...updatedNode } : n
+            );
+          }
+
+          return {
+            ...prev,
+            changes: newChanges
+          };
+        });
+      }
+    } catch (err) {
+      setError('Failed to regenerate node. Please try again.');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Basic cleaning function
@@ -431,6 +512,65 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
           step: 'preview',
           changes: nodeResponse
         }));
+
+        // Start parallel regeneration for all nodes
+        const allNodes = [...(nodeResponse.new || []), ...(nodeResponse.update || [])];
+        const regenerationPromises = allNodes.map(async (node) => {
+          try {
+            setRegenerationProgress(prev => ({ ...prev, [node.id]: 0 }));
+            // For new nodes, the node itself is the recently generated one
+            // For updated nodes, we need to find the original node to compare against
+            const recentlyGeneratedNode = nodeResponse.new?.find((n: Partial<Node>) => n.id === node.id) || 
+                                        nodeResponse.update?.find((n: { id: string; longDescription?: string; rules?: string; updateImage?: boolean }) => n.id === node.id);
+            
+            const regeneratedNode = await regenerateSingleNode(
+              node.id,
+              node,
+              preview.extractedData!,
+              nodes,
+              importMode,
+              secondPromptInstructions,
+              recentlyGeneratedNode // Pass the recently generated version for comparison
+            );
+            setRegenerationProgress(prev => ({ ...prev, [node.id]: 100 }));
+            return regeneratedNode;
+          } catch (err) {
+            console.error(`Failed to regenerate node ${node.id}:`, err);
+            setRegenerationProgress(prev => ({ ...prev, [node.id]: -1 }));
+            return node; // Return original node if regeneration fails
+          }
+        });
+
+        // Wait for all regenerations to complete
+        const regeneratedNodes = await Promise.all(regenerationPromises);
+
+        // Update the preview with regenerated nodes
+        setPreview(prev => {
+          if (!prev.changes) return prev;
+
+          const newChanges = { ...prev.changes };
+          
+          // Update new nodes
+          if (newChanges.new) {
+            newChanges.new = newChanges.new.map((n: Partial<Node>) => {
+              const regenerated = regeneratedNodes.find(r => r.id === n.id);
+              return regenerated || n;
+            });
+          }
+
+          // Update existing nodes
+          if (newChanges.update) {
+            newChanges.update = newChanges.update.map((n: { id: string; longDescription?: string; rules?: string; updateImage?: boolean }) => {
+              const regenerated = regeneratedNodes.find(r => r.id === n.id);
+              return regenerated || n;
+            });
+          }
+
+          return {
+            ...prev,
+            changes: newChanges
+          };
+        });
       } else {
         setError('No nodes were generated. Please try again with different settings.');
       }
@@ -447,24 +587,30 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     if (preview.changes) {
       const changes = {
         merge: [
-          ...(preview.changes.new?.map(node => ({
-            id: node.id || '',
-            name: node.name || '',
-            longDescription: node.longDescription || '',
-            rules: typeof node.rules === 'string' ? node.rules : (Array.isArray(node.rules) ? (node.rules as string[]).join(', ') : ''),
-            type: node.type || '',
-            image: node.image || '',
-            updateImage: node.updateImage || false,
-            imageSeed: node.imageSeed || 0
-          } as Node)) || []),
+          ...(preview.changes.new?.map(node => {
+            const editedNode = preview.editedNodes?.get(node.id || '');
+            return {
+              id: node.id || '',
+              name: editedNode?.name || node.name || '',
+              longDescription: editedNode?.longDescription || node.longDescription || '',
+              rules: editedNode?.rules || (typeof node.rules === 'string' ? node.rules : (Array.isArray(node.rules) ? (node.rules as string[]).join(', ') : '')),
+              type: editedNode?.type || node.type || '',
+              image: node.image || '',
+              updateImage: editedNode?.updateImage ?? node.updateImage ?? false,
+              imageSeed: node.imageSeed || 0
+            } as Node;
+          }) || []),
           ...(preview.changes.update?.map(update => {
             const existingNode = nodes.find(n => n.id === update.id);
             if (!existingNode) return null;
+            const editedNode = preview.editedNodes?.get(update.id);
             return {
               ...existingNode,
-              longDescription: update.longDescription ?? existingNode.longDescription,
-              rules: update.rules ?? existingNode.rules,
-              updateImage: update.updateImage === undefined ? existingNode.updateImage : update.updateImage
+              name: editedNode?.name ?? existingNode.name,
+              longDescription: editedNode?.longDescription ?? update.longDescription ?? existingNode.longDescription,
+              rules: editedNode?.rules ?? update.rules ?? existingNode.rules,
+              type: editedNode?.type ?? existingNode.type,
+              updateImage: editedNode?.updateImage ?? update.updateImage ?? existingNode.updateImage
             };
           }).filter(Boolean) as Node[]) || []
         ],
@@ -707,11 +853,11 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                 </div>
                 {preview.changes.new?.map((node, index) => (
                   <div key={index} className="p-4 bg-gray-800 rounded">
-                    <h4 className="text-lg font-bold mb-2">{node.name}</h4>
-                    <div className="grid grid-cols-2 gap-4">
+                    <h4 className="text-lg font-bold mb-4">{node.name}</h4>
+                    <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <h4 className="text-sm font-semibold mb-1">Current</h4>
-                        <div className="text-sm space-y-2">
+                        <h4 className="text-sm font-semibold mb-2">Current</h4>
+                        <div className="text-sm space-y-4">
                           <div>
                             <span className="font-semibold block mb-1">Long Description:</span>
                             <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
@@ -724,11 +870,17 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                               {createDiffSpans('', node.rules || '', true)}
                             </div>
                           </div>
+                          <div>
+                            <span className="font-semibold block mb-1">Type:</span>
+                            <div className="p-2 bg-gray-700 rounded text-white">
+                              {node.type}
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <div>
-                        <h4 className="text-sm font-semibold mb-1">New</h4>
-                        <div className="text-sm space-y-2">
+                        <h4 className="text-sm font-semibold mb-2">New</h4>
+                        <div className="text-sm space-y-4">
                           <div>
                             <span className="font-semibold block mb-1">Long Description:</span>
                             <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
@@ -741,45 +893,95 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                               {createDiffSpans('', node.rules || '', false)}
                             </div>
                           </div>
+                          <div>
+                            <span className="font-semibold block mb-1">Type:</span>
+                            <div className="p-2 bg-gray-700 rounded text-white">
+                              {node.type}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2">Edit</h4>
+                        <div className="text-sm space-y-4">
+                          <div>
+                            <span className="font-semibold block mb-1">Name:</span>
+                            <input
+                              type="text"
+                              value={preview.editedNodes?.get(node.id || '')?.name || node.name || ''}
+                              onChange={(e) => handleNodeEdit(node.id || '', 'name', e.target.value)}
+                              className="w-full p-2 bg-gray-700 rounded text-white"
+                            />
+                          </div>
+                          <div>
+                            <span className="font-semibold block mb-1">Type:</span>
+                            <input
+                              type="text"
+                              value={preview.editedNodes?.get(node.id || '')?.type || node.type || ''}
+                              onChange={(e) => handleNodeEdit(node.id || '', 'type', e.target.value)}
+                              className="w-full p-2 bg-gray-700 rounded text-white"
+                            />
+                          </div>
+                          <div>
+                            <span className="font-semibold block mb-1">Description:</span>
+                            <textarea
+                              value={preview.editedNodes?.get(node.id || '')?.longDescription || node.longDescription || ''}
+                              onChange={(e) => handleNodeEdit(node.id || '', 'longDescription', e.target.value)}
+                              className="w-full p-2 bg-gray-700 rounded text-white h-32"
+                            />
+                          </div>
+                          <div>
+                            <span className="font-semibold block mb-1">Rules:</span>
+                            <textarea
+                              value={preview.editedNodes?.get(node.id || '')?.rules || (typeof node.rules === 'string' ? node.rules : (Array.isArray(node.rules) ? (node.rules as string[]).join(', ') : ''))}
+                              onChange={(e) => handleNodeEdit(node.id || '', 'rules', e.target.value)}
+                              className="w-full p-2 bg-gray-700 rounded text-white h-32"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
-                    <div className="mt-2">
-                      <span className="font-semibold block mb-1">Type:</span>
-                      <div className="p-2 bg-gray-700 rounded text-white">
-                        {node.type}
-                      </div>
-                    </div>
-                    <div className="mt-2">
+                    <div className="mt-4">
                       <span className="font-semibold block mb-1">Image Generation:</span>
                       <div className="flex items-center space-x-2">
                         <button
-                          onClick={() => toggleImageUpdate(node.id || '')}
+                          onClick={() => handleNodeEdit(node.id || '', 'updateImage', !(preview.editedNodes?.get(node.id || '')?.updateImage ?? node.updateImage ?? false))}
                           className={`px-3 py-1 rounded ${
-                            node.updateImage 
+                            (preview.editedNodes?.get(node.id || '')?.updateImage ?? node.updateImage ?? false)
                               ? 'bg-green-600 hover:bg-green-700' 
                               : 'bg-gray-600 hover:bg-gray-700'
                           } text-white transition-colors`}
                         >
-                          {node.updateImage ? 'Will generate image' : 'No image generation needed'}
+                          {(preview.editedNodes?.get(node.id || '')?.updateImage ?? node.updateImage ?? false) ? 'Will generate image' : 'No image generation needed'}
                         </button>
                         <span className="text-sm text-gray-400">
                           (Click to toggle)
                         </span>
                       </div>
                     </div>
+                    <div className="mt-4">
+                      <button
+                        onClick={() => handleRegenerateNode(node.id || '', true)}
+                        disabled={isLoading}
+                        className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+                      >
+                        {isLoading ? 'Regenerating...' : 'Regenerate Node'}
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {preview.changes.update?.map((update, index) => {
                   const existingNode = nodes.find(n => n.id === update.id);
                   if (!existingNode) return null;
+                  const editedNode = preview.editedNodes?.get(update.id);
+                  
                   return (
                     <div key={index} className="p-4 bg-gray-800 rounded">
-                      <h4 className="text-lg font-bold mb-2">{existingNode.name}</h4>
-                      <div className="grid grid-cols-2 gap-4">
+                      <h4 className="text-lg font-bold mb-4">{existingNode.name}</h4>
+                      <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <h4 className="text-sm font-semibold mb-1">Current</h4>
-                          <div className="text-sm space-y-2">
+                          <h4 className="text-sm font-semibold mb-2">Current</h4>
+                          <div className="text-sm space-y-4">
                             <div>
                               <span className="font-semibold block mb-1">Long Description:</span>
                               <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
@@ -792,11 +994,17 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                                 {createDiffSpans(existingNode.rules, update.rules || existingNode.rules, true)}
                               </div>
                             </div>
+                            <div>
+                              <span className="font-semibold block mb-1">Type:</span>
+                              <div className="p-2 bg-gray-700 rounded text-white">
+                                {existingNode.type}
+                              </div>
+                            </div>
                           </div>
                         </div>
                         <div>
-                          <h4 className="text-sm font-semibold mb-1">Updated</h4>
-                          <div className="text-sm space-y-2">
+                          <h4 className="text-sm font-semibold mb-2">New</h4>
+                          <div className="text-sm space-y-4">
                             <div>
                               <span className="font-semibold block mb-1">Long Description:</span>
                               <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
@@ -809,26 +1017,80 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                                 {createDiffSpans(existingNode.rules, update.rules || existingNode.rules, false)}
                               </div>
                             </div>
+                            <div>
+                              <span className="font-semibold block mb-1">Type:</span>
+                              <div className="p-2 bg-gray-700 rounded text-white">
+                                {update.type || existingNode.type}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Edit</h4>
+                          <div className="text-sm space-y-4">
+                            <div>
+                              <span className="font-semibold block mb-1">Name:</span>
+                              <input
+                                type="text"
+                                value={editedNode?.name ?? existingNode.name}
+                                onChange={(e) => handleNodeEdit(update.id, 'name', e.target.value)}
+                                className="w-full p-2 bg-gray-700 rounded text-white"
+                              />
+                            </div>
+                            <div>
+                              <span className="font-semibold block mb-1">Type:</span>
+                              <input
+                                type="text"
+                                value={editedNode?.type ?? existingNode.type}
+                                onChange={(e) => handleNodeEdit(update.id, 'type', e.target.value)}
+                                className="w-full p-2 bg-gray-700 rounded text-white"
+                              />
+                            </div>
+                            <div>
+                              <span className="font-semibold block mb-1">Description:</span>
+                              <textarea
+                                value={editedNode?.longDescription ?? update.longDescription ?? existingNode.longDescription}
+                                onChange={(e) => handleNodeEdit(update.id, 'longDescription', e.target.value)}
+                                className="w-full p-2 bg-gray-700 rounded text-white h-32"
+                              />
+                            </div>
+                            <div>
+                              <span className="font-semibold block mb-1">Rules:</span>
+                              <textarea
+                                value={editedNode?.rules ?? update.rules ?? existingNode.rules}
+                                onChange={(e) => handleNodeEdit(update.id, 'rules', e.target.value)}
+                                className="w-full p-2 bg-gray-700 rounded text-white h-32"
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div className="mt-2">
+                      <div className="mt-4">
                         <span className="font-semibold block mb-1">Image Update:</span>
                         <div className="flex items-center space-x-2">
                           <button
-                            onClick={() => toggleImageUpdate(update.id)}
+                            onClick={() => handleNodeEdit(update.id, 'updateImage', !(editedNode?.updateImage ?? update.updateImage ?? existingNode.updateImage))}
                             className={`px-3 py-1 rounded ${
-                              update.updateImage 
+                              (editedNode?.updateImage ?? update.updateImage ?? existingNode.updateImage)
                                 ? 'bg-green-600 hover:bg-green-700' 
                                 : 'bg-gray-600 hover:bg-gray-700'
                             } text-white transition-colors`}
                           >
-                            {update.updateImage ? 'Will generate new image' : 'No image update needed'}
+                            {(editedNode?.updateImage ?? update.updateImage ?? existingNode.updateImage) ? 'Will generate new image' : 'No image update needed'}
                           </button>
                           <span className="text-sm text-gray-400">
                             (Click to toggle)
                           </span>
                         </div>
+                      </div>
+                      <div className="mt-4">
+                        <button
+                          onClick={() => handleRegenerateNode(update.id, false)}
+                          disabled={isLoading}
+                          className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+                        >
+                          {isLoading ? 'Regenerating...' : 'Regenerate Node'}
+                        </button>
                       </div>
                     </div>
                   );
@@ -838,6 +1100,34 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                     <h4 className="text-lg font-bold">Node to Delete: {nodeId}</h4>
                   </div>
                 ))}
+              </div>
+            )}
+            {Object.entries(regenerationProgress).length > 0 && (
+              <div className="mt-4 p-4 bg-gray-800 rounded">
+                <h4 className="text-lg font-bold mb-2">Regeneration Progress</h4>
+                <div className="space-y-2">
+                  {Object.entries(regenerationProgress).map(([nodeId, progress]) => {
+                    const node = preview.changes?.new?.find(n => n.id === nodeId) || 
+                                preview.changes?.update?.find(n => n.id === nodeId);
+                    return (
+                      <div key={nodeId} className="flex items-center space-x-2">
+                        <span className="text-sm w-48 truncate">{node?.name || nodeId}</span>
+                        {progress === -1 ? (
+                          <span className="text-red-500">Failed</span>
+                        ) : progress === 100 ? (
+                          <span className="text-green-500">Completed</span>
+                        ) : (
+                          <div className="flex-1 h-2 bg-gray-700 rounded-full">
+                            <div
+                              className="h-2 bg-blue-600 rounded-full transition-all duration-300"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>

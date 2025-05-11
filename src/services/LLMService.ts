@@ -791,6 +791,132 @@ export const generateNodesFromExtractedData = async (
   }
 };
 
+export const regenerateSingleNode = async (
+  nodeId: string,
+  existingNode: Partial<Node>,
+  extractedData: ExtractedData,
+  nodes: Node[],
+  mode: 'new_game' | 'merge_story',
+  nodeGenerationInstructions?: string,
+  recentlyGeneratedNode?: Partial<Node>
+) => {
+  console.log('LLM Call: Regenerating single node:', nodeId);
+  
+  const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "system") {
+      return acc;
+    }
+    return acc + `
+    id: ${node.id}
+    name: ${node.name}
+    longDescription: ${node.longDescription}
+    rules: ${node.rules}
+    type: ${node.type}
+    `;
+  }, "");
+
+  const focusedPrompt = `
+/think
+
+# Instructions
+You are a Game Engine. An AI generated nodes for a game. However, the user deemed the node didn't follow the guidelines he expected.
+Your task is to generate a new node, following more closely the guildelines provided by the user.
+In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
+
+
+# User's specific instructions (very important to follow)
+${nodeGenerationInstructions || ''}
+
+# Original Node (from the game)
+---
+id: ${existingNode.id}
+name: ${existingNode.name}
+longDescription: ${existingNode.longDescription}
+rules: ${existingNode.rules}
+type: ${existingNode.type}
+---
+
+# Recently Generated Node (that needs improvement)
+---
+${recentlyGeneratedNode ? `
+id: ${recentlyGeneratedNode.id}
+name: ${recentlyGeneratedNode.name}
+longDescription: ${recentlyGeneratedNode.longDescription}
+rules: ${recentlyGeneratedNode.rules}
+type: ${recentlyGeneratedNode.type}
+` : 'No recently generated node provided'}
+---
+
+# Extracted Story Data
+---
+${JSON.stringify(extractedData, null, 2)}
+---
+
+# Existing Nodes (for context)
+---
+${nodesDescription}
+---
+
+# Return format
+
+Return a JSON object with the following structure:
+{
+  "new": [
+    {
+      "id": "${nodeId}",
+      "name": "node name",
+      "longDescription": "detailed description",
+      "rules": "rules and internal info",
+      "type": "node type",
+      "updateImage": true/false
+    }
+  ],
+  "update": [
+    {
+      "id": "${nodeId}",
+      "longDescription": "updated description",
+      "rules": "updated rules",
+      "updateImage": true/false
+    }
+  ]
+}`;
+
+  const messages: Message[] = [
+    { role: 'system', content: focusedPrompt },
+  ];
+
+  const response = await getResponse(messages, 'gpt-4o', undefined, false, { type: 'json_object' });
+  
+  try {
+    const parsedResponse = typeof response === 'string' ? JSON.parse(response) : response;
+    
+    // Validate the response structure
+    if (!parsedResponse.new || !Array.isArray(parsedResponse.new) || !parsedResponse.update || !Array.isArray(parsedResponse.update)) {
+      throw new Error('Invalid response structure: missing or invalid arrays');
+    }
+    
+    // Find the updated node in either new or update arrays
+    const updatedNode = parsedResponse.new.find((n: Partial<Node>) => n.id === nodeId) || 
+                       parsedResponse.update.find((n: { id: string; longDescription?: string; rules?: string; updateImage?: boolean }) => n.id === nodeId);
+    
+    if (!updatedNode) {
+      throw new Error('Node not found in response');
+    }
+    
+    // Ensure the node has all required fields
+    updatedNode.updateImage = updatedNode.updateImage ?? false;
+    if (!updatedNode.rules) {
+      updatedNode.rules = '';
+    }
+    
+    return updatedNode;
+  } catch (error) {
+    console.error('Error parsing node regeneration response:', error);
+    console.error('Response content:', response);
+    throw new Error('Failed to parse node regeneration response as JSON');
+  }
+};
+
 // Keep the original function for backward compatibility, but make it use the new split functions
 export const generateNodesFromTwine = async (
   content: string,

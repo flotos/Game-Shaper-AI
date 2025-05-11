@@ -20,10 +20,14 @@ interface PreviewState {
 }
 
 // Helper function to create diff spans
-const createDiffSpans = (original: string, updated: string, isCurrent: boolean) => {
+const createDiffSpans = (original: string | any, updated: string | any, isCurrent: boolean) => {
+  // Convert inputs to strings if they're objects
+  const originalStr = typeof original === 'string' ? original : JSON.stringify(original, null, 2);
+  const updatedStr = typeof updated === 'string' ? updated : JSON.stringify(updated, null, 2);
+  
   // Split into words and normalize whitespace
-  const originalWords = original.trim().split(/\s+/);
-  const updatedWords = updated.trim().split(/\s+/);
+  const originalWords = originalStr.trim().split(/\s+/);
+  const updatedWords = updatedStr.trim().split(/\s+/);
   const result = [];
   
   // Find the longest common subsequence

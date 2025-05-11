@@ -48,3 +48,4 @@ prompts:
       - Don't remove any existing content from each node.
       - Only add content in the edited nodes. The nodes can be very large in content, adding text is not a problem.
       - Don't mention variable, flag, command, or programming code.
+      - Don't repeat content that is found in another node, only reference it if you add something to it.
