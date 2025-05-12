@@ -133,7 +133,8 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
     };
     console.log('Sending node edition:', nodeEdition);
     try {
-      await updateGraph(nodeEdition);
+      // Pass empty array for chatHistory to prevent Moxus feedback triggers
+      await updateGraph(nodeEdition, [], []);
       console.log('Node edition processed successfully');
     } catch (error) {
       console.error('Error regenerating image:', error);

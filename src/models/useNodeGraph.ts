@@ -218,7 +218,16 @@ function useNodeGraph() {
 
     // --- Moxus Post-Sorting Triggers --- 
     // Check if the update was likely triggered by chat (which includes sorting attempt)
-    if (currentChatHistory && currentChatHistory.length > 0) {
+    // Only trigger Moxus feedback for actual content changes, not just image updates
+    const isOnlyImageUpdates = nodeEdition.merge?.every(node => 
+      Object.keys(node).length === 2 && 'id' in node && 'updateImage' in node
+    ) ?? false;
+    
+    // Trigger Moxus only if:
+    // 1. There are actual content changes (not just image updates)
+    // 2. OR if it's an update triggered by chat interaction (with chat history)
+    // 3. AND we have chat history available (required for proper analysis)
+    if (currentChatHistory && currentChatHistory.length > 0 && !isOnlyImageUpdates) {
         console.log('[useNodeGraph] Queueing Moxus post-sorting feedback tasks.');
         moxusService.addTask('storyFeedback', {
             chatHistory: currentChatHistory
@@ -228,6 +237,8 @@ function useNodeGraph() {
             chatHistory: currentChatHistory
         });
         moxusService.addTask('finalReport', {}); // Trigger the final report synthesis
+    } else {
+        console.log('[useNodeGraph] Skipping Moxus feedback for image-only update');
     }
     // --- End Moxus Triggers --- 
 

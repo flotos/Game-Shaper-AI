@@ -7,6 +7,82 @@ import NodeEditorOverlay from './components/NodeEditorOverlay';
 import AssistantOverlay from './components/AssistantOverlay';
 import TwineImportOverlay from './components/TwineImportOverlay';
 import { moxusService } from './services/MoxusService';
+import './services/LLMService';
+
+const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [memoryYaml, setMemoryYaml] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
+  
+  const refreshMemory = () => {
+    setIsLoading(true);
+    // Use setTimeout to allow the loading state to be rendered
+    setTimeout(() => {
+      try {
+        setMemoryYaml(moxusService.getLLMCallsMemoryYAML());
+      } catch (error) {
+        console.error("Error getting Moxus memory:", error);
+        setMemoryYaml("Error loading Moxus memory YAML");
+      } finally {
+        setIsLoading(false);
+      }
+    }, 100);
+  };
+  
+  const exportMemoryYaml = () => {
+    const blob = new Blob([memoryYaml], { type: 'text/yaml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `moxus-memory-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.yaml`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  useEffect(() => {
+    refreshMemory();
+  }, []);
+  
+  return (
+    <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
+      <div className="bg-slate-900 p-6 rounded shadow-md w-3/4 h-3/4 flex flex-col">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl">Moxus Memory (YAML)</h2>
+          <div className="flex space-x-2">
+            <button 
+              onClick={exportMemoryYaml}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+              disabled={isLoading}
+            >
+              Export YAML
+            </button>
+            <button 
+              onClick={refreshMemory}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              disabled={isLoading}
+            >
+              {isLoading ? "Loading..." : "Refresh"}
+            </button>
+            <button 
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+        {isLoading ? (
+          <div className="flex-grow flex items-center justify-center">
+            <div className="animate-pulse text-xl">Loading Moxus memory...</div>
+          </div>
+        ) : (
+          <pre className="bg-gray-800 p-4 rounded overflow-auto flex-grow text-green-300 font-mono text-sm">
+            {memoryYaml}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const AppContent: React.FC = () => {
   const { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes } = useNodeGraph();
@@ -15,6 +91,7 @@ const AppContent: React.FC = () => {
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
   const [showTwineImport, setShowTwineImport] = useState(false);
+  const [showMoxusMemory, setShowMoxusMemory] = useState(false);
 
   useEffect(() => {
     moxusService.initialize(() => nodes, addMessage);
@@ -102,6 +179,12 @@ const AppContent: React.FC = () => {
           >
             Edit Nodes
           </button>
+          <button 
+            onClick={() => setShowMoxusMemory(true)} 
+            className="px-1 bg-slate-800 text-white rounded hover:bg-cyan-700"
+          >
+            Moxus YAML
+          </button>
           <input 
             type="file" 
             accept="application/json" 
@@ -140,6 +223,12 @@ const AppContent: React.FC = () => {
           nodes={nodes}
           updateGraph={updateGraph}
           closeOverlay={() => setShowTwineImport(false)}
+        />
+      )}
+
+      {showMoxusMemory && (
+        <MoxusMemoryModal
+          onClose={() => setShowMoxusMemory(false)}
         />
       )}
     </div>

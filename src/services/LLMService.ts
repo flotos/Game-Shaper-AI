@@ -1,6 +1,7 @@
 import { Node } from '../models/Node';
 import prompts from '../../prompts.json';
 import { Message } from '../context/ChatContext';
+import { moxusService, setMoxusFeedbackImpl } from './MoxusService';
 
 interface ExtractedElement {
   type: string;
@@ -962,11 +963,37 @@ export const generateNodesFromTwine = async (
  * For pricing and capabilities, see: https://openrouter.ai/docs#models
  */
 
-const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined, stream = false, responseFormat?: { type: string }) => {
+const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined, stream = false, responseFormat?: { type: string }, options?: { skipMoxusFeedback?: boolean }) => {
   const apiType = import.meta.env.VITE_LLM_API;
   const includeReasoning = import.meta.env.VITE_LLM_INCLUDE_REASONING !== 'false';
   const maxRetries = 3;
   const retryDelay = 1000; // 1 second
+
+  // Generate a unique ID for this LLM call
+  const callId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  
+  // Add Moxus feedback if available and not skipped
+  if (!options?.skipMoxusFeedback && !stream) {
+    const feedbackMessage: Message = {
+      role: 'system',
+      content: `
+# Moxus AI Assistant Feedback
+Moxus is an AI assistant that helps analyze and improve your responses.
+The following is feedback on previous similar requests:
+
+${moxusService.getLLMCallsMemoryYAML()}
+
+Please use this feedback to improve your response to the current request.
+`
+    };
+    
+    // Insert Moxus feedback as the second message (after the first system message if it exists)
+    if (messages.length > 0 && messages[0].role === 'system') {
+      messages.splice(1, 0, feedbackMessage);
+    } else {
+      messages.unshift(feedbackMessage);
+    }
+  }
 
   // Ensure there's at least one user message for OpenRouter
   if (apiType === 'openrouter') {
@@ -975,6 +1002,8 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       messages.push({ role: 'user', content: 'Please process the system instructions.' });
     }
   }
+
+  const originalPrompt = JSON.stringify(messages);
 
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -998,7 +1027,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         // Get the configured model or use a default
         const openrouterModel = import.meta.env.VITE_OPENROUTER_MODEL || 'anthropic/claude-3-opus-20240229';
         const openrouterProvider = import.meta.env.VITE_OPENROUTER_PROVIDER;
-        console.log('Using OpenRouter model:', openrouterModel, 'from provider:', openrouterProvider);
+        // console.log('Using OpenRouter model:', openrouterModel, 'from provider:', openrouterProvider);
 
         response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
@@ -1124,6 +1153,18 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
         throw new Error('No valid response received from LLM API');
       }
 
+      // Record this call for Moxus if not streaming and not skipping feedback
+      if (!stream && !options?.skipMoxusFeedback) {
+        moxusService.recordLLMCall(callId, originalPrompt, llmResult);
+        
+        // Queue a task for Moxus to analyze this call
+        moxusService.addTask('llmCallFeedback', {
+          id: callId,
+          prompt: originalPrompt,
+          response: llmResult
+        });
+      }
+
       return llmResult;
     } catch (error) {
       lastError = error;
@@ -1201,7 +1242,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   return parsed.sortedIds;
 };
 
-// New function for Moxus calls
+// Modified function for Moxus calls to avoid feedback loop
 export const getMoxusFeedback = async (promptContent: string): Promise<string> => {
   console.log('[LLMService] Moxus request received.');
   const messages: Message[] = [
@@ -1211,8 +1252,8 @@ export const getMoxusFeedback = async (promptContent: string): Promise<string> =
   ];
 
   try {
-    // Using the existing getResponse function
-    const response = await getResponse(messages, 'gpt-4o'); // Use appropriate model
+    // Using the existing getResponse function but skipping Moxus feedback to avoid loops
+    const response = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true });
     console.log('[LLMService] Moxus feedback generated.');
     return response;
   } catch (error) {
@@ -1220,3 +1261,6 @@ export const getMoxusFeedback = async (promptContent: string): Promise<string> =
     throw new Error('Failed to get Moxus feedback from LLM.');
   }
 };
+
+// Set the implementation in MoxusService to avoid circular dependencies
+setMoxusFeedbackImpl(getMoxusFeedback);
