@@ -228,12 +228,7 @@ const AppContent: React.FC = () => {
             onClick={() => setShowMoxusMemory(true)} 
             className="px-1 relative bg-slate-800 text-white rounded hover:bg-cyan-700"
           >
-            Moxus YAML
-            {pendingMoxusTasks > 0 && (
-              <span className="absolute -top-2 -right-2 bg-cyan-600 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px]">
-                {pendingMoxusTasks}
-              </span>
-            )}
+            Moxus YAML{pendingMoxusTasks > 0 && ` (${pendingMoxusTasks})`}
           </button>
           <input 
             type="file" 

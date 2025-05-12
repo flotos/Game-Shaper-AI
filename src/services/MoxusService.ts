@@ -19,7 +19,8 @@ type MoxusTaskType =
   | 'nodeUpdateFeedback' 
   | 'finalReport'
   | 'llmCallFeedback'
-  | 'chatTextFeedback';
+  | 'chatTextFeedback'
+  | 'updateGeneralMemory';
 
 // Define Task Structure
 interface MoxusTask {
@@ -327,6 +328,13 @@ const handleFinalReport = async () => {
     role: 'moxus',
     content: `**Moxus Report:**\n\n${formatMoxusReport(report)}` 
   });
+  
+  // Automatically update GeneralMemory after sending the report
+  console.log('[MoxusService] Automatically updating GeneralMemory after report generation');
+  setTimeout(() => {
+    // Use setTimeout to ensure the report is shown in chat first
+    updateGeneralMemoryFromAllSources();
+  }, 1000);
 };
 
 // Handle memory updates for different task types
@@ -373,6 +381,15 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         memoryKey = 'chatText';
         memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
       }
+      
+      // Schedule GeneralMemory update after 5 processed feedback tasks
+      const processedFeedbacks = Object.values(moxusStructuredMemory.featureSpecificMemory.llmCalls)
+        .filter(call => call.feedback).length;
+      
+      if (processedFeedbacks > 0 && processedFeedbacks % 5 === 0) {
+        console.log(`[MoxusService] Scheduling GeneralMemory update after ${processedFeedbacks} processed feedbacks.`);
+        addTask('updateGeneralMemory', { reason: 'periodic_update_after_feedbacks' });
+      }
     }
   } else {
     // For other tasks, determine which memory section to update
@@ -390,6 +407,9 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         memoryKey = 'assistantFeedback';
         memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.assistantFeedback;
         break;
+      case 'updateGeneralMemory':
+        await updateGeneralMemoryFromAllSources();
+        return; // Skip the regular memory update process
       default:
         memoryKey = 'GeneralMemory';
         memoryToUpdate = moxusStructuredMemory.GeneralMemory;
@@ -417,6 +437,80 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     console.log(`[MoxusService] Updated ${memoryKey} memory document.`);
     saveMemory();
   }
+};
+
+// New function to update GeneralMemory from all memory sources
+const updateGeneralMemoryFromAllSources = async () => {
+  console.log('[MoxusService] Updating GeneralMemory from all available memory sources...');
+  
+  // Get assistant node content for context
+  const assistantNodesContent = getAssistantNodesContent();
+  
+  // Get up to 5 recent LLM call feedbacks
+  const recentFeedbacks = Object.entries(moxusStructuredMemory.featureSpecificMemory.llmCalls)
+    .sort((a, b) => {
+      const dateA = new Date(a[1].timestamp).getTime();
+      const dateB = new Date(b[1].timestamp).getTime();
+      return dateB - dateA; // Sort descending (newest first)
+    })
+    .slice(0, 5)
+    .map(([id, call]) => ({
+      id,
+      prompt: call.prompt?.substring(0, 100) + '...',
+      feedback: call.feedback || "No feedback available"
+    }));
+  
+  // Create a comprehensive prompt that includes all memory sources
+  const updatePrompt = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
+  You are tasked with updating your GeneralMemory document by integrating insights from all memory sources.
+  
+  Assistant Personality:
+  ---
+  ${assistantNodesContent}
+  ---
+  
+  # CURRENT GENERAL MEMORY DOCUMENT
+  ${moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL}
+  
+  # ALL MEMORY SOURCES TO INTEGRATE
+
+  ## CHAT TEXT ANALYSIS
+  ${moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)'}
+  
+  ## NODE EDITIONS ANALYSIS
+  ${moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)'}
+  
+  ## ASSISTANT FEEDBACK ANALYSIS
+  ${moxusStructuredMemory.featureSpecificMemory.assistantFeedback || '(No assistant feedback analysis available)'}
+  
+  ## NODE EDIT ANALYSIS
+  ${moxusStructuredMemory.featureSpecificMemory.nodeEdit || '(No node edit analysis available)'}
+  
+  ## RECENT LLM CALL FEEDBACKS
+  ${JSON.stringify(recentFeedbacks, null, 2)}
+  
+  # INSTRUCTIONS
+  1. Create an updated, comprehensive GeneralMemory document that synthesizes insights from ALL memory sources
+  2. Do NOT simply append new information - integrate it logically into the existing structure
+  3. Organize with clear markdown headings (## for sections) and bullet points for key observations
+  4. Prioritize significant patterns, insights, and observations across all memory categories
+  5. Focus on building a cohesive, well-structured, evolving analysis of the game world
+  6. Always maintain a section about your own personality and characteristics
+  7. Ensure the document reads as a single, cohesive analysis rather than disconnected sections
+  
+  Return ONLY the complete updated GeneralMemory document.`;
+  
+  if (!getMoxusFeedbackImpl) {
+    throw new Error('getMoxusFeedback implementation not set.');
+  }
+  
+  // Get the updated GeneralMemory
+  const updatedGeneralMemory = await getMoxusFeedbackImpl(updatePrompt);
+  
+  // Update the GeneralMemory
+  moxusStructuredMemory.GeneralMemory = updatedGeneralMemory;
+  console.log('[MoxusService] Updated GeneralMemory from all memory sources');
+  saveMemory();
 };
 
 // Function to get assistant node content
