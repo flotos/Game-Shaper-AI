@@ -19,6 +19,7 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
   const [updatedNodes, setUpdatedNodes] = useState<Set<string>>(new Set());
   const [compressedImages, setCompressedImages] = useState<Map<string, string>>(new Map());
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
 
   // Track node updates with useMemo to prevent unnecessary recalculations
   const newUpdatedNodes = useMemo(() => {
@@ -141,6 +142,39 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
     }
   }, [updateGraph]);
 
+  const handleDeleteNode = useCallback(async (nodeId: string) => {
+    if (!updateGraph) {
+      console.error('updateGraph function is not available');
+      return;
+    }
+    
+    if (nodeId === nodeToDelete) {
+      // This is the confirmation click
+      console.log('Deleting node:', nodeId);
+      const nodeEdition = {
+        delete: [nodeId]
+      };
+      try {
+        await updateGraph(nodeEdition, [], []);
+        console.log('Node deleted successfully');
+      } catch (error) {
+        console.error('Error deleting node:', error);
+      }
+      setNodeToDelete(null);
+    } else {
+      // First click - set this node for deletion
+      setNodeToDelete(nodeId);
+    }
+  }, [updateGraph, nodeToDelete]);
+
+  // Reset the delete confirmation when mouse leaves the node
+  const handleMouseLeave = useCallback((nodeId: string) => {
+    setHoveredNodeId(null);
+    if (nodeId === nodeToDelete) {
+      setNodeToDelete(null);
+    }
+  }, [nodeToDelete]);
+
   const getCompressedImageUrl = useCallback((nodeId: string, originalImage: string) => {
     return compressedImages.get(nodeId) || originalImage;
   }, [compressedImages]);
@@ -153,7 +187,7 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
           key={node.id} 
           className="w-[calc(33.333%-1rem)] flex-shrink-0"
           onMouseEnter={() => setHoveredNodeId(node.id)}
-          onMouseLeave={() => setHoveredNodeId(null)}
+          onMouseLeave={() => handleMouseLeave(node.id)}
         >
           <div 
             className={`relative cursor-pointer rounded overflow-hidden aspect-square transition-all duration-200 ${
@@ -175,21 +209,37 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
             )}
             <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white p-2 text-center">{node.name}</div>
             {hoveredNodeId === node.id && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRegenerateImage(node);
-                }}
-                className="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-sm transition-colors"
-              >
-                Regenerate
-              </button>
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRegenerateImage(node);
+                  }}
+                  className="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-sm transition-colors"
+                >
+                  Regenerate
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteNode(node.id);
+                  }}
+                  className={`absolute top-2 left-2 ${
+                    nodeToDelete === node.id
+                      ? 'bg-red-700 hover:bg-red-800'
+                      : 'bg-red-600 hover:bg-red-700'
+                  } text-white p-1 rounded text-sm transition-colors`}
+                  title={nodeToDelete === node.id ? 'Click again to confirm deletion' : 'Delete node'}
+                >
+                  {nodeToDelete === node.id ? 'Confirm ✗' : '✗'}
+                </button>
+              </>
             )}
           </div>
         </div>
       ))}
     </div>
-  ), [nodes, updatedNodes, hoveredNodeId, getCompressedImageUrl, handleNodeSelect, handleRegenerateImage]);
+  ), [nodes, updatedNodes, hoveredNodeId, nodeToDelete, getCompressedImageUrl, handleNodeSelect, handleRegenerateImage, handleDeleteNode, handleMouseLeave]);
 
   return (
     <div className="w-1/2 p-4 flex flex-col space-y-4 relative overflow-y-auto">

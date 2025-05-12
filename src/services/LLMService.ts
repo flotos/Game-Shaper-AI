@@ -881,6 +881,7 @@ export const regenerateSingleNode = async (
       return acc;
     }
     return acc + `
+    -
     id: ${node.id}
     name: ${node.name}
     longDescription: ${node.longDescription}
@@ -1038,14 +1039,16 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
     const feedbackMessage: Message = {
       role: 'system',
       content: `
-# Moxus AI Assistant Feedback
-Moxus is an AI assistant that helps analyze and improve your responses.
-The following is feedback on previous similar requests:
+        # Moxus AI Assistant Feedback
+        Moxus is an AI assistant that helps analyze and improve your responses.
+        The following is feedback on previous similar requests:
 
-${moxusService.getLLMCallsMemoryYAML()}
+        ---start of feedback---
+        ${moxusService.getLLMCallsMemoryYAML()}
+        ---end of feedback---
 
-Please use this feedback to improve your response to the current request.
-`
+        Please use this feedback to improve your response to the current request.
+        `
     };
     
     // Insert Moxus feedback as the second message (after the first system message if it exists)

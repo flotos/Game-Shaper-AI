@@ -208,21 +208,20 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   
   return `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
-  Your goal is to maintain a comprehensive and well-structured record of observations and feedback.
+  Your goal is to maintain a comprehensive and well-structured record of observations and feedback that will drive the process of the game.
   
-  Assistant Personality (Defined by 'assistant' nodes):
+  ${assistantNodesContent ? `Additional features:
   ---
   ${assistantNodesContent}
-  ---
+  ---` : ""}
   
   # CURRENT MEMORY DOCUMENT
   Below is your current memory document. You should update, reorganize, or expand this document based on new observations:
   
-  ${existingMemory || '# Game Development and Story Analysis\n\n*No previous analysis available.*'}
+  ${existingMemory}
   
   # NEW INFORMATION
   Task Type: ${task.type}
-  Timestamp: ${task.timestamp.toISOString()}
   Data:
   \`\`\`json
   ${JSON.stringify(task.data, null, 2)}
@@ -236,6 +235,7 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   5. Focus on insights, patterns, and critical observations rather than raw data
   6. The memory document should be a comprehensive analysis that evolves over time
   7. Ensure the document remains well-structured as a single cohesive markdown document
+  8. Maintain a concise and precise document.
 
   Return the complete updated memory document.`;
 };
@@ -287,10 +287,10 @@ const handleFinalReport = async () => {
   
   Generate a comprehensive analysis report based on all your accumulated memory documents below.
   
-  Assistant Personality:
+  ${assistantNodesContent ? `Additional features:
   ---
   ${assistantNodesContent}
-  ---
+  ---` : ""}
   
   # GENERAL MEMORY
   ${moxusStructuredMemory.GeneralMemory || '(No general memory available)'}
@@ -310,10 +310,10 @@ const handleFinalReport = async () => {
   - World Building and Consistency
   - Character Development
   - Gameplay Mechanics and Balance
-  - Technical Implementation
   - Suggestions for Improvement
   
-  Be insightful but concise, focusing on the most important observations. This will be displayed to the user as a Moxus analysis report.`;
+  Be insightful but concise, focusing on the most important observations. This will be displayed to the user as a Moxus analysis report.
+  You can write between one and two paragraphs.`;
 
   console.log(`[MoxusService] Generating final report using all memory sources...`);
   if (!getMoxusFeedbackImpl) {
@@ -355,14 +355,29 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         };
       }
       
+      // Get assistant node content for context
+      const assistantNodesContent = getAssistantNodesContent();
+      
       // Get prompt for LLM feedback
-      const feedbackPrompt = `Analyze this LLM call:
+      const feedbackPrompt = `
       
-      PROMPT:
+      # Task
+      You have to analyze an LLM call.
+
+      ${assistantNodesContent ? `## Additional features:
+      ---
+      ${assistantNodesContent}
+      ---` : ""}
+      
+      ## PROMPT:
+      ---start of prompt---
       ${task.data.prompt}
+      ---end of prompt---
       
-      RESPONSE:
+      ## RESPONSE:
+      ---start of response---
       ${task.data.response}
+      ---end of response---
       
       Provide concise, constructive feedback on the quality, relevance, and coherence of this response.
       Focus on how the LLM could improve in future iterations.`;
