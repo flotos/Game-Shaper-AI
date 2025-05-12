@@ -64,7 +64,9 @@ function useNodeGraph() {
     
     const saveNodes = () => {
       try {
-        const compressedNodes = LZString.compress(JSON.stringify(nodes));
+        // Create a clean version of nodes without the updateImage flag before saving
+        const nodesToSave = nodes.map(({ updateImage, ...rest }) => rest);
+        const compressedNodes = LZString.compress(JSON.stringify(nodesToSave));
         localStorage.setItem('nodeGraph', compressedNodes);
       } catch (error) {
         if (error instanceof DOMException && error.name === 'QuotaExceededError') {
