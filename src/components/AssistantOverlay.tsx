@@ -3,6 +3,7 @@ import { Node } from '../models/Node';
 import { generateNodesFromPrompt } from '../services/LLMService';
 import { Message } from '../context/ChatContext';
 import DiffViewer from './DiffViewer';
+import { moxusService } from '../services/MoxusService';
 
 interface AssistantOverlayProps {
   nodes: Node[];
@@ -10,7 +11,10 @@ interface AssistantOverlayProps {
     merge?: Partial<Node>[]; 
     delete?: string[];
     newNodes?: string[];
-  }, chatHistory?: Message[], imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
+  }, 
+  imagePrompts?: { nodeId: string; prompt: string }[],
+  chatHistory?: Message[]
+  ) => Promise<void>;
   closeOverlay: () => void;
 }
 
@@ -97,7 +101,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     // or a dedicated backend endpoint.
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (preview.changes) {
       const finalMerge = preview.changes.merge?.map(node => {
         const editedNode = preview.editedNodes?.get(node.id || '');
@@ -112,11 +116,23 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
       const finalChanges = {
         merge: finalMerge,
         delete: preview.changes.delete || [],
-        newNodes: [] 
+        newNodes: [] // Assuming generateNodesFromPrompt result structure
       };
 
-      updateGraph(finalChanges);
-      closeOverlay();
+      try {
+        // Call updateGraph with only the necessary nodeEdition.
+        // Let useNodeGraph handle image prompts based on flags and chat history from context.
+        await updateGraph(finalChanges); 
+        
+        moxusService.addTask('assistantFeedback', {
+          query: preview.prompt,
+          result: finalChanges
+        });
+        closeOverlay();
+      } catch (error) {
+        console.error("Error updating graph or adding Moxus task:", error);
+        setError('Failed to apply changes. Please try again.');
+      }
     }
   };
 

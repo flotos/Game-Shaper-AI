@@ -22,7 +22,10 @@ interface TwineImportOverlayProps {
     merge?: Partial<Node>[]; 
     delete?: string[];
     newNodes?: string[];
-  }, chatHistory?: Message[], imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
+  }, 
+  imagePrompts?: { nodeId: string; prompt: string }[],
+  chatHistory?: Message[]
+  ) => Promise<void>;
   closeOverlay: () => void;
 }
 

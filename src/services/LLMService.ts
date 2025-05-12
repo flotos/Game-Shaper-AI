@@ -1200,3 +1200,23 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   const parsed = JSON.parse(response);
   return parsed.sortedIds;
 };
+
+// New function for Moxus calls
+export const getMoxusFeedback = async (promptContent: string): Promise<string> => {
+  console.log('[LLMService] Moxus request received.');
+  const messages: Message[] = [
+    { role: 'system', content: promptContent },
+    // Moxus might benefit from a user role message to prompt a response, but starting simple.
+    // { role: 'user', content: 'Provide your feedback based on the instructions.' }
+  ];
+
+  try {
+    // Using the existing getResponse function
+    const response = await getResponse(messages, 'gpt-4o'); // Use appropriate model
+    console.log('[LLMService] Moxus feedback generated.');
+    return response;
+  } catch (error) {
+    console.error('[LLMService] Error getting Moxus feedback:', error);
+    throw new Error('Failed to get Moxus feedback from LLM.');
+  }
+};

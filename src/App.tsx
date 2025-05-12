@@ -1,19 +1,25 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import ChatInterface from './components/ChatInterface';
 import NodeGraphInterface from './components/NodeGraphInterface';
 import useNodeGraph from './models/useNodeGraph';
-import { useChat } from './context/ChatContext';
+import { useChat, Message } from './context/ChatContext';
 import NodeEditorOverlay from './components/NodeEditorOverlay';
 import AssistantOverlay from './components/AssistantOverlay';
 import TwineImportOverlay from './components/TwineImportOverlay';
+import { moxusService } from './services/MoxusService';
 
 const AppContent: React.FC = () => {
   const { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes } = useNodeGraph();
-  const { chatHistory, setChatHistory, clearChatHistory } = useChat();
+  const { chatHistory, setChatHistory, clearChatHistory, addMessage } = useChat();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
   const [showTwineImport, setShowTwineImport] = useState(false);
+
+  useEffect(() => {
+    moxusService.initialize(() => nodes, addMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps 
+  }, [addMessage]);
 
   const clearLocalStorage = () => {
     localStorage.removeItem('nodeGraph');
@@ -106,7 +112,7 @@ const AppContent: React.FC = () => {
         </div>
       </header>
       <div className="flex flex-grow overflow-y-auto">
-        <ChatInterface nodes={nodes} updateGraph={updateGraph} />
+        <ChatInterface nodes={nodes} updateGraph={updateGraph} addMessage={addMessage} />
         <NodeGraphInterface nodes={nodes} updateGraph={updateGraph} />
       </div>
       

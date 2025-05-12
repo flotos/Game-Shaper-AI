@@ -12,11 +12,15 @@ interface ChatInterfaceProps {
     merge?: Partial<Node>[]; 
     delete?: string[];
     newNodes?: string[];
-  }, chatHistory?: Message[], imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
+  }, 
+  imagePrompts?: { nodeId: string; prompt: string }[],
+  chatHistory?: Message[]
+  ) => Promise<void>;
+  addMessage: (message: Message) => void;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => {
-  const { chatHistory, addMessage, setChatHistory, updateStreamingMessage, endStreaming } = useChat();
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMessage }) => {
+  const { chatHistory, setChatHistory, updateStreamingMessage, endStreaming } = useChat();
   const [input, setInput] = useState('');
   const [waitingForAnswer, setWaitingForAnswer] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
@@ -225,7 +229,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
 
         // Apply the node edition to update the graph in the background
         console.log('Applying node edition to graph...');
-        await updateGraph(nodeEdition, chatHistory, []);
+        await updateGraph(nodeEdition, [], contextHistory);
       }
     } catch (error) {
       console.error('Error during chat handling:', error);
@@ -325,7 +329,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph }) => 
       messagesToAdd.forEach(addMessage);
       setLastNodeEdition(nodeEdition);
 
-      updateGraph(nodeEdition, chatHistory, []).then(() => {
+      updateGraph(nodeEdition, [], contextHistory).then(() => {
         setWaitingForAnswer(false);
         setLoadingMessage('');
         setIsLoading(false);

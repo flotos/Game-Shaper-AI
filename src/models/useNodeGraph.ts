@@ -6,6 +6,7 @@ import LZString from 'lz-string';
 import { imageQueueService } from '../services/ImageQueueService';
 import { sortNodesByRelevance } from '../services/LLMService';
 import { useChat, Message } from '../context/ChatContext';
+import { moxusService } from '../services/MoxusService';
 
 const initNodes: Node[] = [
   {
@@ -52,6 +53,8 @@ function useNodeGraph() {
       return initNodes;
     }
   });
+
+  const { chatHistory, addMessage } = useChat();
 
   // Memoize the nodes array to prevent unnecessary re-renders
   const memoizedNodes = useMemo(() => nodes, [nodes]);
@@ -105,12 +108,18 @@ function useNodeGraph() {
     merge?: Partial<Node>[];
     delete?: string[];
     newNodes?: string[];
-  }, imagePrompts: { nodeId: string; prompt: string }[] = [], chatHistory: Message[] = []) => {
+  }, 
+  imagePrompts: { nodeId: string; prompt: string }[] = [], 
+  providedChatHistory?: Message[]
+  ) => {
     if (!nodeEdition) return;
 
     console.log('Starting graph update with node edition:', nodeEdition);
     console.log('Image prompts to process:', imagePrompts);
     
+    // Use providedChatHistory if available, otherwise fallback to context
+    const currentChatHistory = providedChatHistory || chatHistory;
+
     // Create a new array to hold all updates
     const newNodes = [...nodes];
     let nodesToProcess: Partial<Node>[] = [];
@@ -179,12 +188,13 @@ function useNodeGraph() {
       });
     }
 
-    // Only sort nodes if we have chat history (indicating this is a chat-driven update)
-    if (chatHistory && chatHistory.length > 0) {
+    let finalNodesState: Node[] = [...newNodes]; // Keep track of the final state
+
+    // Sort nodes if chat history exists
+    if (currentChatHistory && currentChatHistory.length > 0) {
       try {
         console.log('Sorting nodes by relevance based on chat history');
-        const sortedIds = await sortNodesByRelevance(newNodes, chatHistory);
-        // Create a new array with nodes sorted according to the returned order
+        const sortedIds = await sortNodesByRelevance(newNodes, currentChatHistory);
         const sortedNodes = [...newNodes].sort((a, b) => {
           const aIndex = sortedIds.indexOf(a.id);
           const bIndex = sortedIds.indexOf(b.id);
@@ -192,44 +202,54 @@ function useNodeGraph() {
           if (bIndex === -1) return -1;
           return aIndex - bIndex;
         });
-        setNodes(sortedNodes);
+        setNodes(sortedNodes); // Update state with sorted nodes
+        finalNodesState = sortedNodes; // Update final state reference
+
       } catch (error) {
         console.error('Error sorting nodes:', error);
-        setNodes(newNodes);
+        setNodes(newNodes); // Update state with unsorted nodes on error
+        finalNodesState = newNodes; // Update final state reference
       }
     } else {
       // If no chat history, just update the nodes without sorting
-      setNodes(newNodes);
+      setNodes(newNodes); // Update state with unsorted nodes
+      finalNodesState = newNodes; // Update final state reference
     }
 
-    // Queue image generation for nodes that need it
-    if (nodesToProcess.length > 0) {
+    // --- Moxus Post-Sorting Triggers --- 
+    // Check if the update was likely triggered by chat (which includes sorting attempt)
+    if (currentChatHistory && currentChatHistory.length > 0) {
+        console.log('[useNodeGraph] Queueing Moxus post-sorting feedback tasks.');
+        moxusService.addTask('storyFeedback', {
+            chatHistory: currentChatHistory
+        });
+        moxusService.addTask('nodeUpdateFeedback', {
+            nodes: finalNodesState, // Use the final state after sorting/update
+            chatHistory: currentChatHistory
+        });
+        moxusService.addTask('finalReport', {}); // Trigger the final report synthesis
+    }
+    // --- End Moxus Triggers --- 
+
+    // Queue image generation for nodes that need it (using imagePrompts argument)
+    // Use the imagePrompts argument passed to the function
+    const nodesToProcessForImages = finalNodesState.filter(node => node.updateImage);
+    if (nodesToProcessForImages.length > 0) {
       console.log('Queueing image generation for nodes');
       // Process nodes in batches of 3
-      for (let i = 0; i < nodesToProcess.length; i += 3) {
-        const batch = nodesToProcess.slice(i, i + 3);
+      for (let i = 0; i < nodesToProcessForImages.length; i += 3) {
+        const batch = nodesToProcessForImages.slice(i, i + 3);
         await Promise.all(batch.map(async (node) => {
-          if (!node.id || processedNodeIds.has(node.id)) {
-            console.log(`Skipping already processed node ${node.id}`);
-            return;
-          }
+          // Find matching prompt from imagePrompts argument, or generate if needed?
+          // Current logic seems to use node.updateImage flag directly.
+          // We might need to cross-reference with the imagePrompts array if that contains specific instructions.
+          // For now, assuming the existing image queue logic is sufficient based on updateImage flag.
           console.log(`Queueing image generation for node: ${node.id}`);
-          // Ensure node has all required properties before adding to queue
-          const completeNode: Node = {
-            ...node,
-            id: node.id,
-            name: node.name || '',
-            type: node.type || 'Game Object',
-            longDescription: node.longDescription || '',
-            rules: node.rules || '',
-            image: node.image || '',
-            updateImage: node.updateImage || false
-          };
-          await imageQueueService.addToQueue(completeNode, newNodes, []);
+          await imageQueueService.addToQueue(node, finalNodesState, currentChatHistory); // Pass history
         }));
       }
     }
-  }, [nodes]);
+  }, [nodes, chatHistory]);
 
   return { 
     nodes: memoizedNodes, 

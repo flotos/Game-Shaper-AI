@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
+import { moxusService } from '../services/MoxusService';
 
 interface NodeEditorOverlayProps {
   nodes: Node[];
@@ -12,7 +13,10 @@ interface NodeEditorOverlayProps {
     merge?: Partial<Node>[]; 
     delete?: string[];
     newNodes?: string[];
-  }, chatHistory?: Message[], imagePrompts?: { nodeId: string; prompt: string }[]) => Promise<void>;
+  }, 
+  imagePrompts?: { nodeId: string; prompt: string }[],
+  chatHistory?: Message[]
+  ) => Promise<void>;
 }
 
 const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, updateNode, deleteNode, closeOverlay, updateGraph }) => {
@@ -25,7 +29,19 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
 
   const handleSave = () => {
     if (selectedNode) {
+      const originalNode = nodes.find(n => n.id === selectedNode.id);
+      
       updateNode(selectedNode);
+      
+      if (originalNode) {
+        moxusService.addTask('nodeEditFeedback', {
+            before: originalNode, 
+            after: selectedNode
+        });
+      } else {
+        console.warn(`[NodeEditorOverlay] Could not find original node state for ID: ${selectedNode.id} to send to Moxus.`);
+      }
+      
     } else {
       const nodeWithId: Node = {
         ...newNode,
