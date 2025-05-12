@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '../context/ChatContext';
 
-const expandableMessagesTypes = ["reasoning", "nodeEdition", "selectedNodes"];
+const expandableMessagesTypes = ["reasoning", "nodeEdition", "selectedNodes", "moxus"];
 
 const formatJsonContent = (content: string) => {
   try {
@@ -78,7 +78,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
   };
 
   // Don't render debug messages if showDebug is false
-  if (!showDebug && expandableMessagesTypes.includes(message.role)) {
+  if (!showDebug && (expandableMessagesTypes.includes(message.role) || message.role === "moxus")) {
     return null;
   }
 
@@ -88,13 +88,14 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
         className={`w-[90%] p-3 rounded-xl shadow-sm relative transition-all duration-200 ${
           message.role === "user" ? "bg-slate-600 text-white shadow-slate-500/30 animate-vibrate" :
           message.role === "userNote" ? "bg-purple-600 text-white shadow-purple-500/30" :
+          message.role === "moxus" ? "bg-cyan-700 text-white shadow-cyan-500/30" :
           message.role === "assistant" ? `bg-slate-700 text-white shadow-slate-500/30 ${isWaiting || message.isStreaming ? '' : 'cursor-pointer hover:bg-slate-600'}` :
           expandableMessagesTypes.includes(message.role) ? "bg-gray-50/50 border border-gray-100 text-gray-700" :
           "bg-transparent text-gray-600"
         }`}
         onDoubleClick={handleDoubleClick}
       >
-        {expandableMessagesTypes.includes(message.role) && (
+        {expandableMessagesTypes.includes(message.role) && message.role !== "moxus" && (
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-2">
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
@@ -122,10 +123,39 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
             </div>
           </div>
         )}
+        
+        {message.role === "moxus" && (
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-cyan-600 text-white">
+                Moxus Analysis
+              </span>
+              {showDebug && <span className="text-xs text-gray-200">{message.timestamp}</span>}
+            </div>
+            <div className="flex items-center space-x-2">
+              {onToggleDebug && (
+                <button
+                  onClick={onToggleDebug}
+                  className="text-xs text-gray-200 hover:text-white px-2 py-1 rounded hover:bg-cyan-600 transition-colors"
+                >
+                  {showDebug ? "Hide Debug" : "Show Debug"}
+                </button>
+              )}
+              <span 
+                className="text-gray-200 hover:text-white cursor-pointer"
+                onClick={toggleCollapse}
+              >
+                {isCollapsed ? "▼" : "▲"}
+              </span>
+            </div>
+          </div>
+        )}
+        
         {!expandableMessagesTypes.includes(message.role) && showDebug && (
           <span className="absolute bottom-1 right-2 text-xs text-gray-400">{message.timestamp}</span>
         )}
-        {!isCollapsed && (
+        
+        {(!isCollapsed || message.role === "moxus") && (
           <div className="mt-2">
             {message.role === "actions" ? (
               <div className="space-y-2">
@@ -138,6 +168,10 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
                     {action}
                   </button>
                 ))}
+              </div>
+            ) : message.role === "moxus" ? (
+              <div className="prose prose-invert max-w-none text-white">
+                <ReactMarkdown>{message.content.replace('**Moxus Report:**', '')}</ReactMarkdown>
               </div>
             ) : (
               <div className={`text-lg leading-relaxed ${

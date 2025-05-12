@@ -5,6 +5,7 @@ import { useChat, Message } from '../context/ChatContext';
 import ChatHistory from './ChatHistory';
 import ChatInput from './ChatInput';
 import DetailsOverlay from './DetailsOverlay';
+import { moxusService } from '../services/MoxusService';
 
 interface ChatInterfaceProps {
   nodes: Node[];
@@ -118,7 +119,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
       console.log('Starting chat text generation');
       const chatTextStartTime = Date.now();
       const chatTextResponse = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
-      console.log('Chat text generation completed in:', Date.now() - chatTextStartTime, 'ms');
       
       // Handle the streamed response
       if (chatTextResponse instanceof Response) {
@@ -155,6 +155,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
         const storyEndTime = Date.now();
         const storyDuration = storyEndTime - storyStartTime;
         console.log('Story generation completed in:', storyDuration, 'ms');
+        
+        // Record the complete chat text with Moxus
+        const chatTextCallId = `chatText-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        moxusService.recordLLMCall(chatTextCallId, 
+          `Game Engine Chat Generation: User input: "${input}"`, 
+          accumulatedContent);
 
         // Update loading message for the next steps
         setLoadingMessage('Generating actions and updating game state...');

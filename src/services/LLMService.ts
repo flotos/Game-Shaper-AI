@@ -320,7 +320,12 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
 export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   console.log('LLM Call: Generating chat text');
   const stringHistory = chatHistory.reduce((acc, message) => {
-    if (message.role === "user" || message.role === "assistant" || message.role === "userNote") {
+    // Include moxus messages along with user, assistant, and userNote messages
+    if (message.role === "user" || message.role === "assistant" || message.role === "userNote" || message.role === "moxus") {
+      // Special formatting for Moxus messages
+      if (message.role === "moxus") {
+        return acc + `Moxus: ${message.content.replace('**Moxus Report:**', '').trim()}\n`;
+      }
       return acc + `${message.role}: ${message.content}\n`;
     }
     return acc;
@@ -369,6 +374,10 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   ${nodesDescription}
   
   ### Chat History:
+  Note: Messages from "Moxus" represent feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides guidance to maintain consistency and quality in the game world. You should take Moxus's 
+  observations into account when generating new content.
+  
   ${stringHistory}
   
   ### User Input:
@@ -383,7 +392,15 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
     { role: 'system', content: chatTextPrompt },
   ];
 
+  // Create a special ID for chat text generation
+  const chatTextCallId = `chatText-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  
+  // Get the response with streaming
   const chatTextResponse = await getResponse(chatTextMessages, 'gpt-4o', undefined, true);
+  
+  // For streaming responses, we'll manually record the call after the stream completes
+  // This happens in the ChatInterface component by tracking the accumulated content
+  
   return chatTextResponse;
 }
 
@@ -402,6 +419,22 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
       `;
   }, "");
 
+  // Format the chat narrative (could be string or Message[] array)
+  let formattedChatText = chatText;
+  if (Array.isArray(chatText) && chatText.length > 0 && 
+      typeof chatText[0] === 'object' && 'role' in chatText[0]) {
+    formattedChatText = (chatText as Message[]).reduce((acc: string, message: Message) => {
+      if (message.role === "user" || message.role === "assistant" || message.role === "userNote" || message.role === "moxus") {
+        // Special formatting for Moxus messages
+        if (message.role === "moxus") {
+          return acc + `Moxus: ${message.content.replace('**Moxus Report:**', '').trim()}\n`;
+        }
+        return acc + `${message.role}: ${message.content}\n`;
+      }
+      return acc;
+    }, "");
+  }
+
   const actionsPrompt = `
   # TASK:
   Based on the following game state and narrative, generate two interesting actions the player can take next.
@@ -411,7 +444,11 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
   ${nodesDescription}
 
   ## Current Narrative:
-  ${chatText}
+  Note: Messages from "Moxus" represent feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides guidance to maintain consistency and quality in the game world. Consider Moxus's 
+  observations when generating actions.
+
+  ${formattedChatText}
 
   ## User's Last Input:
   ${userInput}
@@ -451,6 +488,26 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
       `;
   }, "");
 
+  // Check if chatText is a chat history array or a string
+  let formattedChatHistory = "";
+  if (Array.isArray(chatText) && chatText.length > 0 && 
+      typeof chatText[0] === 'object' && 'role' in chatText[0]) {
+    // If it's a chat history array, format it including Moxus messages
+    formattedChatHistory = (chatText as Message[]).reduce((acc: string, message: Message) => {
+      if (message.role === "user" || message.role === "assistant" || message.role === "userNote" || message.role === "moxus") {
+        // Special formatting for Moxus messages
+        if (message.role === "moxus") {
+          return acc + `Moxus: ${message.content.replace('**Moxus Report:**', '').trim()}\n`;
+        }
+        return acc + `${message.role}: ${message.content}\n`;
+      }
+      return acc;
+    }, "");
+  } else {
+    // If it's already a string, use it directly
+    formattedChatHistory = chatText as string;
+  }
+
   const nodeEditionPrompt = `
   ${isUserInteraction ? '/no_think' : '/think'}
   # TASK:
@@ -480,7 +537,11 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   ${nodesDescription}
 
   ## Chat History:
-  ${chatText}
+  Note: Messages from "Moxus" represent feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides guidance to maintain consistency and quality in the game world. You should incorporate Moxus's 
+  feedback when updating nodes to ensure coherence in the game world structure.
+
+  ${formattedChatHistory}
 
   ## Possible Actions:
   ${actions.join('\n')}
@@ -1191,7 +1252,11 @@ Please use this feedback to improve your response to the current request.
 export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]) => {
   console.log('LLM Call: Sorting nodes by relevance');
   const stringHistory = chatHistory.reduce((acc, message) => {
-    if (message.role === "user" || message.role === "assistant" || message.role === "userNote") {
+    if (message.role === "user" || message.role === "assistant" || message.role === "userNote" || message.role === "moxus") {
+      // Special formatting for Moxus messages
+      if (message.role === "moxus") {
+        return acc + `Moxus: ${message.content.replace('**Moxus Report:**', '').trim()}\n`;
+      }
       return acc + `${message.role}: ${message.content}\n`;
     }
     return acc;
@@ -1216,6 +1281,10 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   Consider both the content of the nodes and the context of the conversation.
 
   ## Chat History:
+  Note: Messages from "Moxus" represent feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides guidance to maintain consistency and quality in the game world. Consider Moxus's insights 
+  when determining node relevance.
+
   ${stringHistory}
 
   ## Nodes to Sort:

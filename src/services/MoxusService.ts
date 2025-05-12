@@ -18,7 +18,8 @@ type MoxusTaskType =
   | 'storyFeedback' 
   | 'nodeUpdateFeedback' 
   | 'finalReport'
-  | 'llmCallFeedback';
+  | 'llmCallFeedback'
+  | 'chatTextFeedback';
 
 // Define Task Structure
 interface MoxusTask {
@@ -26,6 +27,19 @@ interface MoxusTask {
   type: MoxusTaskType;
   data: any; // Specific data depends on the task type
   timestamp: Date;
+}
+
+// LLM Call interface structure
+interface LLMCall {
+  prompt: string;
+  response: string;
+  timestamp: Date;
+  feedback?: string;
+}
+
+// LLM Calls memory structure
+interface LLMCallsMemoryMap {
+  [id: string]: LLMCall;
 }
 
 // New Moxus Memory structure
@@ -36,32 +50,29 @@ interface MoxusMemoryStructure {
     chatText: string;
     assistantFeedback: string;
     nodeEdit: string;
-    llmCalls: {
-      [id: string]: {
-        prompt: string;
-        response: string;
-        timestamp: Date;
-        feedback?: string;
-      }
-    }
+    llmCalls: LLMCallsMemoryMap;
   }
 }
 
-// Initialize with empty structure
+// Initialize with empty structure but structured markdown
 let moxusStructuredMemory: MoxusMemoryStructure = {
-  GeneralMemory: '',
+  GeneralMemory: '# Moxus Game Analysis\n\n*This document contains general observations and analysis about the game world, story progression, and gameplay.*',
   featureSpecificMemory: {
-    nodeEdition: '',
-    chatText: '',
-    assistantFeedback: '',
-    nodeEdit: '',
+    nodeEdition: '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
+    chatText: '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*',
+    assistantFeedback: '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*',
+    nodeEdit: '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*',
     llmCalls: {}
   }
 };
 
 // Legacy variables - kept for backwards compatibility
 let moxusMemory: string = '';
-let llmCallsMemory = { calls: {}, generalFeedback: '' };
+let llmCallsMemory: {
+  calls: LLMCallsMemoryMap;
+  generalFeedback: string;
+} = { calls: {}, generalFeedback: '' };
+
 let isProcessing = false;
 let taskQueue: MoxusTask[] = [];
 let nextTaskId = 1;
@@ -81,20 +92,47 @@ const loadMemory = () => {
     
     if (savedStructuredMemory) {
       moxusStructuredMemory = JSON.parse(savedStructuredMemory);
+      
+      // Ensure all memory sections are initialized (never undefined or null)
+      moxusStructuredMemory.GeneralMemory = moxusStructuredMemory.GeneralMemory || '# Moxus Game Analysis\n\n*This document contains general observations and analysis about the game world, story progression, and gameplay.*';
+      moxusStructuredMemory.featureSpecificMemory = moxusStructuredMemory.featureSpecificMemory || {
+        nodeEdition: '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
+        chatText: '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*',
+        assistantFeedback: '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*',
+        nodeEdit: '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*',
+        llmCalls: {}
+      };
+      
+      // Ensure all feature memory properties exist
+      moxusStructuredMemory.featureSpecificMemory.nodeEdition = 
+        moxusStructuredMemory.featureSpecificMemory.nodeEdition || '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*';
+      moxusStructuredMemory.featureSpecificMemory.chatText = 
+        moxusStructuredMemory.featureSpecificMemory.chatText || '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*';
+      moxusStructuredMemory.featureSpecificMemory.assistantFeedback = 
+        moxusStructuredMemory.featureSpecificMemory.assistantFeedback || '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*';
+      moxusStructuredMemory.featureSpecificMemory.nodeEdit = 
+        moxusStructuredMemory.featureSpecificMemory.nodeEdit || '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*';
+      moxusStructuredMemory.featureSpecificMemory.llmCalls = 
+        moxusStructuredMemory.featureSpecificMemory.llmCalls || {};
+        
       console.log('[MoxusService] Loaded structured memory from localStorage.');
     } else if (savedLegacyMemory || savedLLMCallsMemory) {
       // Legacy migration
       console.log('[MoxusService] Migrating from legacy memory format...');
       if (savedLegacyMemory) {
         moxusMemory = savedLegacyMemory;
-        moxusStructuredMemory.GeneralMemory = moxusMemory;
+        moxusStructuredMemory.GeneralMemory = `# Moxus Game Analysis\n\n## Legacy Observations\n\n${moxusMemory}`;
       }
       
       if (savedLLMCallsMemory) {
         const parsedLLMMemory = JSON.parse(savedLLMCallsMemory);
         llmCallsMemory = parsedLLMMemory;
-        moxusStructuredMemory.featureSpecificMemory.llmCalls = parsedLLMMemory.calls || {};
-        moxusStructuredMemory.GeneralMemory += '\n\n' + (parsedLLMMemory.generalFeedback || '');
+        if (parsedLLMMemory.calls) {
+          moxusStructuredMemory.featureSpecificMemory.llmCalls = parsedLLMMemory.calls;
+        }
+        if (parsedLLMMemory.generalFeedback) {
+          moxusStructuredMemory.GeneralMemory += `\n\n## Legacy LLM Feedback\n\n${parsedLLMMemory.generalFeedback || ''}`;
+        }
       }
       
       // Save in new format
@@ -102,6 +140,18 @@ const loadMemory = () => {
     }
   } catch (error) {
     console.error('[MoxusService] Error loading memory from localStorage:', error);
+    
+    // Reset to default values if there was an error
+    moxusStructuredMemory = {
+      GeneralMemory: '# Moxus Game Analysis\n\n*This document contains general observations and analysis about the game world, story progression, and gameplay.*',
+      featureSpecificMemory: {
+        nodeEdition: '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
+        chatText: '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*',
+        assistantFeedback: '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*',
+        nodeEdit: '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*',
+        llmCalls: {}
+      }
+    };
   }
 };
 
@@ -121,18 +171,45 @@ const saveMemory = () => {
 
 // --- LLM Call Memory Management ---
 export const recordLLMCall = (id: string, prompt: string, response: string) => {
-  // Update both formats for compatibility
-  llmCallsMemory.calls[id] = {
+  // Create the call object
+  const call: LLMCall = {
     prompt,
     response,
     timestamp: new Date()
   };
   
-  moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = {
-    prompt,
-    response,
-    timestamp: new Date()
-  };
+  // Update both formats for compatibility
+  llmCallsMemory.calls[id] = call;
+  moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = call;
+  
+  // Skip evaluation for image generation prompts
+  if (prompt.includes('generating image prompt') || 
+      prompt.includes('generate the caption of image') || 
+      prompt.includes('Image generation instructions')) {
+    console.log(`[MoxusService] Skipping feedback for image generation prompt: ${id}`);
+    // Still record the call but don't add a feedback task
+  }
+  // Check for chat text generation prompts (match patterns seen in the LLMService)
+  else if (prompt.includes('Generate a detailed chapter') || 
+      prompt.includes('Generate appropriate dialogue') || 
+      id.startsWith('chatText-') || 
+      prompt.includes('# TASK:\nYou are the Game Engine of a Node-base game')) {
+    console.log(`[MoxusService] Adding chatText feedback task for: ${id}`);
+    // Add to special task queue for chat text feedback
+    addTask('chatTextFeedback', {
+      id: id,
+      prompt: prompt,
+      response: response
+    });
+  }
+  // Add llmCallFeedback task for all other types of calls
+  else {
+    addTask('llmCallFeedback', {
+      id: id,
+      prompt: prompt,
+      response: response
+    });
+  }
   
   saveMemory();
   console.log(`[MoxusService] Recorded LLM call: ${id}`);
@@ -172,6 +249,44 @@ const triggerProcessing = () => {
   }
 };
 
+// Modified prompt template for memory updating tasks
+const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string => {
+  const assistantNodesContent = getAssistantNodesContent();
+  
+  return `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
+  You monitor the story, provide guidance, and maintain consistency and quality in the game world.
+  Your goal is to maintain a comprehensive and well-structured record of observations and feedback.
+  
+  Assistant Personality (Defined by 'assistant' nodes):
+  ---
+  ${assistantNodesContent}
+  ---
+  
+  # CURRENT MEMORY DOCUMENT
+  Below is your current memory document. You should update, reorganize, or expand this document based on new observations:
+  
+  ${existingMemory || '# Game Development and Story Analysis\n\n*No previous analysis available.*'}
+  
+  # NEW INFORMATION
+  Task Type: ${task.type}
+  Timestamp: ${task.timestamp.toISOString()}
+  Data:
+  \`\`\`json
+  ${JSON.stringify(task.data, null, 2)}
+  \`\`\`
+  
+  # INSTRUCTIONS
+  1. Analyze the new information from the current task
+  2. Update the memory document to incorporate this new information
+  3. Do NOT simply append the new information - integrate it appropriately into the existing structure
+  4. Maintain a clear, well-organized markdown document with headings, subheadings, and bullet points
+  5. Focus on insights, patterns, and critical observations rather than raw data
+  6. The memory document should be a comprehensive analysis that evolves over time
+  7. Ensure the document remains well-structured as a single cohesive markdown document
+
+  Return the complete updated memory document.`;
+};
+
 // Asynchronous function to process the queue
 const processQueue = async () => {
   if (taskQueue.length === 0) {
@@ -191,110 +306,168 @@ const processQueue = async () => {
   console.log(`[MoxusService] Processing task: ${task.type} (ID: ${task.id}). Remaining: ${taskQueue.length}`);
 
   try {
-    // Get assistant node content using the callback
-    const assistantNodesContent = getAssistantNodesContent();
-
-    // Construct the specific prompt - IMPROVE THIS LATER
-    let promptContent = `Your name is Moxus, a helpful AI assistant acting as a reviewer for the LLM system within a game engine.\n    Your goal is to provide constructive feedback on LLM calls, responses, and the evolving game state.\n    Analyze the following task data based on the task type and your current memory.\n    \n    Assistant Personality (Defined by 'assistant' nodes):\n    ---\n    ${assistantNodesContent}\n    ---\n    \n    Current Memory (Your previous feedback):\n    ---\n    ${moxusStructuredMemory.GeneralMemory || '(Memory is empty)'}\n    ---\n    \n    Current Task:\n    Type: ${task.type}\n    Timestamp: ${task.timestamp.toISOString()}\n    Data:\n    \`\`\`json\n    ${JSON.stringify(task.data, null, 2)}\n    \`\`\`\n    \n    Instructions:\n    `;
-
+    // Handle final report differently from memory updates
     if (task.type === 'finalReport') {
-      promptContent += `Review your entire memory log. Synthesize the key feedback points into a concise report for the user about the story generation, node updates, and overall coherence. Present this as a single block of text.`;
-    } else if (task.type === 'assistantFeedback') {
-      promptContent += `The user interacted with the main assistant. Review the user's prompt (data.query) and the resulting node changes (data.result). Provide feedback on the quality and relevance of the changes. Append your feedback to the memory.`;
-    } else if (task.type === 'nodeEditFeedback') {
-      promptContent += `The user manually edited a node. Review the node state before (data.before) and after (data.after) the edit. Provide feedback on the changes made, considering consistency and game rules. Append your feedback to the memory.`;
-    } else if (task.type === 'storyFeedback') {
-      promptContent += `A node sorting operation (triggered by chat interaction) just completed. Review the entire chat history (data.chatHistory). Provide feedback on the generated story, plot progression, character interactions, and consistency. Append your feedback to the memory.`;
-    } else if (task.type === 'nodeUpdateFeedback') {
-      promptContent += `A node sorting operation (triggered by chat interaction) just completed. Review the final node state (data.nodes) and the chat history (data.chatHistory). Provide feedback on how well the nodes reflect the story events and the overall coherence of the game world structure. Append your feedback to the memory.`;
-    } else if (task.type === 'llmCallFeedback') {
-      promptContent += `Review the LLM call prompt (data.prompt) and response (data.response). Provide feedback on the quality, relevance and coherence of the response. Focus on how the LLM could improve its responses in future iterations. This feedback will be provided to the LLM on its next call to help it improve.`;
+      await handleFinalReport();
     } else {
-      promptContent += `Analyze the provided data based on the task type (${task.type}) and provide general feedback. Append your feedback to the memory.`;
+      await handleMemoryUpdate(task);
     }
-
-    console.log(`[MoxusService] Sending prompt for task ${task.id} to LLM...`);
-    if (!getMoxusFeedbackImpl) {
-      throw new Error('getMoxusFeedback implementation not set. Make sure to call setMoxusFeedbackImpl first.');
-    }
-    const feedback = await getMoxusFeedbackImpl(promptContent); // Use the implementation
-
-    console.log(`[MoxusService] Received feedback for task ${task.id}`);
-
-    if (task.type === 'finalReport') {
-      // Send feedback to chat interface using the callback
-      console.log(`[MoxusService] Sending Final Report to chat.`);
-      addMessageCallback({ 
-        role: 'system', // Or a custom 'moxus' role if desired
-        content: `**Moxus Report:**\n\n${feedback}` 
-      });
-      // Optional: Clear memory after report? Let's keep it for now.
-      // moxusMemory = ''; 
-    } else if (task.type === 'llmCallFeedback') {
-      // Store feedback for this specific LLM call
-      if (task.data && task.data.id) {
-        if (moxusStructuredMemory.featureSpecificMemory.llmCalls[task.data.id]) {
-          moxusStructuredMemory.featureSpecificMemory.llmCalls[task.data.id].feedback = feedback;
-          // Legacy compatibility
-          if (llmCallsMemory.calls[task.data.id]) {
-            llmCallsMemory.calls[task.data.id].feedback = feedback;
-          }
-          saveMemory();
-          console.log(`[MoxusService] Stored feedback for LLM call: ${task.data.id}`);
-        } else {
-          console.error(`[MoxusService] Cannot find LLM call with ID: ${task.data.id}`);
-        }
-      } else {
-        // Add to general feedback
-        moxusStructuredMemory.GeneralMemory += `\n\n${feedback}`;
-        // Legacy compatibility
-        llmCallsMemory.generalFeedback += `\n\n${feedback}`;
-        moxusMemory += `\n\n${feedback}`;
-        saveMemory();
-      }
-    } else {
-      // Store feedback based on task type
-      const timestamp = new Date().toISOString();
-      const formattedFeedback = `-- Feedback from Task ${task.id} (${task.type}) at ${timestamp} --\n${feedback}`;
-      
-      // Add to GeneralMemory
-      moxusStructuredMemory.GeneralMemory += `\n\n${formattedFeedback}`;
-      
-      // Also add to specific feature memory
-      switch (task.type) {
-        case 'nodeEditFeedback':
-          moxusStructuredMemory.featureSpecificMemory.nodeEdit += `\n\n${formattedFeedback}`;
-          break;
-        case 'storyFeedback':
-        case 'nodeUpdateFeedback':
-          moxusStructuredMemory.featureSpecificMemory.nodeEdition += `\n\n${formattedFeedback}`;
-          break;
-        case 'assistantFeedback':
-          moxusStructuredMemory.featureSpecificMemory.assistantFeedback += `\n\n${formattedFeedback}`;
-          break;
-        default:
-          moxusStructuredMemory.featureSpecificMemory.chatText += `\n\n${formattedFeedback}`;
-      }
-      
-      // Legacy compatibility
-      moxusMemory += `\n\n${formattedFeedback}`;
-      
-      saveMemory(); // Save memory after appending
-      console.log(`[MoxusService] Appended feedback to memory for task ${task.id}`);
-    }
-
   } catch (error) {
     console.error(`[MoxusService] Error processing task ${task.id} (${task.type}):`, error);
   } finally {
     // Process the next task recursively after a short delay
     setTimeout(() => {
-        isProcessing = false; // Allow next trigger
-        triggerProcessing(); // Check if more tasks arrived while processing
+      isProcessing = false; // Allow next trigger
+      triggerProcessing(); // Check if more tasks arrived while processing
     }, 500); 
   }
 };
 
-// Function to get assistant node content (Placeholder - needs access to nodes)
+// Handle final report generation
+const handleFinalReport = async () => {
+  // Get assistant node content for context
+  const assistantNodesContent = getAssistantNodesContent();
+
+  // Comprehensive prompt using all memory sources
+  const promptContent = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
+  You monitor the story, provide guidance, and maintain consistency and quality in the game world.
+  
+  Generate a comprehensive analysis report based on all your accumulated memory documents below.
+  
+  Assistant Personality:
+  ---
+  ${assistantNodesContent}
+  ---
+  
+  # GENERAL MEMORY
+  ${moxusStructuredMemory.GeneralMemory || '(No general memory available)'}
+  
+  # CHAT TEXT ANALYSIS
+  ${moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)'}
+  
+  # NODE EDITIONS ANALYSIS
+  ${moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)'}
+  
+  # INSTRUCTIONS
+  Create a well-structured, insightful report summarizing the key observations from all memory sources.
+  Format your report with clear markdown headings (## for sections) and bullet points for key observations.
+  
+  Cover these areas if relevant:
+  - Story Progress and Narrative Quality
+  - World Building and Consistency
+  - Character Development
+  - Gameplay Mechanics and Balance
+  - Technical Implementation
+  - Suggestions for Improvement
+  
+  Be insightful but concise, focusing on the most important observations. This will be displayed to the user as a Moxus analysis report.`;
+
+  console.log(`[MoxusService] Generating final report using all memory sources...`);
+  if (!getMoxusFeedbackImpl) {
+    throw new Error('getMoxusFeedback implementation not set. Make sure to call setMoxusFeedbackImpl first.');
+  }
+  
+  const report = await getMoxusFeedbackImpl(promptContent);
+  console.log(`[MoxusService] Final report generated. Sending to chat.`);
+  
+  // Send the report to chat interface
+  addMessageCallback({ 
+    role: 'moxus',
+    content: `**Moxus Report:**\n\n${formatMoxusReport(report)}` 
+  });
+};
+
+// Handle memory updates for different task types
+const handleMemoryUpdate = async (task: MoxusTask) => {
+  // Determine which memory to update based on task type
+  let memoryToUpdate = '';
+  let memoryKey: keyof MoxusMemoryStructure['featureSpecificMemory'] | 'GeneralMemory' = 'GeneralMemory';
+  
+  if (task.type === 'llmCallFeedback' || task.type === 'chatTextFeedback') {
+    // Handle specific LLM call feedback storage
+    if (task.data && task.data.id) {
+      const callId = task.data.id;
+      if (!moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
+        moxusStructuredMemory.featureSpecificMemory.llmCalls[callId] = {
+          prompt: task.data.prompt,
+          response: task.data.response,
+          timestamp: new Date()
+        };
+      }
+      
+      // Get prompt for LLM feedback
+      const feedbackPrompt = `Analyze this LLM call:
+      
+      PROMPT:
+      ${task.data.prompt}
+      
+      RESPONSE:
+      ${task.data.response}
+      
+      Provide concise, constructive feedback on the quality, relevance, and coherence of this response.
+      Focus on how the LLM could improve in future iterations.`;
+      
+      if (!getMoxusFeedbackImpl) {
+        throw new Error('getMoxusFeedback implementation not set.');
+      }
+      
+      const feedback = await getMoxusFeedbackImpl(feedbackPrompt);
+      
+      // Store feedback for this specific LLM call
+      moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = feedback;
+      
+      // For chatTextFeedback, also update the chatText memory document
+      if (task.type === 'chatTextFeedback') {
+        memoryKey = 'chatText';
+        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
+      }
+    }
+  } else {
+    // For other tasks, determine which memory section to update
+    switch (task.type) {
+      case 'nodeEditFeedback':
+        memoryKey = 'nodeEdit';
+        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdit;
+        break;
+      case 'storyFeedback':
+      case 'nodeUpdateFeedback':
+        memoryKey = 'nodeEdition';
+        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
+        break;
+      case 'assistantFeedback':
+        memoryKey = 'assistantFeedback';
+        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.assistantFeedback;
+        break;
+      default:
+        memoryKey = 'GeneralMemory';
+        memoryToUpdate = moxusStructuredMemory.GeneralMemory;
+    }
+  }
+  
+  // Only proceed with memory document update if we have a valid memory key to update
+  if (memoryToUpdate !== undefined) {
+    // Get memory update prompt
+    const updatePrompt = getMemoryUpdatePrompt(task, memoryToUpdate);
+    
+    if (!getMoxusFeedbackImpl) {
+      throw new Error('getMoxusFeedback implementation not set.');
+    }
+    
+    const updatedMemory = await getMoxusFeedbackImpl(updatePrompt);
+    
+    // Update the appropriate memory section
+    if (memoryKey === 'GeneralMemory') {
+      moxusStructuredMemory.GeneralMemory = updatedMemory;
+    } else {
+      moxusStructuredMemory.featureSpecificMemory[memoryKey] = updatedMemory;
+    }
+    
+    console.log(`[MoxusService] Updated ${memoryKey} memory document.`);
+    saveMemory();
+  }
+};
+
+// Function to get assistant node content
 const getAssistantNodesContent = (): string => {
     const currentNodes = getNodesCallback(); // Use the callback
     const assistantNodes = currentNodes.filter(node => node.type === 'assistant');
@@ -309,21 +482,66 @@ const getAssistantNodesContent = (): string => {
 // Generate YAML representation of memory for inclusion in prompts
 export const getLLMCallsMemoryYAML = (): string => {
   try {
-    // Format according to requested structure
+    // Format according to requested structure - include all memory sections in YAML
     const memoryForYaml = {
       GeneralMemory: moxusStructuredMemory.GeneralMemory,
       featureSpecificMemory: {
         nodeEdition: moxusStructuredMemory.featureSpecificMemory.nodeEdition,
         chatText: moxusStructuredMemory.featureSpecificMemory.chatText,
-        // Other feature memories omitted from YAML for brevity
-      }
+        assistantFeedback: moxusStructuredMemory.featureSpecificMemory.assistantFeedback,
+        nodeEdit: moxusStructuredMemory.featureSpecificMemory.nodeEdit,
+      },
+      // Include recent LLM call feedback (max 5)
+      recentLLMFeedback: Object.entries(moxusStructuredMemory.featureSpecificMemory.llmCalls)
+        .sort((a, b) => {
+          const dateA = new Date(a[1].timestamp).getTime();
+          const dateB = new Date(b[1].timestamp).getTime();
+          return dateB - dateA; // Sort descending (newest first)
+        })
+        .slice(0, 5) // Take only the 5 most recent
+        .map(([id, call]) => ({
+          id,
+          feedback: call.feedback || "No feedback available"
+        }))
     };
     
-    return yaml.dump(memoryForYaml);
+    return yaml.dump(memoryForYaml, {
+      lineWidth: 100,
+      noRefs: true,
+      quotingType: '"'
+    });
   } catch (error) {
     console.error('[MoxusService] Error generating YAML:', error);
     return "Error generating memory YAML";
   }
+};
+
+// Helper function to format Moxus report for better readability
+const formatMoxusReport = (text: string): string => {
+  // Break the text into sections if it contains headings
+  const sections = text.split(/(?=#+\s+)/);
+  
+  if (sections.length > 1) {
+    // The text contains markdown headings, add proper spacing and formatting
+    return sections.map(section => section.trim()).join('\n\n');
+  }
+  
+  // If no headings, try to break by paragraphs and add bullet points where appropriate
+  const paragraphs = text.split(/\n+/);
+  if (paragraphs.length > 1) {
+    return paragraphs
+      .map(para => {
+        // If the paragraph looks like a list item but doesn't have a marker, add one
+        if (para.trim().match(/^[A-Z]/) && para.length < 100 && !para.startsWith('-') && !para.startsWith('*')) {
+          return `- ${para.trim()}`;
+        }
+        return para.trim();
+      })
+      .join('\n\n');
+  }
+  
+  // Just return the original text if no clear structure is detected
+  return text;
 };
 
 // Export the service functions
@@ -333,6 +551,8 @@ export const moxusService = {
   recordLLMCall,
   getLLMCallFeedback,
   getLLMCallsMemoryYAML,
+  // Get the number of pending tasks in the queue
+  getPendingTaskCount: () => taskQueue.length,
   // For testing purposes
   debugLogMemory: () => {
     console.log('Structured Memory:', moxusStructuredMemory);

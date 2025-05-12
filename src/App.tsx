@@ -12,9 +12,11 @@ import './services/LLMService';
 const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [memoryYaml, setMemoryYaml] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingTasks, setPendingTasks] = useState(0);
   
   const refreshMemory = () => {
     setIsLoading(true);
+    setPendingTasks(moxusService.getPendingTaskCount());
     // Use setTimeout to allow the loading state to be rendered
     setTimeout(() => {
       try {
@@ -40,13 +42,28 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   useEffect(() => {
     refreshMemory();
+    
+    // Set up interval to check pending tasks regularly
+    const intervalId = setInterval(() => {
+      setPendingTasks(moxusService.getPendingTaskCount());
+    }, 1000);
+    
+    // Clean up
+    return () => clearInterval(intervalId);
   }, []);
   
   return (
     <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
       <div className="bg-slate-900 p-6 rounded shadow-md w-3/4 h-3/4 flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl">Moxus Memory (YAML)</h2>
+          <h2 className="text-xl">
+            Moxus Memory (YAML)
+            {pendingTasks > 0 && (
+              <span className="ml-2 bg-cyan-600 text-white text-sm rounded-full px-2 py-0.5">
+                {pendingTasks} pending tasks
+              </span>
+            )}
+          </h2>
           <div className="flex space-x-2">
             <button 
               onClick={exportMemoryYaml}
@@ -92,11 +109,28 @@ const AppContent: React.FC = () => {
   const [showAssistant, setShowAssistant] = useState(false);
   const [showTwineImport, setShowTwineImport] = useState(false);
   const [showMoxusMemory, setShowMoxusMemory] = useState(false);
+  const [pendingMoxusTasks, setPendingMoxusTasks] = useState(0);
 
   useEffect(() => {
     moxusService.initialize(() => nodes, addMessage);
     // eslint-disable-next-line react-hooks/exhaustive-deps 
   }, [addMessage]);
+
+  // Update the pending tasks counter
+  useEffect(() => {
+    const checkPendingTasks = () => {
+      setPendingMoxusTasks(moxusService.getPendingTaskCount());
+    };
+    
+    // Check initially
+    checkPendingTasks();
+    
+    // Set up interval to check regularly
+    const intervalId = setInterval(checkPendingTasks, 1000);
+    
+    // Clean up
+    return () => clearInterval(intervalId);
+  }, []);
 
   const clearLocalStorage = () => {
     localStorage.removeItem('nodeGraph');
@@ -181,9 +215,14 @@ const AppContent: React.FC = () => {
           </button>
           <button 
             onClick={() => setShowMoxusMemory(true)} 
-            className="px-1 bg-slate-800 text-white rounded hover:bg-cyan-700"
+            className="px-1 relative bg-slate-800 text-white rounded hover:bg-cyan-700"
           >
             Moxus YAML
+            {pendingMoxusTasks > 0 && (
+              <span className="absolute -top-2 -right-2 bg-cyan-600 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px]">
+                {pendingMoxusTasks}
+              </span>
+            )}
           </button>
           <input 
             type="file" 
