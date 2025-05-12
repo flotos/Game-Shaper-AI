@@ -135,11 +135,17 @@ const AppContent: React.FC = () => {
   const clearLocalStorage = () => {
     localStorage.removeItem('nodeGraph');
     localStorage.removeItem('chatHistory');
+    moxusService.resetMemory(); // Reset Moxus memory
     window.location.reload();
   };
 
   const exportToJson = () => {
-    const dataStr = JSON.stringify({ nodes, chatHistory }, null, 2);
+    // Include Moxus memory in the export
+    const dataStr = JSON.stringify({
+      nodes,
+      chatHistory,
+      moxusMemory: moxusService.getMoxusMemory()
+    }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -156,9 +162,14 @@ const AppContent: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const { nodes: importedNodes, chatHistory: importedChatHistory } = JSON.parse(e.target?.result as string);
+        const { nodes: importedNodes, chatHistory: importedChatHistory, moxusMemory } = JSON.parse(e.target?.result as string);
         setNodes(importedNodes);
         setChatHistory(importedChatHistory);
+        
+        // Import Moxus memory if it exists in the file
+        if (moxusMemory) {
+          moxusService.setMoxusMemory(moxusMemory);
+        }
       } catch (error) {
         console.error('Failed to import JSON', error);
       }

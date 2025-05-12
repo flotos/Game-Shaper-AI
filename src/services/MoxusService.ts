@@ -42,7 +42,7 @@ interface LLMCallsMemoryMap {
   [id: string]: LLMCall;
 }
 
-// New Moxus Memory structure
+// Moxus Memory structure
 interface MoxusMemoryStructure {
   GeneralMemory: string;
   featureSpecificMemory: {
@@ -54,116 +54,69 @@ interface MoxusMemoryStructure {
   }
 }
 
-// Initialize with empty structure but structured markdown
-let moxusStructuredMemory: MoxusMemoryStructure = {
-  GeneralMemory: '# Moxus Game Analysis\n\n*This document contains general observations and analysis about the game world, story progression, and gameplay.*',
-  featureSpecificMemory: {
-    nodeEdition: '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
-    chatText: '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*',
-    assistantFeedback: '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*',
-    nodeEdit: '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*',
-    llmCalls: {}
-  }
+// Default memory content templates
+const DEFAULT_MEMORY = {
+  GENERAL: '# Moxus Game Analysis\n\n*This document contains general observations and analysis about the game world, story progression, and gameplay. You should also dedicate a section to develop your own personality and style. Become a sentient being.*',
+  NODE_EDITION: '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
+  CHAT_TEXT: '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*',
+  ASSISTANT_FEEDBACK: '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*',
+  NODE_EDIT: '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*'
 };
 
-// Legacy variables - kept for backwards compatibility
-let moxusMemory: string = '';
-let llmCallsMemory: {
-  calls: LLMCallsMemoryMap;
-  generalFeedback: string;
-} = { calls: {}, generalFeedback: '' };
+// Initialize with default structure
+const createDefaultMemoryStructure = (): MoxusMemoryStructure => ({
+  GeneralMemory: DEFAULT_MEMORY.GENERAL,
+  featureSpecificMemory: {
+    nodeEdition: DEFAULT_MEMORY.NODE_EDITION,
+    chatText: DEFAULT_MEMORY.CHAT_TEXT,
+    assistantFeedback: DEFAULT_MEMORY.ASSISTANT_FEEDBACK,
+    nodeEdit: DEFAULT_MEMORY.NODE_EDIT,
+    llmCalls: {}
+  }
+});
 
+// Storage key
+const MOXUS_STRUCTURED_MEMORY_KEY = 'moxusStructuredMemory';
+
+// Initialize memory structure
+let moxusStructuredMemory = createDefaultMemoryStructure();
 let isProcessing = false;
 let taskQueue: MoxusTask[] = [];
 let nextTaskId = 1;
 let getNodesCallback: () => Node[] = () => []; // Callback to get current nodes
 let addMessageCallback: (message: Message) => void = () => {}; // Callback to add chat message
 
-const MOXUS_MEMORY_KEY = 'moxusMemory';
-const MOXUS_STRUCTURED_MEMORY_KEY = 'moxusStructuredMemory';
-const MOXUS_LLM_CALLS_MEMORY_KEY = 'moxusLLMCallsMemory';
-
 // --- Memory Management ---
 const loadMemory = () => {
   try {
     const savedStructuredMemory = localStorage.getItem(MOXUS_STRUCTURED_MEMORY_KEY);
-    const savedLegacyMemory = localStorage.getItem(MOXUS_MEMORY_KEY);
-    const savedLLMCallsMemory = localStorage.getItem(MOXUS_LLM_CALLS_MEMORY_KEY);
     
     if (savedStructuredMemory) {
-      moxusStructuredMemory = JSON.parse(savedStructuredMemory);
+      const parsedMemory = JSON.parse(savedStructuredMemory);
       
-      // Ensure all memory sections are initialized (never undefined or null)
-      moxusStructuredMemory.GeneralMemory = moxusStructuredMemory.GeneralMemory || '# Moxus Game Analysis\n\n*This document contains general observations and analysis about the game world, story progression, and gameplay.*';
-      moxusStructuredMemory.featureSpecificMemory = moxusStructuredMemory.featureSpecificMemory || {
-        nodeEdition: '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
-        chatText: '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*',
-        assistantFeedback: '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*',
-        nodeEdit: '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*',
-        llmCalls: {}
+      // Create the memory structure with defaults for any missing properties
+      moxusStructuredMemory = {
+        GeneralMemory: parsedMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL,
+        featureSpecificMemory: {
+          nodeEdition: parsedMemory.featureSpecificMemory?.nodeEdition || DEFAULT_MEMORY.NODE_EDITION,
+          chatText: parsedMemory.featureSpecificMemory?.chatText || DEFAULT_MEMORY.CHAT_TEXT,
+          assistantFeedback: parsedMemory.featureSpecificMemory?.assistantFeedback || DEFAULT_MEMORY.ASSISTANT_FEEDBACK,
+          nodeEdit: parsedMemory.featureSpecificMemory?.nodeEdit || DEFAULT_MEMORY.NODE_EDIT,
+          llmCalls: parsedMemory.featureSpecificMemory?.llmCalls || {}
+        }
       };
       
-      // Ensure all feature memory properties exist
-      moxusStructuredMemory.featureSpecificMemory.nodeEdition = 
-        moxusStructuredMemory.featureSpecificMemory.nodeEdition || '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*';
-      moxusStructuredMemory.featureSpecificMemory.chatText = 
-        moxusStructuredMemory.featureSpecificMemory.chatText || '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*';
-      moxusStructuredMemory.featureSpecificMemory.assistantFeedback = 
-        moxusStructuredMemory.featureSpecificMemory.assistantFeedback || '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*';
-      moxusStructuredMemory.featureSpecificMemory.nodeEdit = 
-        moxusStructuredMemory.featureSpecificMemory.nodeEdit || '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*';
-      moxusStructuredMemory.featureSpecificMemory.llmCalls = 
-        moxusStructuredMemory.featureSpecificMemory.llmCalls || {};
-        
       console.log('[MoxusService] Loaded structured memory from localStorage.');
-    } else if (savedLegacyMemory || savedLLMCallsMemory) {
-      // Legacy migration
-      console.log('[MoxusService] Migrating from legacy memory format...');
-      if (savedLegacyMemory) {
-        moxusMemory = savedLegacyMemory;
-        moxusStructuredMemory.GeneralMemory = `# Moxus Game Analysis\n\n## Legacy Observations\n\n${moxusMemory}`;
-      }
-      
-      if (savedLLMCallsMemory) {
-        const parsedLLMMemory = JSON.parse(savedLLMCallsMemory);
-        llmCallsMemory = parsedLLMMemory;
-        if (parsedLLMMemory.calls) {
-          moxusStructuredMemory.featureSpecificMemory.llmCalls = parsedLLMMemory.calls;
-        }
-        if (parsedLLMMemory.generalFeedback) {
-          moxusStructuredMemory.GeneralMemory += `\n\n## Legacy LLM Feedback\n\n${parsedLLMMemory.generalFeedback || ''}`;
-        }
-      }
-      
-      // Save in new format
-      saveMemory();
     }
   } catch (error) {
     console.error('[MoxusService] Error loading memory from localStorage:', error);
-    
-    // Reset to default values if there was an error
-    moxusStructuredMemory = {
-      GeneralMemory: '# Moxus Game Analysis\n\n*This document contains general observations and analysis about the game world, story progression, and gameplay.*',
-      featureSpecificMemory: {
-        nodeEdition: '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
-        chatText: '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*',
-        assistantFeedback: '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*',
-        nodeEdit: '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*',
-        llmCalls: {}
-      }
-    };
+    moxusStructuredMemory = createDefaultMemoryStructure();
   }
 };
 
 const saveMemory = () => {
   try {
     localStorage.setItem(MOXUS_STRUCTURED_MEMORY_KEY, JSON.stringify(moxusStructuredMemory));
-    // Legacy compatibility
-    localStorage.setItem(MOXUS_MEMORY_KEY, moxusStructuredMemory.GeneralMemory);
-    localStorage.setItem(MOXUS_LLM_CALLS_MEMORY_KEY, JSON.stringify({
-      calls: moxusStructuredMemory.featureSpecificMemory.llmCalls,
-      generalFeedback: ''
-    }));
   } catch (error) {
     console.error('[MoxusService] Error saving memory to localStorage:', error);
   }
@@ -178,8 +131,7 @@ export const recordLLMCall = (id: string, prompt: string, response: string) => {
     timestamp: new Date()
   };
   
-  // Update both formats for compatibility
-  llmCallsMemory.calls[id] = call;
+  // Store in the structured memory
   moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = call;
   
   // Skip evaluation for image generation prompts
@@ -553,12 +505,51 @@ export const moxusService = {
   getLLMCallsMemoryYAML,
   // Get the number of pending tasks in the queue
   getPendingTaskCount: () => taskQueue.length,
+  // Reset Moxus memory to initial state
+  resetMemory: () => {
+    moxusStructuredMemory = createDefaultMemoryStructure();
+    taskQueue = [];
+    nextTaskId = 1;
+    
+    // Clear localStorage for Moxus memory
+    localStorage.removeItem(MOXUS_STRUCTURED_MEMORY_KEY);
+    
+    console.log('[MoxusService] Memory reset to initial state');
+  },
+  // Get the complete Moxus memory structure for export
+  getMoxusMemory: () => {
+    return moxusStructuredMemory;
+  },
+  // Set the Moxus memory from an imported structure
+  setMoxusMemory: (importedMemory: MoxusMemoryStructure) => {
+    if (!importedMemory) {
+      console.error('[MoxusService] Cannot import undefined or null memory structure');
+      return;
+    }
+    
+    try {
+      // Ensure the structure is valid by using the default structure creator and overriding with imported values
+      moxusStructuredMemory = {
+        GeneralMemory: importedMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL,
+        featureSpecificMemory: {
+          nodeEdition: importedMemory.featureSpecificMemory?.nodeEdition || DEFAULT_MEMORY.NODE_EDITION,
+          chatText: importedMemory.featureSpecificMemory?.chatText || DEFAULT_MEMORY.CHAT_TEXT,
+          assistantFeedback: importedMemory.featureSpecificMemory?.assistantFeedback || DEFAULT_MEMORY.ASSISTANT_FEEDBACK,
+          nodeEdit: importedMemory.featureSpecificMemory?.nodeEdit || DEFAULT_MEMORY.NODE_EDIT,
+          llmCalls: importedMemory.featureSpecificMemory?.llmCalls || {}
+        }
+      };
+      
+      // Save to localStorage
+      saveMemory();
+      console.log('[MoxusService] Memory imported successfully');
+    } catch (error) {
+      console.error('[MoxusService] Error importing memory:', error);
+    }
+  },
   // For testing purposes
   debugLogMemory: () => {
     console.log('Structured Memory:', moxusStructuredMemory);
     console.log('YAML representation:', getLLMCallsMemoryYAML());
   }
-};
-
-// Initial trigger in case tasks were added before the service was fully initialized (e.g., during load)
-// triggerProcessing(); // Might be better to trigger explicitly after app initialization 
+}; 
