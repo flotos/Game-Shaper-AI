@@ -355,6 +355,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   }, "");
 
   const chatTextPrompt = `
+  /think
   # TASK:
   You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
   Generate appropriate dialogue based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
@@ -1020,7 +1021,7 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
               order: [openrouterProvider],
               allow_fallbacks: true
             },
-            temperature: 1,
+            temperature: 0.1,
             top_p: 0.8,
             top_k: 20,
             min_p: 0,

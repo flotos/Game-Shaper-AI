@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Node } from './Node';
 import { generateImage } from '../services/ImageService';
 import { generateImagePrompt } from '../services/LLMService';
@@ -40,32 +40,68 @@ const initNodes: Node[] = [
 
 function useNodeGraph() {
   const [nodes, setNodes] = useState<Node[]>(() => {
-    const savedNodes = localStorage.getItem('nodeGraph');
-    if (savedNodes) {
-      const decompressedNodes = LZString.decompress(savedNodes);
-      return decompressedNodes ? JSON.parse(decompressedNodes) : initNodes;
+    try {
+      const savedNodes = localStorage.getItem('nodeGraph');
+      if (savedNodes) {
+        const decompressedNodes = LZString.decompress(savedNodes);
+        return decompressedNodes ? JSON.parse(decompressedNodes) : initNodes;
+      }
+      return initNodes;
+    } catch (error) {
+      console.warn('Error loading nodes from localStorage:', error);
+      return initNodes;
     }
-    return initNodes;
   });
 
+  // Memoize the nodes array to prevent unnecessary re-renders
+  const memoizedNodes = useMemo(() => nodes, [nodes]);
+
   useEffect(() => {
-    const compressedNodes = LZString.compress(JSON.stringify(nodes));
-    localStorage.setItem('nodeGraph', compressedNodes);
+    let isMounted = true;
+    
+    const saveNodes = () => {
+      try {
+        const compressedNodes = LZString.compress(JSON.stringify(nodes));
+        localStorage.setItem('nodeGraph', compressedNodes);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+          console.warn('localStorage quota exceeded. Attempting to clean up...');
+          // Try to remove old data to make space
+          try {
+            localStorage.removeItem('nodeGraph');
+            const compressedNodes = LZString.compress(JSON.stringify(nodes));
+            localStorage.setItem('nodeGraph', compressedNodes);
+          } catch (cleanupError) {
+            console.error('Failed to save nodes even after cleanup:', cleanupError);
+          }
+        } else {
+          console.error('Error saving nodes:', error);
+        }
+      }
+    };
+
+    if (isMounted) {
+      saveNodes();
+    }
+
+    return () => {
+      isMounted = false;
+    };
   }, [nodes]);
 
-  const addNode = (node: Node): void => {
+  const addNode = useCallback((node: Node): void => {
     setNodes(prevNodes => [...prevNodes, node]);
-  };
+  }, []);
 
-  const updateNode = (updatedNode: Node): void => {
+  const updateNode = useCallback((updatedNode: Node): void => {
     setNodes(prevNodes => prevNodes.map(node => (node.id === updatedNode.id ? updatedNode : node)));
-  };
+  }, []);
 
-  const deleteNode = (nodeId: string): void => {
+  const deleteNode = useCallback((nodeId: string): void => {
     setNodes(prevNodes => prevNodes.filter(node => node.id !== nodeId));
-  };
+  }, []);
 
-  const updateGraph = async (nodeEdition: { 
+  const updateGraph = useCallback(async (nodeEdition: { 
     merge?: Partial<Node>[];
     delete?: string[];
     newNodes?: string[];
@@ -74,10 +110,29 @@ function useNodeGraph() {
 
     console.log('Starting graph update with node edition:', nodeEdition);
     console.log('Image prompts to process:', imagePrompts);
+    
+    // Create a new array to hold all updates
     const newNodes = [...nodes];
     let nodesToProcess: Partial<Node>[] = [];
-    const imagePromptTimes: number[] = [];
     const processedNodeIds = new Set<string>();
+
+    // Initialize the image queue service with the update callback
+    imageQueueService.setUpdateNodeCallback((updatedNode: Node) => {
+      setNodes(currentNodes => {
+        const index = currentNodes.findIndex(n => n.id === updatedNode.id);
+        if (index !== -1) {
+          const updatedNodes = [...currentNodes];
+          // Preserve all existing node properties and only update image and updateImage flag
+          updatedNodes[index] = {
+            ...updatedNodes[index],
+            image: updatedNode.image,
+            updateImage: false // Reset the flag after image is generated
+          };
+          return updatedNodes;
+        }
+        return currentNodes;
+      });
+    });
 
     // Process deletions first
     if (nodeEdition.delete) {
@@ -124,68 +179,66 @@ function useNodeGraph() {
       });
     }
 
-    // Sort nodes by relevance
-    try {
-      const sortedIds = await sortNodesByRelevance(newNodes, chatHistory);
-      // Create a new array with nodes sorted according to the returned order
-      const sortedNodes = [...newNodes].sort((a, b) => {
-        const aIndex = sortedIds.indexOf(a.id);
-        const bIndex = sortedIds.indexOf(b.id);
-        if (aIndex === -1) return 1;
-        if (bIndex === -1) return -1;
-        return aIndex - bIndex;
-      });
-      setNodes(sortedNodes);
-    } catch (error) {
-      console.error('Error sorting nodes:', error);
+    // Only sort nodes if we have chat history (indicating this is a chat-driven update)
+    if (chatHistory && chatHistory.length > 0) {
+      try {
+        console.log('Sorting nodes by relevance based on chat history');
+        const sortedIds = await sortNodesByRelevance(newNodes, chatHistory);
+        // Create a new array with nodes sorted according to the returned order
+        const sortedNodes = [...newNodes].sort((a, b) => {
+          const aIndex = sortedIds.indexOf(a.id);
+          const bIndex = sortedIds.indexOf(b.id);
+          if (aIndex === -1) return 1;
+          if (bIndex === -1) return -1;
+          return aIndex - bIndex;
+        });
+        setNodes(sortedNodes);
+      } catch (error) {
+        console.error('Error sorting nodes:', error);
+        setNodes(newNodes);
+      }
+    } else {
+      // If no chat history, just update the nodes without sorting
       setNodes(newNodes);
     }
-
-    console.log('Updating nodes with new images:', nodesToProcess);
-
-    // Initialize the image queue service with the update callback
-    imageQueueService.setUpdateNodeCallback((updatedNode: Node) => {
-      setNodes(currentNodes => {
-        const index = currentNodes.findIndex(n => n.id === updatedNode.id);
-        if (index !== -1) {
-          const updatedNodes = [...currentNodes];
-          updatedNodes[index] = {
-            ...updatedNodes[index],
-            image: updatedNode.image,
-            updateImage: false // Reset the flag after image is generated
-          };
-          return updatedNodes;
-        }
-        return currentNodes;
-      });
-    });
 
     // Queue image generation for nodes that need it
     if (nodesToProcess.length > 0) {
       console.log('Queueing image generation for nodes');
-      for (const node of nodesToProcess) {
-        if (!node.id || processedNodeIds.has(node.id)) {
-          console.log(`Skipping already processed node ${node.id}`);
-          continue;
-        }
-        console.log(`Queueing image generation for node: ${node.id}`);
-        // Ensure node has all required properties before adding to queue
-        const completeNode: Node = {
-          ...node,
-          id: node.id,
-          name: node.name || '',
-          type: node.type || 'Game Object',
-          longDescription: node.longDescription || '',
-          rules: node.rules || '',
-          image: node.image || '',
-          updateImage: node.updateImage || false
-        };
-        await imageQueueService.addToQueue(completeNode, newNodes, []);
+      // Process nodes in batches of 3
+      for (let i = 0; i < nodesToProcess.length; i += 3) {
+        const batch = nodesToProcess.slice(i, i + 3);
+        await Promise.all(batch.map(async (node) => {
+          if (!node.id || processedNodeIds.has(node.id)) {
+            console.log(`Skipping already processed node ${node.id}`);
+            return;
+          }
+          console.log(`Queueing image generation for node: ${node.id}`);
+          // Ensure node has all required properties before adding to queue
+          const completeNode: Node = {
+            ...node,
+            id: node.id,
+            name: node.name || '',
+            type: node.type || 'Game Object',
+            longDescription: node.longDescription || '',
+            rules: node.rules || '',
+            image: node.image || '',
+            updateImage: node.updateImage || false
+          };
+          await imageQueueService.addToQueue(completeNode, newNodes, []);
+        }));
       }
     }
-  };
+  }, [nodes]);
 
-  return { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes };
+  return { 
+    nodes: memoizedNodes, 
+    addNode, 
+    updateNode, 
+    deleteNode, 
+    updateGraph, 
+    setNodes 
+  };
 }
 
 export default useNodeGraph;

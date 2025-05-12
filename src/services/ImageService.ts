@@ -332,39 +332,63 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promis
 };
 
 const compressImage = async (imageUrl: string): Promise<string> => {
-  console.log('Starting image compression...');
-  const img = new Image();
-  
-  return new Promise((resolve, reject) => {
-    img.onload = () => {
-      console.log('Image loaded successfully, creating canvas...');
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        console.log('Converting canvas to JPEG...');
-        try {
-          const compressedImage = canvas.toDataURL('image/jpeg', 0.8);
-          console.log('Image compression completed successfully');
-          resolve(compressedImage);
-        } catch (error) {
-          console.error('Error converting canvas to JPEG:', error);
-          reject('Failed to compress image');
+  try {
+    console.log('Starting image compression...');
+    const response = await fetch(imageUrl);
+    const blob = await response.blob();
+    
+    // Create a canvas to resize and compress the image
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Set maximum dimensions while maintaining aspect ratio
+    const MAX_WIDTH = 512;
+    const MAX_HEIGHT = 512;
+    
+    return new Promise((resolve, reject) => {
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        
+        // Calculate new dimensions while maintaining aspect ratio
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width);
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width = Math.round((width * MAX_HEIGHT) / height);
+            height = MAX_HEIGHT;
+          }
         }
-      } else {
-        console.error('Failed to get canvas context');
-        reject('Failed to get canvas context');
-      }
-    };
-
-    img.onerror = (error) => {
-      console.error('Error loading image:', error);
-      reject('Failed to load image');
-    };
-
-    console.log('Setting image source...');
-    img.src = imageUrl;
-  });
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+        
+        // Draw image with reduced quality
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to JPEG with reduced quality
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        console.log('Image compression completed');
+        resolve(compressedDataUrl);
+      };
+      
+      img.onerror = () => {
+        reject(new Error('Failed to load image for compression'));
+      };
+      
+      img.src = URL.createObjectURL(blob);
+    });
+  } catch (error) {
+    console.error('Error compressing image:', error);
+    return imageUrl; // Return original URL if compression fails
+  }
 };

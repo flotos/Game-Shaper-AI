@@ -3,8 +3,18 @@ import { Node } from '../models/Node';
 import { extractDataFromTwine, generateNodesFromExtractedData, regenerateSingleNode } from '../services/LLMService';
 import { PromptSelector } from './PromptSelector';
 import { Message } from '../context/ChatContext';
+import DiffViewer from './DiffViewer';
 
 const MAX_CONTENT_LENGTH = 4000000; // 4 million characters
+
+// Helper function to calculate height based on content length
+const calculateHeight = (text: string, isLongDescription: boolean = false, defaultRows: number = 10) => {
+  if (!isLongDescription) return `${defaultRows * 1.5}rem`;
+  const lineCount = (text || '').split('\n').length;
+  const minHeight = '15rem';
+  const calculatedHeight = `${Math.max(15, lineCount * 1.5)}rem`;
+  return calculatedHeight;
+};
 
 interface TwineImportOverlayProps {
   nodes: Node[];
@@ -65,95 +75,6 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     originalNodes: nodes,
     editedNodes: new Map()
   });
-
-  // Add this helper function at the top of the file, after the imports
-  const createDiffSpans = (original: string | string[] | undefined | null, updated: string | string[] | undefined | null, isCurrent: boolean) => {
-    try {
-      // Handle undefined or null values and ensure strings
-      const originalText = typeof original === 'string' ? original : 
-                          Array.isArray(original) ? original.join(', ') : '';
-      const updatedText = typeof updated === 'string' ? updated : 
-                         Array.isArray(updated) ? updated.join(', ') : '';
-      
-      // Split into words and normalize whitespace
-      const originalWords = originalText.trim().split(/\s+/);
-      const updatedWords = updatedText.trim().split(/\s+/);
-      const result = [];
-      
-      // Find the longest common subsequence
-      const lcs = [];
-      const dp = Array(originalWords.length + 1).fill(0).map(() => Array(updatedWords.length + 1).fill(0));
-      
-      for (let i = 1; i <= originalWords.length; i++) {
-        for (let j = 1; j <= updatedWords.length; j++) {
-          if (originalWords[i - 1] === updatedWords[j - 1]) {
-            dp[i][j] = dp[i - 1][j - 1] + 1;
-          } else {
-            dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-          }
-        }
-      }
-      
-      let i = originalWords.length;
-      let j = updatedWords.length;
-      
-      while (i > 0 && j > 0) {
-        if (originalWords[i - 1] === updatedWords[j - 1]) {
-          lcs.unshift(originalWords[i - 1]);
-          i--;
-          j--;
-        } else if (dp[i - 1][j] > dp[i][j - 1]) {
-          i--;
-        } else {
-          j--;
-        }
-      }
-      
-      // Now render the differences
-      i = 0;
-      j = 0;
-      let lcsIndex = 0;
-      
-      if (isCurrent) {
-        // Left side - show original with deletions in red
-        while (i < originalWords.length) {
-          if (lcsIndex < lcs.length && originalWords[i] === lcs[lcsIndex]) {
-            result.push(<span key={`common-${i}`} className="text-white">{lcs[lcsIndex]} </span>);
-            i++;
-            lcsIndex++;
-          } else {
-            result.push(
-              <span key={`old-${i}`} className="bg-red-900 text-white">
-                {originalWords[i]}{' '}
-              </span>
-            );
-            i++;
-          }
-        }
-      } else {
-        // Right side - show updated with additions in green
-        while (j < updatedWords.length) {
-          if (lcsIndex < lcs.length && updatedWords[j] === lcs[lcsIndex]) {
-            result.push(<span key={`common-${j}`} className="text-white">{lcs[lcsIndex]} </span>);
-            j++;
-            lcsIndex++;
-          } else {
-            result.push(
-              <span key={`new-${j}`} className="bg-green-900 text-white">
-                {updatedWords[j]}{' '}
-              </span>
-            );
-            j++;
-          }
-        }
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('Error in createDiffSpans:', error);
-      return [<span key="error" className="text-red-500">Error displaying diff</span>];
-    }
-  };
 
   // Add this function after the createDiffSpans function
   const toggleImageUpdate = (nodeId: string) => {
@@ -861,21 +782,35 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                         <div className="text-sm space-y-4">
                           <div>
                             <span className="font-semibold block mb-1">Long Description:</span>
-                            <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                              {createDiffSpans('', node.longDescription || '', true)}
-                            </div>
+                            <DiffViewer
+                              original=""
+                              updated={node.longDescription || ''}
+                              isCurrent={true}
+                              className="w-full"
+                              style={{ 
+                                height: calculateHeight(node.longDescription || '', true),
+                                overflowY: 'auto'
+                              }}
+                            />
                           </div>
                           <div>
                             <span className="font-semibold block mb-1">Rules:</span>
-                            <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                              {createDiffSpans('', node.rules || '', true)}
-                            </div>
+                            <DiffViewer
+                              original=""
+                              updated={node.rules || ''}
+                              isCurrent={true}
+                              className="w-full"
+                              style={{ height: '7.5rem', overflowY: 'auto' }}
+                            />
                           </div>
                           <div>
                             <span className="font-semibold block mb-1">Type:</span>
-                            <div className="p-2 bg-gray-700 rounded text-white">
-                              {node.type}
-                            </div>
+                            <DiffViewer
+                              original=""
+                              updated={node.type || ''}
+                              isCurrent={true}
+                              className="w-full"
+                            />
                           </div>
                         </div>
                       </div>
@@ -884,90 +819,38 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                         <div className="text-sm space-y-4">
                           <div>
                             <span className="font-semibold block mb-1">Long Description:</span>
-                            <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                              {createDiffSpans('', node.longDescription || '', false)}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="font-semibold block mb-1">Rules:</span>
-                            <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                              {createDiffSpans('', node.rules || '', false)}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="font-semibold block mb-1">Type:</span>
-                            <div className="p-2 bg-gray-700 rounded text-white">
-                              {node.type}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-semibold mb-2">Edit</h4>
-                        <div className="text-sm space-y-4">
-                          <div>
-                            <span className="font-semibold block mb-1">Name:</span>
-                            <input
-                              type="text"
-                              value={preview.editedNodes?.get(node.id || '')?.name || node.name || ''}
-                              onChange={(e) => handleNodeEdit(node.id || '', 'name', e.target.value)}
-                              className="w-full p-2 bg-gray-700 rounded text-white"
-                            />
-                          </div>
-                          <div>
-                            <span className="font-semibold block mb-1">Type:</span>
-                            <input
-                              type="text"
-                              value={preview.editedNodes?.get(node.id || '')?.type || node.type || ''}
-                              onChange={(e) => handleNodeEdit(node.id || '', 'type', e.target.value)}
-                              className="w-full p-2 bg-gray-700 rounded text-white"
-                            />
-                          </div>
-                          <div>
-                            <span className="font-semibold block mb-1">Description:</span>
-                            <textarea
-                              value={preview.editedNodes?.get(node.id || '')?.longDescription || node.longDescription || ''}
-                              onChange={(e) => handleNodeEdit(node.id || '', 'longDescription', e.target.value)}
-                              className="w-full p-2 bg-gray-700 rounded text-white h-32"
+                            <DiffViewer
+                              original=""
+                              updated={node.longDescription || ''}
+                              isCurrent={false}
+                              className="w-full"
+                              style={{ 
+                                height: calculateHeight(node.longDescription || '', true),
+                                overflowY: 'auto'
+                              }}
                             />
                           </div>
                           <div>
                             <span className="font-semibold block mb-1">Rules:</span>
-                            <textarea
-                              value={preview.editedNodes?.get(node.id || '')?.rules || (typeof node.rules === 'string' ? node.rules : (Array.isArray(node.rules) ? (node.rules as string[]).join(', ') : ''))}
-                              onChange={(e) => handleNodeEdit(node.id || '', 'rules', e.target.value)}
-                              className="w-full p-2 bg-gray-700 rounded text-white h-32"
+                            <DiffViewer
+                              original=""
+                              updated={node.rules || ''}
+                              isCurrent={false}
+                              className="w-full"
+                              style={{ height: '7.5rem', overflowY: 'auto' }}
+                            />
+                          </div>
+                          <div>
+                            <span className="font-semibold block mb-1">Type:</span>
+                            <DiffViewer
+                              original=""
+                              updated={node.type || ''}
+                              isCurrent={false}
+                              className="w-full"
                             />
                           </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="mt-4">
-                      <span className="font-semibold block mb-1">Image Generation:</span>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => handleNodeEdit(node.id || '', 'updateImage', !(preview.editedNodes?.get(node.id || '')?.updateImage ?? node.updateImage ?? false))}
-                          className={`px-3 py-1 rounded ${
-                            (preview.editedNodes?.get(node.id || '')?.updateImage ?? node.updateImage ?? false)
-                              ? 'bg-green-600 hover:bg-green-700' 
-                              : 'bg-gray-600 hover:bg-gray-700'
-                          } text-white transition-colors`}
-                        >
-                          {(preview.editedNodes?.get(node.id || '')?.updateImage ?? node.updateImage ?? false) ? 'Will generate image' : 'No image generation needed'}
-                        </button>
-                        <span className="text-sm text-gray-400">
-                          (Click to toggle)
-                        </span>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <button
-                        onClick={() => handleRegenerateNode(node.id || '', true)}
-                        disabled={isLoading}
-                        className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-                      >
-                        {isLoading ? 'Regenerating...' : 'Regenerate Node'}
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -985,21 +868,35 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                           <div className="text-sm space-y-4">
                             <div>
                               <span className="font-semibold block mb-1">Long Description:</span>
-                              <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                                {createDiffSpans(existingNode.longDescription, update.longDescription || existingNode.longDescription, true)}
-                              </div>
+                              <DiffViewer
+                                original={existingNode.longDescription}
+                                updated={update.longDescription || existingNode.longDescription}
+                                isCurrent={true}
+                                className="w-full"
+                                style={{ 
+                                  height: calculateHeight(existingNode.longDescription, true),
+                                  overflowY: 'auto'
+                                }}
+                              />
                             </div>
                             <div>
                               <span className="font-semibold block mb-1">Rules:</span>
-                              <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                                {createDiffSpans(existingNode.rules, update.rules || existingNode.rules, true)}
-                              </div>
+                              <DiffViewer
+                                original={existingNode.rules}
+                                updated={update.rules || existingNode.rules}
+                                isCurrent={true}
+                                className="w-full"
+                                style={{ height: '7.5rem', overflowY: 'auto' }}
+                              />
                             </div>
                             <div>
                               <span className="font-semibold block mb-1">Type:</span>
-                              <div className="p-2 bg-gray-700 rounded text-white">
-                                {existingNode.type}
-                              </div>
+                              <DiffViewer
+                                original={existingNode.type}
+                                updated={update.type || existingNode.type}
+                                isCurrent={true}
+                                className="w-full"
+                              />
                             </div>
                           </div>
                         </div>
@@ -1008,90 +905,38 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                           <div className="text-sm space-y-4">
                             <div>
                               <span className="font-semibold block mb-1">Long Description:</span>
-                              <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                                {createDiffSpans(existingNode.longDescription, update.longDescription || existingNode.longDescription, false)}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="font-semibold block mb-1">Rules:</span>
-                              <div className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                                {createDiffSpans(existingNode.rules, update.rules || existingNode.rules, false)}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="font-semibold block mb-1">Type:</span>
-                              <div className="p-2 bg-gray-700 rounded text-white">
-                                {update.type || existingNode.type}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-semibold mb-2">Edit</h4>
-                          <div className="text-sm space-y-4">
-                            <div>
-                              <span className="font-semibold block mb-1">Name:</span>
-                              <input
-                                type="text"
-                                value={editedNode?.name ?? existingNode.name}
-                                onChange={(e) => handleNodeEdit(update.id, 'name', e.target.value)}
-                                className="w-full p-2 bg-gray-700 rounded text-white"
-                              />
-                            </div>
-                            <div>
-                              <span className="font-semibold block mb-1">Type:</span>
-                              <input
-                                type="text"
-                                value={editedNode?.type ?? existingNode.type}
-                                onChange={(e) => handleNodeEdit(update.id, 'type', e.target.value)}
-                                className="w-full p-2 bg-gray-700 rounded text-white"
-                              />
-                            </div>
-                            <div>
-                              <span className="font-semibold block mb-1">Description:</span>
-                              <textarea
-                                value={editedNode?.longDescription ?? update.longDescription ?? existingNode.longDescription}
-                                onChange={(e) => handleNodeEdit(update.id, 'longDescription', e.target.value)}
-                                className="w-full p-2 bg-gray-700 rounded text-white h-32"
+                              <DiffViewer
+                                original={existingNode.longDescription}
+                                updated={update.longDescription || existingNode.longDescription}
+                                isCurrent={false}
+                                className="w-full"
+                                style={{ 
+                                  height: calculateHeight(update.longDescription || existingNode.longDescription, true),
+                                  overflowY: 'auto'
+                                }}
                               />
                             </div>
                             <div>
                               <span className="font-semibold block mb-1">Rules:</span>
-                              <textarea
-                                value={editedNode?.rules ?? update.rules ?? existingNode.rules}
-                                onChange={(e) => handleNodeEdit(update.id, 'rules', e.target.value)}
-                                className="w-full p-2 bg-gray-700 rounded text-white h-32"
+                              <DiffViewer
+                                original={existingNode.rules}
+                                updated={update.rules || existingNode.rules}
+                                isCurrent={false}
+                                className="w-full"
+                                style={{ height: '7.5rem', overflowY: 'auto' }}
+                              />
+                            </div>
+                            <div>
+                              <span className="font-semibold block mb-1">Type:</span>
+                              <DiffViewer
+                                original={existingNode.type}
+                                updated={update.type || existingNode.type}
+                                isCurrent={false}
+                                className="w-full"
                               />
                             </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="mt-4">
-                        <span className="font-semibold block mb-1">Image Update:</span>
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => handleNodeEdit(update.id, 'updateImage', !(editedNode?.updateImage ?? update.updateImage ?? existingNode.updateImage))}
-                            className={`px-3 py-1 rounded ${
-                              (editedNode?.updateImage ?? update.updateImage ?? existingNode.updateImage)
-                                ? 'bg-green-600 hover:bg-green-700' 
-                                : 'bg-gray-600 hover:bg-gray-700'
-                            } text-white transition-colors`}
-                          >
-                            {(editedNode?.updateImage ?? update.updateImage ?? existingNode.updateImage) ? 'Will generate new image' : 'No image update needed'}
-                          </button>
-                          <span className="text-sm text-gray-400">
-                            (Click to toggle)
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-4">
-                        <button
-                          onClick={() => handleRegenerateNode(update.id, false)}
-                          disabled={isLoading}
-                          className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-                        >
-                          {isLoading ? 'Regenerating...' : 'Regenerate Node'}
-                        </button>
                       </div>
                     </div>
                   );

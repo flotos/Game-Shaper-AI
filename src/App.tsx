@@ -107,7 +107,7 @@ const AppContent: React.FC = () => {
       </header>
       <div className="flex flex-grow overflow-y-auto">
         <ChatInterface nodes={nodes} updateGraph={updateGraph} />
-        <NodeGraphInterface nodes={nodes} />
+        <NodeGraphInterface nodes={nodes} updateGraph={updateGraph} />
       </div>
       
       {showNodeEditor && (

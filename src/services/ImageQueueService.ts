@@ -7,6 +7,7 @@ interface QueuedImage {
   prompt: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   imageUrl?: string;
+  node?: Node;
 }
 
 class ImageQueueService {
@@ -28,7 +29,8 @@ class ImageQueueService {
       this.queue.push({
         nodeId: node.id,
         prompt,
-        status: 'pending'
+        status: 'pending',
+        node
       });
       
       if (!this.isProcessing) {
@@ -51,16 +53,26 @@ class ImageQueueService {
     }
 
     try {
+      console.log('Processing queue item for node:', item.nodeId);
       item.status = 'processing';
       const imageUrl = await generateImage(item.prompt);
       
       if (imageUrl && this.updateNodeCallback) {
+        console.log('Generated new image for node:', item.nodeId);
+        const originalNode = this.queue.find(q => q.nodeId === item.nodeId)?.node;
+        if (!originalNode) {
+          console.error('Original node not found in queue for node:', item.nodeId);
+          return;
+        }
         const updatedNode: Node = {
-          id: item.nodeId,
+          ...originalNode,
           image: imageUrl,
-          updateImage: true
+          updateImage: false
         } as Node;
+        console.log('Updating node with new image:', updatedNode.id);
         this.updateNodeCallback(updatedNode);
+      } else {
+        console.error('Failed to generate image or update callback not set for node:', item.nodeId);
       }
 
       item.status = 'completed';

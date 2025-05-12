@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Node } from '../models/Node';
 import { generateNodesFromPrompt } from '../services/LLMService';
 import { Message } from '../context/ChatContext';
+import DiffViewer from './DiffViewer';
 
 interface AssistantOverlayProps {
   nodes: Node[];
@@ -22,89 +23,8 @@ interface PreviewState {
   };
   originalNodes: Node[];
   prompt?: string;
+  editedNodes?: Map<string, Partial<Node>>;
 }
-
-// Helper function to create diff spans
-const createDiffSpans = (original: string | any, updated: string | any, isCurrent: boolean) => {
-  // Convert inputs to strings if they're objects
-  const originalStr = typeof original === 'string' ? original : JSON.stringify(original, null, 2);
-  const updatedStr = typeof updated === 'string' ? updated : JSON.stringify(updated, null, 2);
-  
-  // Split into words and normalize whitespace
-  const originalWords = originalStr.trim().split(/\s+/);
-  const updatedWords = updatedStr.trim().split(/\s+/);
-  const result = [];
-  
-  // Find the longest common subsequence
-  const lcs = [];
-  const dp = Array(originalWords.length + 1).fill(0).map(() => Array(updatedWords.length + 1).fill(0));
-  
-  for (let i = 1; i <= originalWords.length; i++) {
-    for (let j = 1; j <= updatedWords.length; j++) {
-      if (originalWords[i - 1] === updatedWords[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-  }
-  
-  let i = originalWords.length;
-  let j = updatedWords.length;
-  
-  while (i > 0 && j > 0) {
-    if (originalWords[i - 1] === updatedWords[j - 1]) {
-      lcs.unshift(originalWords[i - 1]);
-      i--;
-      j--;
-    } else if (dp[i - 1][j] > dp[i][j - 1]) {
-      i--;
-    } else {
-      j--;
-    }
-  }
-  
-  // Now render the differences
-  i = 0;
-  j = 0;
-  let lcsIndex = 0;
-  
-  if (isCurrent) {
-    // Left side - show original with deletions in red
-    while (i < originalWords.length) {
-      if (lcsIndex < lcs.length && originalWords[i] === lcs[lcsIndex]) {
-        result.push(<span key={`common-${i}`} className="text-white">{lcs[lcsIndex]} </span>);
-        i++;
-        lcsIndex++;
-      } else {
-        result.push(
-          <span key={`old-${i}`} className="bg-red-900 text-white">
-            {originalWords[i]}{' '}
-          </span>
-        );
-        i++;
-      }
-    }
-  } else {
-    // Right side - show updated with additions in green
-    while (j < updatedWords.length) {
-      if (lcsIndex < lcs.length && updatedWords[j] === lcs[lcsIndex]) {
-        result.push(<span key={`common-${j}`} className="text-white">{lcs[lcsIndex]} </span>);
-        j++;
-        lcsIndex++;
-      } else {
-        result.push(
-          <span key={`new-${j}`} className="bg-green-900 text-white">
-            {updatedWords[j]}{' '}
-          </span>
-        );
-        j++;
-      }
-    }
-  }
-  
-  return result;
-};
 
 // Helper function to calculate height based on content length
 const calculateHeight = (text: string, isLongDescription: boolean = false, defaultRows: number = 10) => {
@@ -121,7 +41,8 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<PreviewState>({
     showPreview: false,
-    originalNodes: nodes
+    originalNodes: nodes,
+    editedNodes: new Map()
   });
 
   const handleSubmit = async () => {
@@ -132,11 +53,16 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     
     try {
       const response = await generateNodesFromPrompt(query, nodes);
+      const changesWithImageFlag = {
+        ...response,
+        merge: response.merge?.map((node: Partial<Node>) => ({ ...node, updateImage: node.updateImage ?? false }))
+      };
       setPreview({
         showPreview: true,
-        changes: response,
+        changes: changesWithImageFlag,
         originalNodes: nodes,
-        prompt: query
+        prompt: query,
+        editedNodes: new Map()
       });
     } catch (err) {
       setError('Failed to process your request. Please try again.');
@@ -146,9 +72,50 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     }
   };
 
+  const handleNodeEdit = (nodeId: string, field: keyof Node, value: string | boolean) => {
+    setPreview(prev => {
+      const newEditedNodes = new Map(prev.editedNodes || new Map());
+      const existingEdit = newEditedNodes.get(nodeId) || {};
+      
+      newEditedNodes.set(nodeId, {
+        ...existingEdit,
+        [field]: value
+      });
+
+      return {
+        ...prev,
+        editedNodes: newEditedNodes
+      };
+    });
+  };
+
+  const handleRegenerateNode = async (nodeId: string) => {
+    console.log(`Regenerate node ${nodeId} - Placeholder action`);
+    setError(`Regeneration for node ${nodeId} is not yet implemented.`);
+    // TODO: Implement regeneration logic if needed for the assistant context.
+    // This might involve calling generateNodesFromPrompt again with specific instructions
+    // or a dedicated backend endpoint.
+  };
+
   const handleConfirm = () => {
     if (preview.changes) {
-      updateGraph(preview.changes);
+      const finalMerge = preview.changes.merge?.map(node => {
+        const editedNode = preview.editedNodes?.get(node.id || '');
+        if (!editedNode) return node;
+
+        return {
+          ...node,
+          ...editedNode,
+        };
+      }) || [];
+
+      const finalChanges = {
+        merge: finalMerge,
+        delete: preview.changes.delete || [],
+        newNodes: [] 
+      };
+
+      updateGraph(finalChanges);
       closeOverlay();
     }
   };
@@ -156,100 +123,197 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   const renderDiffField = (original: string, updated: string, rows: number, isLongDescription: boolean = false) => {
     return (
       <div className="relative">
-        <div
-          className="w-full p-2 bg-gray-700 rounded text-white resize-none overflow-x-auto whitespace-pre-wrap"
+        <DiffViewer
+          original={original}
+          updated={updated}
+          isCurrent={false}
+          className="w-full"
           style={{ 
             height: calculateHeight(updated, isLongDescription, rows),
             overflowY: 'auto'
           }}
-        >
-          {createDiffSpans(original, updated, false)}
-        </div>
+        />
       </div>
     );
   };
 
   const renderNodeComparison = (originalNode: Node | null, updatedNode: Partial<Node>) => {
+    const nodeId = updatedNode.id || '';
+    const editedNode = preview.editedNodes?.get(nodeId) || {};
+
+    // Determine the current values for the edit column, considering edits
+    const currentName = editedNode.name ?? updatedNode.name ?? '';
+    const currentLongDescription = editedNode.longDescription ?? updatedNode.longDescription ?? '';
+    const currentRules = editedNode.rules ?? updatedNode.rules ?? '';
+    const currentType = editedNode.type ?? updatedNode.type ?? '';
+    const currentUpdateImage = editedNode.updateImage ?? updatedNode.updateImage ?? false;
+
+    if (!nodeId) return null;
+
     return (
       <div className="mb-4 p-4 bg-gray-800 rounded">
-        <h3 className="text-lg font-bold mb-2">{updatedNode.name}</h3>
-        <div className="grid grid-cols-2 gap-4">
+        {/* Node Name - Display Only (Edit below) */}
+        <h3 className="text-lg font-bold mb-2 text-white">{updatedNode.name} (ID: {nodeId})</h3>
+        
+        <div className="grid grid-cols-3 gap-4 mt-2"> 
+          {/* Column 1: Current State (Read-only Diff vs AI proposal) */}
           <div>
             <h4 className="text-sm font-semibold mb-1">Current</h4>
             <div className="text-sm space-y-2">
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
-                <div className="relative">
-                  <div
-                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
-                    style={{ 
-                      height: calculateHeight(originalNode?.longDescription || '', true),
-                      overflowY: 'auto'
-                    }}
-                  >
-                    {createDiffSpans(originalNode?.longDescription || '', updatedNode.longDescription || '', true)}
-                  </div>
-                </div>
+                <DiffViewer
+                  original={originalNode?.longDescription || ''}
+                  updated={updatedNode.longDescription || ''} // Show original proposed change for diff
+                  isCurrent={true}
+                  className="w-full bg-gray-700/50"
+                  style={{ 
+                    height: calculateHeight(originalNode?.longDescription || '', true),
+                    overflowY: 'auto'
+                  }}
+                />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Rules:</span>
-                <div className="relative">
-                  <div
-                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
-                    style={{ height: '7.5rem', overflowY: 'auto' }}
-                  >
-                    {createDiffSpans(originalNode?.rules || '', updatedNode.rules || '', true)}
-                  </div>
-                </div>
+                <DiffViewer
+                  original={originalNode?.rules || ''}
+                  updated={updatedNode.rules || ''} // Show original proposed change for diff
+                  isCurrent={true}
+                  className="w-full bg-gray-700/50"
+                  style={{ height: '7.5rem', overflowY: 'auto' }}
+                />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>
-                <div className="relative">
-                  <div className="w-full p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                    {createDiffSpans(originalNode?.type || '', updatedNode.type || '', true)}
-                  </div>
-                </div>
+                <DiffViewer
+                  original={originalNode?.type || ''}
+                  updated={updatedNode.type || ''} // Show original proposed change for diff
+                  isCurrent={true}
+                  className="w-full bg-gray-700/50"
+                />
               </div>
             </div>
           </div>
+
+          {/* Column 2: New State (Read-only Diff vs Original) */}
           <div>
-            <h4 className="text-sm font-semibold mb-1">New</h4>
+            <h4 className="text-sm font-semibold mb-1">New (AI Proposed)</h4>
             <div className="text-sm space-y-2">
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
-                <div className="relative">
-                  <div
-                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
-                    style={{ 
-                      height: calculateHeight(updatedNode.longDescription || '', true),
-                      overflowY: 'auto'
-                    }}
-                  >
-                    {createDiffSpans(originalNode?.longDescription || '', updatedNode.longDescription || '', false)}
-                  </div>
-                </div>
+                 <DiffViewer
+                  original={originalNode?.longDescription || ''} // Compare AI proposal to original
+                  updated={updatedNode.longDescription || ''}
+                  isCurrent={false} // Show additions in green
+                  className="w-full bg-gray-700/50"
+                  style={{ 
+                    height: calculateHeight(updatedNode.longDescription || '', true),
+                    overflowY: 'auto'
+                  }}
+                />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Rules:</span>
-                <div className="relative">
-                  <div
-                    className="w-full p-2 bg-gray-700 rounded text-white resize-none whitespace-pre-wrap"
-                    style={{ height: '7.5rem', overflowY: 'auto' }}
-                  >
-                    {createDiffSpans(originalNode?.rules || '', updatedNode.rules || '', false)}
-                  </div>
-                </div>
+                 <DiffViewer
+                  original={originalNode?.rules || ''} // Compare AI proposal to original
+                  updated={updatedNode.rules || ''}
+                  isCurrent={false} // Show additions in green
+                  className="w-full bg-gray-700/50"
+                  style={{ height: '7.5rem', overflowY: 'auto' }}
+                />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>
-                <div className="relative">
-                  <div className="w-full p-2 bg-gray-700 rounded text-white whitespace-pre-wrap">
-                    {createDiffSpans(originalNode?.type || '', updatedNode.type || '', false)}
-                  </div>
-                </div>
+                 <DiffViewer
+                  original={originalNode?.type || ''} // Compare AI proposal to original
+                  updated={updatedNode.type || ''}
+                  isCurrent={false} // Show additions in green
+                  className="w-full bg-gray-700/50"
+                />
               </div>
             </div>
           </div>
+          
+          {/* Column 3: Editable Fields */}
+          <div>
+            <h4 className="text-sm font-semibold mb-1">Edit</h4>
+            <div className="text-sm space-y-2">
+               <div>
+                <span className="font-semibold block mb-1">Name:</span>
+                <input
+                  type="text"
+                  value={currentName}
+                  onChange={(e) => handleNodeEdit(nodeId, 'name', e.target.value)}
+                  className="w-full p-2 bg-gray-700 rounded text-white"
+                  placeholder="Node Name"
+                />
+              </div>
+              <div>
+                <span className="font-semibold block mb-1">Long Description:</span>
+                <textarea
+                  value={currentLongDescription}
+                  onChange={(e) => handleNodeEdit(nodeId, 'longDescription', e.target.value)}
+                  className="w-full p-2 bg-gray-700 rounded text-white resize-none"
+                  style={{ 
+                    height: calculateHeight(currentLongDescription || '', true),
+                    overflowY: 'auto'
+                  }}
+                  placeholder="Enter long description..."
+                />
+              </div>
+              <div>
+                <span className="font-semibold block mb-1">Rules:</span>
+                <textarea
+                  value={currentRules}
+                  onChange={(e) => handleNodeEdit(nodeId, 'rules', e.target.value)}
+                  className="w-full p-2 bg-gray-700 rounded text-white resize-none"
+                  style={{ height: '7.5rem', overflowY: 'auto' }}
+                  placeholder="Enter rules..."
+                />
+              </div>
+              <div>
+                <span className="font-semibold block mb-1">Type:</span>
+                <input
+                  type="text"
+                  value={currentType}
+                  onChange={(e) => handleNodeEdit(nodeId, 'type', e.target.value)}
+                  className="w-full p-2 bg-gray-700 rounded text-white"
+                  placeholder="Enter type..."
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons - Moved below the grid */}
+        <div className="mt-4 pt-4 border-t border-gray-700 flex justify-between items-center space-x-4">
+          {/* Image Generation Toggle */}
+          <div>
+            <span className="font-semibold block mb-1 text-sm">Image Generation:</span>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => handleNodeEdit(nodeId, 'updateImage', !currentUpdateImage)}
+                className={`px-3 py-1 rounded text-sm ${currentUpdateImage
+                  ? 'bg-green-600 hover:bg-green-700' 
+                  : 'bg-gray-600 hover:bg-gray-700'
+                } text-white transition-colors`}
+              >
+                {currentUpdateImage ? 'Will generate image' : 'No image generation'}
+              </button>
+              <span className="text-xs text-gray-400">
+                (Click to toggle)
+              </span>
+            </div>
+          </div>
+
+          {/* Regenerate Button */}
+          <button
+            onClick={() => handleRegenerateNode(nodeId)}
+            disabled={isLoading} // Disable if any loading is happening
+            className={`px-4 py-2 rounded text-sm ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
+          >
+            {isLoading ? 'Processing...' : 'Regenerate Node'}
+          </button>
         </div>
       </div>
     );
