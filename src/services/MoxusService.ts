@@ -28,22 +28,40 @@ interface MoxusTask {
   timestamp: Date;
 }
 
-// LLM Call Memory structure
-interface LLMCallMemory {
-  calls: {
-    [id: string]: {
-      prompt: string;
-      response: string;
-      timestamp: Date;
-      feedback?: string;
+// New Moxus Memory structure
+interface MoxusMemoryStructure {
+  GeneralMemory: string;
+  featureSpecificMemory: {
+    nodeEdition: string;
+    chatText: string;
+    assistantFeedback: string;
+    nodeEdit: string;
+    llmCalls: {
+      [id: string]: {
+        prompt: string;
+        response: string;
+        timestamp: Date;
+        feedback?: string;
+      }
     }
   }
-  generalFeedback: string;
 }
 
-// Simple In-Memory Store for Moxus Feedback
+// Initialize with empty structure
+let moxusStructuredMemory: MoxusMemoryStructure = {
+  GeneralMemory: '',
+  featureSpecificMemory: {
+    nodeEdition: '',
+    chatText: '',
+    assistantFeedback: '',
+    nodeEdit: '',
+    llmCalls: {}
+  }
+};
+
+// Legacy variables - kept for backwards compatibility
 let moxusMemory: string = '';
-let llmCallsMemory: LLMCallMemory = { calls: {}, generalFeedback: '' };
+let llmCallsMemory = { calls: {}, generalFeedback: '' };
 let isProcessing = false;
 let taskQueue: MoxusTask[] = [];
 let nextTaskId = 1;
@@ -51,22 +69,36 @@ let getNodesCallback: () => Node[] = () => []; // Callback to get current nodes
 let addMessageCallback: (message: Message) => void = () => {}; // Callback to add chat message
 
 const MOXUS_MEMORY_KEY = 'moxusMemory';
+const MOXUS_STRUCTURED_MEMORY_KEY = 'moxusStructuredMemory';
 const MOXUS_LLM_CALLS_MEMORY_KEY = 'moxusLLMCallsMemory';
 
 // --- Memory Management ---
 const loadMemory = () => {
   try {
-    const savedMemory = localStorage.getItem(MOXUS_MEMORY_KEY);
+    const savedStructuredMemory = localStorage.getItem(MOXUS_STRUCTURED_MEMORY_KEY);
+    const savedLegacyMemory = localStorage.getItem(MOXUS_MEMORY_KEY);
     const savedLLMCallsMemory = localStorage.getItem(MOXUS_LLM_CALLS_MEMORY_KEY);
     
-    if (savedMemory) {
-      moxusMemory = savedMemory;
-      console.log('[MoxusService] Loaded memory from localStorage.');
-    }
-    
-    if (savedLLMCallsMemory) {
-      llmCallsMemory = JSON.parse(savedLLMCallsMemory);
-      console.log('[MoxusService] Loaded LLM calls memory from localStorage.');
+    if (savedStructuredMemory) {
+      moxusStructuredMemory = JSON.parse(savedStructuredMemory);
+      console.log('[MoxusService] Loaded structured memory from localStorage.');
+    } else if (savedLegacyMemory || savedLLMCallsMemory) {
+      // Legacy migration
+      console.log('[MoxusService] Migrating from legacy memory format...');
+      if (savedLegacyMemory) {
+        moxusMemory = savedLegacyMemory;
+        moxusStructuredMemory.GeneralMemory = moxusMemory;
+      }
+      
+      if (savedLLMCallsMemory) {
+        const parsedLLMMemory = JSON.parse(savedLLMCallsMemory);
+        llmCallsMemory = parsedLLMMemory;
+        moxusStructuredMemory.featureSpecificMemory.llmCalls = parsedLLMMemory.calls || {};
+        moxusStructuredMemory.GeneralMemory += '\n\n' + (parsedLLMMemory.generalFeedback || '');
+      }
+      
+      // Save in new format
+      saveMemory();
     }
   } catch (error) {
     console.error('[MoxusService] Error loading memory from localStorage:', error);
@@ -75,8 +107,13 @@ const loadMemory = () => {
 
 const saveMemory = () => {
   try {
-    localStorage.setItem(MOXUS_MEMORY_KEY, moxusMemory);
-    localStorage.setItem(MOXUS_LLM_CALLS_MEMORY_KEY, JSON.stringify(llmCallsMemory));
+    localStorage.setItem(MOXUS_STRUCTURED_MEMORY_KEY, JSON.stringify(moxusStructuredMemory));
+    // Legacy compatibility
+    localStorage.setItem(MOXUS_MEMORY_KEY, moxusStructuredMemory.GeneralMemory);
+    localStorage.setItem(MOXUS_LLM_CALLS_MEMORY_KEY, JSON.stringify({
+      calls: moxusStructuredMemory.featureSpecificMemory.llmCalls,
+      generalFeedback: ''
+    }));
   } catch (error) {
     console.error('[MoxusService] Error saving memory to localStorage:', error);
   }
@@ -84,17 +121,25 @@ const saveMemory = () => {
 
 // --- LLM Call Memory Management ---
 export const recordLLMCall = (id: string, prompt: string, response: string) => {
+  // Update both formats for compatibility
   llmCallsMemory.calls[id] = {
     prompt,
     response,
     timestamp: new Date()
   };
+  
+  moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = {
+    prompt,
+    response,
+    timestamp: new Date()
+  };
+  
   saveMemory();
   console.log(`[MoxusService] Recorded LLM call: ${id}`);
 };
 
 export const getLLMCallFeedback = (id: string): string | undefined => {
-  return llmCallsMemory.calls[id]?.feedback;
+  return moxusStructuredMemory.featureSpecificMemory.llmCalls[id]?.feedback;
 };
 
 // --- Initialization ---
@@ -150,7 +195,7 @@ const processQueue = async () => {
     const assistantNodesContent = getAssistantNodesContent();
 
     // Construct the specific prompt - IMPROVE THIS LATER
-    let promptContent = `Your name is Moxus, a helpful AI assistant acting as a reviewer for the LLM system within a game engine.\n    Your goal is to provide constructive feedback on LLM calls, responses, and the evolving game state.\n    Analyze the following task data based on the task type and your current memory.\n    \n    Assistant Personality (Defined by 'assistant' nodes):\n    ---\n    ${assistantNodesContent}\n    ---\n    \n    Current Memory (Your previous feedback):\n    ---\n    ${moxusMemory || '(Memory is empty)'}\n    ---\n    \n    Current Task:\n    Type: ${task.type}\n    Timestamp: ${task.timestamp.toISOString()}\n    Data:\n    \`\`\`json\n    ${JSON.stringify(task.data, null, 2)}\n    \`\`\`\n    \n    Instructions:\n    `;
+    let promptContent = `Your name is Moxus, a helpful AI assistant acting as a reviewer for the LLM system within a game engine.\n    Your goal is to provide constructive feedback on LLM calls, responses, and the evolving game state.\n    Analyze the following task data based on the task type and your current memory.\n    \n    Assistant Personality (Defined by 'assistant' nodes):\n    ---\n    ${assistantNodesContent}\n    ---\n    \n    Current Memory (Your previous feedback):\n    ---\n    ${moxusStructuredMemory.GeneralMemory || '(Memory is empty)'}\n    ---\n    \n    Current Task:\n    Type: ${task.type}\n    Timestamp: ${task.timestamp.toISOString()}\n    Data:\n    \`\`\`json\n    ${JSON.stringify(task.data, null, 2)}\n    \`\`\`\n    \n    Instructions:\n    `;
 
     if (task.type === 'finalReport') {
       promptContent += `Review your entire memory log. Synthesize the key feedback points into a concise report for the user about the story generation, node updates, and overall coherence. Present this as a single block of text.`;
@@ -188,23 +233,54 @@ const processQueue = async () => {
     } else if (task.type === 'llmCallFeedback') {
       // Store feedback for this specific LLM call
       if (task.data && task.data.id) {
-        if (llmCallsMemory.calls[task.data.id]) {
-          llmCallsMemory.calls[task.data.id].feedback = feedback;
+        if (moxusStructuredMemory.featureSpecificMemory.llmCalls[task.data.id]) {
+          moxusStructuredMemory.featureSpecificMemory.llmCalls[task.data.id].feedback = feedback;
+          // Legacy compatibility
+          if (llmCallsMemory.calls[task.data.id]) {
+            llmCallsMemory.calls[task.data.id].feedback = feedback;
+          }
           saveMemory();
           console.log(`[MoxusService] Stored feedback for LLM call: ${task.data.id}`);
         } else {
           console.error(`[MoxusService] Cannot find LLM call with ID: ${task.data.id}`);
         }
       } else {
-        // Add to general feedback if no specific ID
+        // Add to general feedback
+        moxusStructuredMemory.GeneralMemory += `\n\n${feedback}`;
+        // Legacy compatibility
         llmCallsMemory.generalFeedback += `\n\n${feedback}`;
+        moxusMemory += `\n\n${feedback}`;
         saveMemory();
       }
     } else {
-      // Append feedback to memory
-      moxusMemory += `\n\n-- Feedback from Task ${task.id} (${task.type}) at ${new Date().toISOString()} --\n${feedback}`;
+      // Store feedback based on task type
+      const timestamp = new Date().toISOString();
+      const formattedFeedback = `-- Feedback from Task ${task.id} (${task.type}) at ${timestamp} --\n${feedback}`;
+      
+      // Add to GeneralMemory
+      moxusStructuredMemory.GeneralMemory += `\n\n${formattedFeedback}`;
+      
+      // Also add to specific feature memory
+      switch (task.type) {
+        case 'nodeEditFeedback':
+          moxusStructuredMemory.featureSpecificMemory.nodeEdit += `\n\n${formattedFeedback}`;
+          break;
+        case 'storyFeedback':
+        case 'nodeUpdateFeedback':
+          moxusStructuredMemory.featureSpecificMemory.nodeEdition += `\n\n${formattedFeedback}`;
+          break;
+        case 'assistantFeedback':
+          moxusStructuredMemory.featureSpecificMemory.assistantFeedback += `\n\n${formattedFeedback}`;
+          break;
+        default:
+          moxusStructuredMemory.featureSpecificMemory.chatText += `\n\n${formattedFeedback}`;
+      }
+      
+      // Legacy compatibility
+      moxusMemory += `\n\n${formattedFeedback}`;
+      
       saveMemory(); // Save memory after appending
-      console.log(`[MoxusService] Appended feedback to memory for task ${task.id}. Memory length: ${moxusMemory.length}`);
+      console.log(`[MoxusService] Appended feedback to memory for task ${task.id}`);
     }
 
   } catch (error) {
@@ -219,7 +295,6 @@ const processQueue = async () => {
 };
 
 // Function to get assistant node content (Placeholder - needs access to nodes)
-// This needs to be implemented properly, potentially requiring access to the Node graph state.
 const getAssistantNodesContent = (): string => {
     const currentNodes = getNodesCallback(); // Use the callback
     const assistantNodes = currentNodes.filter(node => node.type === 'assistant');
@@ -231,10 +306,20 @@ const getAssistantNodesContent = (): string => {
         .join('\n\n---\n\n');
 }
 
-// Generate YAML representation of llmCallsMemory for inclusion in prompts
+// Generate YAML representation of memory for inclusion in prompts
 export const getLLMCallsMemoryYAML = (): string => {
   try {
-    return yaml.dump(llmCallsMemory);
+    // Format according to requested structure
+    const memoryForYaml = {
+      GeneralMemory: moxusStructuredMemory.GeneralMemory,
+      featureSpecificMemory: {
+        nodeEdition: moxusStructuredMemory.featureSpecificMemory.nodeEdition,
+        chatText: moxusStructuredMemory.featureSpecificMemory.chatText,
+        // Other feature memories omitted from YAML for brevity
+      }
+    };
+    
+    return yaml.dump(memoryForYaml);
   } catch (error) {
     console.error('[MoxusService] Error generating YAML:', error);
     return "Error generating memory YAML";
@@ -250,7 +335,7 @@ export const moxusService = {
   getLLMCallsMemoryYAML,
   // For testing purposes
   debugLogMemory: () => {
-    console.log('LLM Calls Memory:', llmCallsMemory);
+    console.log('Structured Memory:', moxusStructuredMemory);
     console.log('YAML representation:', getLLMCallsMemoryYAML());
   }
 };
