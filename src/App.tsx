@@ -8,6 +8,7 @@ import AssistantOverlay from './components/AssistantOverlay';
 import TwineImportOverlay from './components/TwineImportOverlay';
 import { moxusService } from './services/MoxusService';
 import './services/LLMService';
+import { ChatProvider } from './context/ChatContext';
 
 const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [memoryYaml, setMemoryYaml] = useState<string>("");
@@ -40,6 +41,12 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     URL.revokeObjectURL(url);
   };
 
+  const resetMemory = () => {
+    setIsLoading(true);
+    moxusService.resetMemory();
+    refreshMemory();
+  };
+
   useEffect(() => {
     refreshMemory();
     
@@ -65,6 +72,13 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             )}
           </h2>
           <div className="flex space-x-2">
+            <button 
+              onClick={resetMemory}
+              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              disabled={isLoading}
+            >
+              Reset to Default
+            </button>
             <button 
               onClick={exportMemoryYaml}
               className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
@@ -241,7 +255,7 @@ const AppContent: React.FC = () => {
       </header>
       <div className="flex flex-grow overflow-y-auto">
         <ChatInterface nodes={nodes} updateGraph={updateGraph} addMessage={addMessage} />
-        <NodeGraphInterface nodes={nodes} updateGraph={updateGraph} />
+        <NodeGraphInterface nodes={nodes} updateGraph={updateGraph} onNodesSorted={setNodes} />
       </div>
       
       {showNodeEditor && (
@@ -280,4 +294,12 @@ const AppContent: React.FC = () => {
   );
 };
 
-export default AppContent;
+const App: React.FC = () => {
+  return (
+    <ChatProvider>
+      <AppContent />
+    </ChatProvider>
+  );
+};
+
+export default App;

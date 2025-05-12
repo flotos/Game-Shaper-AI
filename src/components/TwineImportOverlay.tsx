@@ -24,7 +24,8 @@ interface TwineImportOverlayProps {
     newNodes?: string[];
   }, 
   imagePrompts?: { nodeId: string; prompt: string }[],
-  chatHistory?: Message[]
+  chatHistory?: Message[],
+  isFromUserInteraction?: boolean
   ) => Promise<void>;
   closeOverlay: () => void;
 }
@@ -542,7 +543,8 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         delete: preview.changes.delete || [],
         newNodes: (preview.changes.new?.map(node => node.id).filter((id): id is string => id !== undefined) || [])
       };
-      updateGraph(changes);
+      // Explicitly pass false for isFromUserInteraction to prevent sorting
+      updateGraph(changes, undefined, undefined, false);
       closeOverlay();
     }
   };

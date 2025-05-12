@@ -13,7 +13,8 @@ interface AssistantOverlayProps {
     newNodes?: string[];
   }, 
   imagePrompts?: { nodeId: string; prompt: string }[],
-  chatHistory?: Message[]
+  chatHistory?: Message[],
+  isFromUserInteraction?: boolean
   ) => Promise<void>;
   closeOverlay: () => void;
 }
@@ -122,7 +123,8 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
       try {
         // Call updateGraph with only the necessary nodeEdition.
         // Let useNodeGraph handle image prompts based on flags and chat history from context.
-        await updateGraph(finalChanges); 
+        // Explicitly pass false for isFromUserInteraction to prevent sorting
+        await updateGraph(finalChanges, undefined, undefined, false); 
         
         moxusService.addTask('assistantFeedback', {
           query: preview.prompt,

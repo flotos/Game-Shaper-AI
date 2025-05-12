@@ -125,25 +125,23 @@ const saveMemory = () => {
 
 // --- LLM Call Memory Management ---
 export const recordLLMCall = (id: string, prompt: string, response: string) => {
+  // Truncate the prompt and response to reduce memory usage
+  // Limit to approximately 1000 characters for each
+  const truncatedPrompt = prompt.length > 1000 ? prompt.substring(0, 1000) + "... [truncated]" : prompt;
+  const truncatedResponse = response.length > 1000 ? response.substring(0, 1000) + "... [truncated]" : response;
+  
   // Create the call object
   const call: LLMCall = {
-    prompt,
-    response,
+    prompt: truncatedPrompt,
+    response: truncatedResponse,
     timestamp: new Date()
   };
   
   // Store in the structured memory
   moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = call;
   
-  // Skip evaluation for image generation prompts
-  if (prompt.includes('generating image prompt') || 
-      prompt.includes('generate the caption of image') || 
-      prompt.includes('Image generation instructions')) {
-    console.log(`[MoxusService] Skipping feedback for image generation prompt: ${id}`);
-    // Still record the call but don't add a feedback task
-  }
   // Check for chat text generation prompts (match patterns seen in the LLMService)
-  else if (prompt.includes('Generate a detailed chapter') || 
+  if (prompt.includes('Generate a detailed chapter') || 
       prompt.includes('Generate appropriate dialogue') || 
       id.startsWith('chatText-') || 
       prompt.includes('# TASK:\nYou are the Game Engine of a Node-base game')) {
@@ -151,17 +149,37 @@ export const recordLLMCall = (id: string, prompt: string, response: string) => {
     // Add to special task queue for chat text feedback
     addTask('chatTextFeedback', {
       id: id,
-      prompt: prompt,
-      response: response
+      prompt: truncatedPrompt,
+      response: truncatedResponse
     });
   }
   // Add llmCallFeedback task for all other types of calls
   else {
     addTask('llmCallFeedback', {
       id: id,
-      prompt: prompt,
-      response: response
+      prompt: truncatedPrompt,
+      response: truncatedResponse
     });
+  }
+  
+  // Clean up old LLM calls to prevent memory growth
+  const llmCalls = moxusStructuredMemory.featureSpecificMemory.llmCalls;
+  const callIds = Object.keys(llmCalls);
+  
+  // Keep only the 50 most recent calls
+  if (callIds.length > 50) {
+    const sortedIds = callIds.sort((a, b) => {
+      const timeA = new Date(llmCalls[a].timestamp).getTime();
+      const timeB = new Date(llmCalls[b].timestamp).getTime();
+      return timeB - timeA; // Sort descending (newest first)
+    });
+    
+    // Delete older calls beyond the 50 most recent
+    for (let i = 50; i < sortedIds.length; i++) {
+      delete llmCalls[sortedIds[i]];
+    }
+    
+    console.log(`[MoxusService] Cleaned up ${sortedIds.length - 50} old LLM calls`);
   }
   
   saveMemory();
@@ -208,7 +226,7 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   
   return `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
-  Your goal is to maintain a comprehensive and well-structured record of observations and feedback that will drive the process of the game.
+  Your goal is to maintain a brief record of critical observations that will highlight problems in the game.
   
   ${assistantNodesContent ? `Additional features:
   ---
@@ -216,7 +234,7 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   ---` : ""}
   
   # CURRENT MEMORY DOCUMENT
-  Below is your current memory document. You should update, reorganize, or expand this document based on new observations:
+  Below is your current memory document. You should update this document to be very brief and focused on criticism:
   
   ${existingMemory}
   
@@ -228,14 +246,14 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   \`\`\`
   
   # INSTRUCTIONS
-  1. Analyze the new information from the current task
-  2. Update the memory document to incorporate this new information
-  3. Do NOT simply append the new information - integrate it appropriately into the existing structure
-  4. Maintain a clear, well-organized markdown document with headings, subheadings, and bullet points
-  5. Focus on insights, patterns, and critical observations rather than raw data
-  6. The memory document should be a comprehensive analysis that evolves over time
-  7. Ensure the document remains well-structured as a single cohesive markdown document
-  8. Maintain a concise and precise document.
+  1. Analyze the new information focusing ONLY on problems and issues
+  2. Update the memory document to be extremely concise (1-3 sentences per section maximum)
+  3. Focus exclusively on criticism and improvement areas, not what works well
+  4. Use minimal bullet points for critical observations only
+  5. Only include observations that highlight problems or inconsistencies
+  6. The memory document should identify specific issues requiring attention
+  7. Keep any section about your own personality very brief
+  8. The entire document should be concise and critical in nature
 
   Return the complete updated memory document.`;
 };
@@ -285,7 +303,7 @@ const handleFinalReport = async () => {
   const promptContent = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
   
-  Generate a comprehensive analysis report based on all your accumulated memory documents below.
+  Generate a very brief critical analysis based on your accumulated memory documents below.
   
   ${assistantNodesContent ? `Additional features:
   ---
@@ -302,18 +320,18 @@ const handleFinalReport = async () => {
   ${moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)'}
   
   # INSTRUCTIONS
-  Create a well-structured, insightful report summarizing the key observations from all memory sources.
-  Format your report with clear markdown headings (## for sections) and bullet points for key observations.
+  Create a brief critical report focusing ONLY on problems and issues.
+  Keep the entire report to 1-3 short paragraphs maximum.
+  Use minimal markdown formatting.
   
-  Cover these areas if relevant:
-  - Story Progress and Narrative Quality
-  - World Building and Consistency
-  - Character Development
-  - Gameplay Mechanics and Balance
-  - Suggestions for Improvement
+  Focus exclusively on:
+  - Critical issues with story consistency or narrative quality
+  - Significant problems with world building or coherence
+  - Major character development issues
+  - Serious gameplay mechanic flaws
   
-  Be insightful but concise, focusing on the most important observations. This will be displayed to the user as a Moxus analysis report.
-  You can write between one and two paragraphs.`;
+  Be direct and concise. Focus only on problems requiring attention, not what works well.
+  This will be displayed to the user as a Moxus critical analysis report.`;
 
   console.log(`[MoxusService] Generating final report using all memory sources...`);
   if (!getMoxusFeedbackImpl) {
@@ -348,6 +366,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     if (task.data && task.data.id) {
       const callId = task.data.id;
       if (!moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
+        // The call might have been deleted during cleanup, reuse truncated data from task
         moxusStructuredMemory.featureSpecificMemory.llmCalls[callId] = {
           prompt: task.data.prompt,
           response: task.data.response,
@@ -379,8 +398,10 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       ${task.data.response}
       ---end of response---
       
-      Provide concise, constructive feedback on the quality, relevance, and coherence of this response.
-      Focus on how the LLM could improve in future iterations.`;
+      Provide VERY brief, critical feedback focusing ONLY on problems with this response.
+      Keep your feedback to a maximum of 1-3 short sentences.
+      Focus exclusively on what could be improved, not what went well.
+      Identify specific issues with quality, relevance, coherence, or accuracy.`;
       
       if (!getMoxusFeedbackImpl) {
         throw new Error('getMoxusFeedback implementation not set.');
@@ -388,8 +409,11 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       
       const feedback = await getMoxusFeedbackImpl(feedbackPrompt);
       
+      // Truncate feedback to avoid memory growth
+      const truncatedFeedback = feedback.length > 500 ? feedback.substring(0, 500) + "... [truncated]" : feedback;
+      
       // Store feedback for this specific LLM call
-      moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = feedback;
+      moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = truncatedFeedback;
       
       // For chatTextFeedback, also update the chatText memory document
       if (task.type === 'chatTextFeedback') {
@@ -471,9 +495,21 @@ const updateGeneralMemoryFromAllSources = async () => {
     .slice(0, 5)
     .map(([id, call]) => ({
       id,
-      prompt: call.prompt?.substring(0, 100) + '...',
+      // Don't include prompt content in the general memory update
       feedback: call.feedback || "No feedback available"
     }));
+  
+  // Truncate memory sections to avoid token limit issues
+  const truncateText = (text: string, maxLength: number = 2000) => {
+    return text && text.length > maxLength ? text.substring(0, maxLength) + "... [truncated]" : text;
+  };
+  
+  // Limit the size of each memory section
+  const generalMemory = truncateText(moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL);
+  const chatTextMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.chatText);
+  const nodeEditionMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdition);
+  const assistantFeedbackMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.assistantFeedback);
+  const nodeEditMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdit);
   
   // Create a comprehensive prompt that includes all memory sources
   const updatePrompt = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
@@ -481,37 +517,37 @@ const updateGeneralMemoryFromAllSources = async () => {
   
   Assistant Personality:
   ---
-  ${assistantNodesContent}
+  ${truncateText(assistantNodesContent, 1000)}
   ---
   
   # CURRENT GENERAL MEMORY DOCUMENT
-  ${moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL}
+  ${generalMemory}
   
   # ALL MEMORY SOURCES TO INTEGRATE
 
   ## CHAT TEXT ANALYSIS
-  ${moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)'}
+  ${chatTextMemory || '(No chat text analysis available)'}
   
   ## NODE EDITIONS ANALYSIS
-  ${moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)'}
+  ${nodeEditionMemory || '(No node edition analysis available)'}
   
   ## ASSISTANT FEEDBACK ANALYSIS
-  ${moxusStructuredMemory.featureSpecificMemory.assistantFeedback || '(No assistant feedback analysis available)'}
+  ${assistantFeedbackMemory || '(No assistant feedback analysis available)'}
   
   ## NODE EDIT ANALYSIS
-  ${moxusStructuredMemory.featureSpecificMemory.nodeEdit || '(No node edit analysis available)'}
+  ${nodeEditMemory || '(No node edit analysis available)'}
   
   ## RECENT LLM CALL FEEDBACKS
   ${JSON.stringify(recentFeedbacks, null, 2)}
   
   # INSTRUCTIONS
-  1. Create an updated, comprehensive GeneralMemory document that synthesizes insights from ALL memory sources
-  2. Do NOT simply append new information - integrate it logically into the existing structure
-  3. Organize with clear markdown headings (## for sections) and bullet points for key observations
-  4. Prioritize significant patterns, insights, and observations across all memory categories
-  5. Focus on building a cohesive, well-structured, evolving analysis of the game world
-  6. Always maintain a section about your own personality and characteristics
-  7. Ensure the document reads as a single, cohesive analysis rather than disconnected sections
+  1. Create a VERY BRIEF updated GeneralMemory document that synthesizes only the most critical issues from ALL memory sources
+  2. Keep each section extremely short - use 1-3 sentences maximum per section
+  3. Focus exclusively on problems, issues, and areas for improvement - NOT what works well
+  4. Use minimal bullet points for each critical observation
+  5. Only include observations that highlight problems or inconsistencies in the game world
+  6. Keep any section about your own personality very brief (1-2 sentences maximum)
+  7. The entire document should be concise and focused on critique
   
   Return ONLY the complete updated GeneralMemory document.`;
   
@@ -522,8 +558,11 @@ const updateGeneralMemoryFromAllSources = async () => {
   // Get the updated GeneralMemory
   const updatedGeneralMemory = await getMoxusFeedbackImpl(updatePrompt);
   
+  // Truncate the result to prevent memory growth
+  const truncatedGeneralMemory = truncateText(updatedGeneralMemory, 5000);
+  
   // Update the GeneralMemory
-  moxusStructuredMemory.GeneralMemory = updatedGeneralMemory;
+  moxusStructuredMemory.GeneralMemory = truncatedGeneralMemory;
   console.log('[MoxusService] Updated GeneralMemory from all memory sources');
   saveMemory();
 };

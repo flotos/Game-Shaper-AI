@@ -247,7 +247,8 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
     { role: 'system', content: contentPrompt },
   ];
 
-  return getResponse(messages);
+  // Skip Moxus feedback for image prompt generation
+  return getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true });
 }
 
 export const getRelevantNodes = async(userInput: string, chatHistory: Message[], nodes: Node[]) => {
@@ -1040,14 +1041,14 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       role: 'system',
       content: `
         # Moxus AI Assistant Feedback
-        Moxus is an AI assistant that helps analyze and improve your responses.
-        The following is feedback on previous similar requests:
+        Moxus is an AI assistant that helps identify problems with previous responses.
+        The following is brief critical feedback on previous similar requests:
 
         ---start of feedback---
         ${moxusService.getLLMCallsMemoryYAML()}
         ---end of feedback---
 
-        Please use this feedback to improve your response to the current request.
+        Use this critical feedback to avoid making the same mistakes in your response.
         `
     };
     
@@ -1220,13 +1221,6 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       // Record this call for Moxus if not streaming and not skipping feedback
       if (!stream && !options?.skipMoxusFeedback) {
         moxusService.recordLLMCall(callId, originalPrompt, llmResult);
-        
-        // Queue a task for Moxus to analyze this call
-        moxusService.addTask('llmCallFeedback', {
-          id: callId,
-          prompt: originalPrompt,
-          response: llmResult
-        });
       }
 
       return llmResult;

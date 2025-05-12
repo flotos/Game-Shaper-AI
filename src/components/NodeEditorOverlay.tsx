@@ -15,7 +15,8 @@ interface NodeEditorOverlayProps {
     newNodes?: string[];
   }, 
   imagePrompts?: { nodeId: string; prompt: string }[],
-  chatHistory?: Message[]
+  chatHistory?: Message[],
+  isFromUserInteraction?: boolean
   ) => Promise<void>;
 }
 
@@ -59,8 +60,9 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
 
   const handleDelete = () => {
     if (selectedNode) {
-      deleteNode(selectedNode.id);
+      updateGraph({ delete: [selectedNode.id] }, [], []);
       setSelectedNode(null);
+      closeOverlay();
     }
   };
 

@@ -41,6 +41,19 @@ class ImageQueueService {
     }
   }
 
+  async addToQueueWithExistingPrompt(node: Node, prompt: string) {
+    this.queue.push({
+      nodeId: node.id,
+      prompt,
+      status: 'pending',
+      node
+    });
+    
+    if (!this.isProcessing) {
+      this.processQueue();
+    }
+  }
+
   private async processQueue() {
     if (this.isProcessing || this.queue.length === 0) return;
 

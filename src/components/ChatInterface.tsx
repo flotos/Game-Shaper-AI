@@ -15,7 +15,8 @@ interface ChatInterfaceProps {
     newNodes?: string[];
   }, 
   imagePrompts?: { nodeId: string; prompt: string }[],
-  chatHistory?: Message[]
+  chatHistory?: Message[],
+  isFromUserInteraction?: boolean
   ) => Promise<void>;
   addMessage: (message: Message) => void;
 }
@@ -235,7 +236,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
         // Apply the node edition to update the graph in the background
         console.log('Applying node edition to graph...');
-        await updateGraph(nodeEdition, [], contextHistory);
+        await updateGraph(nodeEdition, [], contextHistory, true);
       }
     } catch (error) {
       console.error('Error during chat handling:', error);
@@ -335,7 +336,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
       messagesToAdd.forEach(addMessage);
       setLastNodeEdition(nodeEdition);
 
-      updateGraph(nodeEdition, [], contextHistory).then(() => {
+      updateGraph(nodeEdition, [], contextHistory, true).then(() => {
         setWaitingForAnswer(false);
         setLoadingMessage('');
         setIsLoading(false);
