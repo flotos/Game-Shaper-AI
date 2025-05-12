@@ -133,6 +133,13 @@ function useNodeGraph() {
     console.log('Image prompts to process:', imagePrompts);
     console.log('Is from user interaction:', isFromUserInteraction);
     
+    // Check if this is a delete-only operation
+    const isDeleteOnly = 
+      nodeEdition.delete && 
+      nodeEdition.delete.length > 0 && 
+      !nodeEdition.merge && 
+      !nodeEdition.newNodes;
+    
     // Use providedChatHistory if available, otherwise fallback to context
     const currentChatHistory = providedChatHistory || chatHistory;
 
@@ -189,6 +196,11 @@ function useNodeGraph() {
           URL.revokeObjectURL(url);
         });
       }, 100);
+      
+      // If this is a delete-only operation, clear nodesToProcess to prevent any image regeneration
+      if (isDeleteOnly) {
+        nodesToProcess = [];
+      }
     }
 
     // Process updates and new nodes
@@ -294,6 +306,12 @@ function useNodeGraph() {
       triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
     }
 
+    // Skip image generation for delete-only operations
+    if (isDeleteOnly) {
+      console.log('Skipping image generation for delete-only operation');
+      return finalNodesState;
+    }
+
     // Queue image generation for nodes that need it (using imagePrompts argument)
     // Use the imagePrompts argument passed to the function
     const nodesToProcessForImages = nodesToProcess.length > 0 ? nodesToProcess : 
@@ -335,6 +353,11 @@ function useNodeGraph() {
     delete?: string[];
     newNodes?: string[];
   }) => {
+    // Check if this is a delete-only operation
+    if (nodeEdition.delete?.length && !nodeEdition.merge && !nodeEdition.newNodes) {
+      return false; // Delete operations are significant content changes, not just image updates
+    }
+    
     // Check if the update only includes image updates
     return (nodeEdition.merge?.every(node => 
       Object.keys(node).length <= 2 && // Only id and updateImage properties

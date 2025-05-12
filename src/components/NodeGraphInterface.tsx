@@ -54,6 +54,9 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
   useEffect(() => {
     if (!nodes.length) return;
     
+    // Skip image processing immediately after a deletion
+    if (deletingNode) return;
+    
     // Only process nodes that have changed or are new
     const nodesToProcess = nodes.filter(node => {
       // Skip nodes without images or being deleted
