@@ -60,7 +60,15 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
       if (!node.image || deletingNode === node.id) return false;
       
       // Skip nodes that already have compressed images unless they have been updated
-      if (compressedImages.has(node.id) && !updatedNodes.has(node.id)) return false;
+      if (compressedImages.has(node.id) && !updatedNodes.has(node.id)) {
+        // Check if the image URL has changed even if not marked as updated
+        const cachedImageUrl = compressedImages.get(node.id);
+        const originalImageUrl = node.image;
+        if (cachedImageUrl && originalImageUrl && cachedImageUrl !== originalImageUrl) {
+          return true; // Process if URL has changed
+        }
+        return false;
+      }
       
       // Process this node
       return true;
@@ -160,6 +168,17 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
       return;
     }
     console.log('Regenerating image for node:', node.id);
+    
+    // Immediately clear this node from the compressed images cache
+    if (compressedImages.has(node.id)) {
+      setCompressedImages(prevImages => {
+        const newImages = new Map(prevImages);
+        newImages.delete(node.id);
+        return newImages;
+      });
+    }
+    
+    // Mark node as needing image update
     const nodeEdition = {
       merge: [{
         id: node.id,
@@ -174,7 +193,7 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
     } catch (error) {
       console.error('Error regenerating image:', error);
     }
-  }, [updateGraph]);
+  }, [updateGraph, compressedImages]);
 
   const handleDeleteNode = useCallback(async (nodeId: string) => {
     if (!updateGraph) {
@@ -235,8 +254,32 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
   }, [nodeToDelete]);
 
   const getCompressedImageUrl = useCallback((nodeId: string, originalImage: string) => {
-    return compressedImages.get(nodeId) || originalImage;
-  }, [compressedImages]);
+    // Check if a compressed image exists and if the node has been updated
+    if (compressedImages.has(nodeId) && !updatedNodes.has(nodeId)) {
+      // Check if the cached image matches the current image URL
+      const cachedImage = compressedImages.get(nodeId);
+      if (cachedImage && cachedImage.startsWith('data:image') && originalImage.startsWith('data:image')) {
+        // Extract a short signature from both images to compare
+        const getImageSignature = (url: string) => {
+          // Use the first 20 chars after data:image/ as signature
+          const match = url.match(/data:image\/[^;]+;base64,([A-Za-z0-9+/]{20})/);
+          return match ? match[1] : '';
+        };
+        
+        const originalSignature = getImageSignature(originalImage);
+        const cachedSignature = getImageSignature(cachedImage);
+        
+        // Only use cached version if signatures match (indicating they're the same base image)
+        if (originalSignature && cachedSignature && originalSignature === cachedSignature) {
+          return cachedImage;
+        }
+        
+        // Signatures don't match, don't use the cached image
+        return originalImage;
+      }
+    }
+    return originalImage;
+  }, [compressedImages, updatedNodes]);
 
   // Memoize the nodes grid to prevent unnecessary re-renders
   const nodesGrid = useMemo(() => (

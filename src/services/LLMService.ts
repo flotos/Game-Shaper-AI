@@ -1311,10 +1311,46 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
 // Modified function for Moxus calls to avoid feedback loop
 export const getMoxusFeedback = async (promptContent: string): Promise<string> => {
   console.log('[LLMService] Moxus request received.');
+  
+  // Basic token estimation - roughly 4 characters per token for English text
+  const estimatedTokens = Math.ceil(promptContent.length / 4);
+  console.log(`[LLMService] Estimated tokens for Moxus request: ~${estimatedTokens}`);
+  
+  // Safety check - if estimated tokens are too high, truncate the prompt
+  const MAX_SAFE_TOKENS = 100000; // Set a safe limit below Claude's 163,840 limit
+  let processedPrompt = promptContent;
+  
+  if (estimatedTokens > MAX_SAFE_TOKENS) {
+    console.warn(`[LLMService] Moxus prompt exceeds safe token limit (~${estimatedTokens} tokens). Truncating...`);
+    
+    // Find a clean breaking point by looking for section headers
+    const sections = promptContent.split(/^#\s+/m);
+    let truncatedPrompt = sections[0]; // Always keep the first section
+    
+    // Add sections until we approach the limit
+    let currentLength = truncatedPrompt.length;
+    let i = 1;
+    
+    while (i < sections.length && (currentLength + sections[i].length) / 4 < MAX_SAFE_TOKENS) {
+      truncatedPrompt += `# ${sections[i]}`; // Re-add the header marker
+      currentLength += sections[i].length + 2; // +2 for "# "
+      i++;
+    }
+    
+    // If we couldn't find enough section breaks, do a hard truncation as last resort
+    if (truncatedPrompt.length / 4 > MAX_SAFE_TOKENS || truncatedPrompt === sections[0]) {
+      truncatedPrompt = promptContent.substring(0, MAX_SAFE_TOKENS * 4);
+      truncatedPrompt += "\n\n[CONTENT TRUNCATED DUE TO LENGTH CONSTRAINTS]\n\n";
+    }
+    
+    processedPrompt = truncatedPrompt;
+    console.log(`[LLMService] Truncated Moxus prompt to ~${Math.ceil(processedPrompt.length / 4)} tokens`);
+  }
+  
   const messages: Message[] = [
-    { role: 'system', content: promptContent },
-    // Moxus might benefit from a user role message to prompt a response, but starting simple.
-    // { role: 'user', content: 'Provide your feedback based on the instructions.' }
+    { role: 'system', content: processedPrompt },
+    // Add a user message to ensure a response even with truncated context
+    { role: 'user', content: 'Please provide your feedback based on the available information.' }
   ];
 
   try {

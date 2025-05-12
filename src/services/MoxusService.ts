@@ -87,6 +87,33 @@ let nextTaskId = 1;
 let getNodesCallback: () => Node[] = () => []; // Callback to get current nodes
 let addMessageCallback: (message: Message) => void = () => {}; // Callback to add chat message
 
+// Function to sanitize nodes for Moxus feedback - removes any base64 image data
+const sanitizeNodesForMoxus = (nodes: Node[]): any[] => {
+  if (!nodes || !Array.isArray(nodes)) return [];
+  
+  return nodes.map(node => {
+    // Create a new object with all properties except 'image'
+    const { image, ...sanitizedNode } = node;
+    
+    // Return the sanitized node without the image property
+    return sanitizedNode;
+  });
+};
+
+// Function to truncate chat history to reduce token usage
+const truncateChatHistoryForMoxus = (chatHistory: Message[]): Message[] => {
+  if (!chatHistory || !Array.isArray(chatHistory)) return [];
+  
+  // Take only the last 10 messages to reduce context size
+  const recentMessages = chatHistory.slice(-10);
+  
+  // Truncate long messages
+  return recentMessages.map(msg => ({
+    role: msg.role,
+    content: msg.content.length > 500 ? msg.content.substring(0, 500) + "... [truncated]" : msg.content
+  }));
+};
+
 // --- Memory Management ---
 const loadMemory = () => {
   try {
@@ -224,6 +251,28 @@ const triggerProcessing = () => {
 const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string => {
   const assistantNodesContent = getAssistantNodesContent();
   
+  // Create a safe copy of task data with size limits to prevent token explosions
+  let safeTaskData: any;
+  
+  if (task.type === 'nodeUpdateFeedback' || task.type === 'storyFeedback') {
+    // Handle node-related tasks by summarizing large data structures
+    const { nodes, chatHistory, ...otherData } = task.data || {};
+    
+    safeTaskData = {
+      ...otherData,
+      nodesCount: nodes?.length || 0,
+      nodeTypes: nodes ? Array.from(new Set(nodes.map((n: any) => n.type))).join(', ') : '',
+      nodeNames: nodes ? nodes.slice(0, 5).map((n: any) => n.name).join(', ') + (nodes.length > 5 ? '...' : '') : '',
+      chatHistoryLength: chatHistory?.length || 0
+    };
+  } else {
+    // For other task types, stringify and limit size if needed
+    const stringData = JSON.stringify(task.data, null, 2);
+    safeTaskData = stringData.length > 5000 ? 
+      JSON.parse(stringData.substring(0, 5000) + '... [truncated]') : 
+      task.data;
+  }
+  
   return `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
   Your goal is to maintain a brief record of critical observations that will highlight problems in the game.
@@ -242,7 +291,7 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   Task Type: ${task.type}
   Data:
   \`\`\`json
-  ${JSON.stringify(task.data, null, 2)}
+  ${JSON.stringify(safeTaskData, null, 2)}
   \`\`\`
   
   # INSTRUCTIONS
@@ -438,9 +487,29 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdit;
         break;
       case 'storyFeedback':
+        memoryKey = 'nodeEdition';
+        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
+        // Sanitize chat history to reduce token usage
+        if (task.data && task.data.chatHistory) {
+          task.data.chatHistory = truncateChatHistoryForMoxus(task.data.chatHistory);
+        }
+        break;
       case 'nodeUpdateFeedback':
         memoryKey = 'nodeEdition';
         memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
+        
+        // Sanitize data to prevent token limit issues
+        if (task.data) {
+          // Clean nodes data to remove any base64 images
+          if (task.data.nodes) {
+            task.data.nodes = sanitizeNodesForMoxus(task.data.nodes);
+          }
+          
+          // Truncate chat history to reduce token usage
+          if (task.data.chatHistory) {
+            task.data.chatHistory = truncateChatHistoryForMoxus(task.data.chatHistory);
+          }
+        }
         break;
       case 'assistantFeedback':
         memoryKey = 'assistantFeedback';
