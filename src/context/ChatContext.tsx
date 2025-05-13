@@ -1,4 +1,5 @@
 import { createContext, FC, useCallback, useState, useContext, ReactNode } from 'react';
+import { moxusService } from '../services/MoxusService';
 
 export interface Message {
   role: "assistant" | "user" | "system" | "reasoning" | "nodeEdition" | "selectedNodes" | "actions" | "userNote" | "moxus";
@@ -71,6 +72,12 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
   }, []);
 
   const clearChatHistory = useCallback(() => {
+    moxusService.recordLLMCall(
+      `chatReset-${Date.now()}`,
+      "System Event: User initiated chat reset.",
+      "Chat history has been cleared." 
+    );
+
     localStorage.removeItem('chatHistory');
     setChatHistoryState([]);
   }, []);
