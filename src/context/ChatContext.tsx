@@ -85,6 +85,17 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const editMessage = useCallback((index: number, newContent: string) => {
     setChatHistoryState((prevChatHistory) => {
       if (index >= 0 && index < prevChatHistory.length) {
+        const originalMessage = prevChatHistory[index];
+
+        // Log to Moxus if an assistant's message was edited
+        if (originalMessage.role === "assistant") {
+          moxusService.recordLLMCall(
+            `assistantMessageEdit-${Date.now()}-${index}`,
+            "System Event: User edited an assistant's message.",
+            `Message at index ${index} (role: assistant) was edited. Original content: '${originalMessage.content}'. New content: '${newContent}'.`
+          );
+        }
+
         const updatedChatHistory = [...prevChatHistory];
         updatedChatHistory[index] = { ...updatedChatHistory[index], content: newContent };
         localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
