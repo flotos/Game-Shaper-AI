@@ -655,6 +655,10 @@ const getAssistantNodesContent = (): string => {
         .join('\n\n---\n\n');
 }
 
+export const getMoxusPersonalityContext = (): string => {
+  return getAssistantNodesContent();
+};
+
 // Generate YAML representation of memory for inclusion in prompts
 export const getLLMCallsMemoryYAML = (): string => {
   try {
@@ -775,5 +779,6 @@ export const moxusService = {
   debugLogMemory: () => {
     console.log('Structured Memory:', moxusStructuredMemory);
     console.log('YAML representation:', getLLMCallsMemoryYAML());
-  }
+  },
+  getMoxusPersonalityContext
 }; 

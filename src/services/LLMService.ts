@@ -707,7 +707,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   };
 }
 
-export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => {
+export const generateNodesFromPrompt = async (prompt: string, nodes: Node[], moxusMemoryInput?: { general?: string; chatText?: string; nodeEdition?: string; }, moxusPersonality?: string) => {
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "system") {
       return acc;
@@ -721,12 +721,32 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
     `;
   }, "");
 
+  let moxusContextString = "";
+  if (moxusPersonality || moxusMemoryInput) {
+    moxusContextString = "\n\n# MOXUS CONTEXT";
+    if (moxusPersonality) {
+      moxusContextString += `\n\n## Moxus Personality:\n${moxusPersonality}`;
+    }
+    if (moxusMemoryInput) {
+      if (moxusMemoryInput.general) {
+        moxusContextString += `\n\n## Moxus General Memory:\n${moxusMemoryInput.general}`;
+      }
+      if (moxusMemoryInput.chatText) {
+        moxusContextString += `\n\n## Moxus Chat Text Analysis:\n${moxusMemoryInput.chatText}`;
+      }
+      if (moxusMemoryInput.nodeEdition) {
+        moxusContextString += `\n\n## Moxus Node Editions Analysis:\n${moxusMemoryInput.nodeEdition}`;
+      }
+    }
+  }
+
   const promptMessage = `
   You are a Game Engine. The user asked to update how the game work or to change some aspect of the world.
   Your task is to update the game nodes based on the following prompt, for a Game Engine:
   ---
   ${prompt}
   ---
+${moxusContextString}
 
   Here are the existing nodes:
   ---

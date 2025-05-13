@@ -44,6 +44,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sendMoxusContext, setSendMoxusContext] = useState(false);
   const [preview, setPreview] = useState<PreviewState>({
     showPreview: false,
     originalNodes: nodes,
@@ -57,7 +58,22 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     setError('');
     
     try {
-      const response = await generateNodesFromPrompt(query, nodes);
+      let moxusMemoryData: { general?: string; chatText?: string; nodeEdition?: string; } | undefined = undefined;
+      let moxusPersonalityData: string | undefined = undefined;
+
+      if (sendMoxusContext) {
+        const fullMoxusMemory = moxusService.getMoxusMemory();
+        if (fullMoxusMemory) {
+          moxusMemoryData = {
+            general: fullMoxusMemory.GeneralMemory,
+            chatText: fullMoxusMemory.featureSpecificMemory?.chatText,
+            nodeEdition: fullMoxusMemory.featureSpecificMemory?.nodeEdition,
+          };
+        }
+        moxusPersonalityData = moxusService.getMoxusPersonalityContext();
+      }
+
+      const response = await generateNodesFromPrompt(query, nodes, moxusMemoryData, moxusPersonalityData);
       const changesWithImageFlag = {
         ...response,
         merge: response.merge?.map((node: Partial<Node>) => ({ ...node, updateImage: node.updateImage ?? false }))
@@ -425,7 +441,20 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
           className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900 text-white min-h-[100px]"
         />
         {error && <p className="text-red-500 mb-4">{error}</p>}
-        <div className="flex justify-end space-x-4">
+        <div className="flex justify-end items-center space-x-4">
+          {/* Toggle for sending Moxus context */}
+          <div className="flex items-center space-x-2">
+            <label htmlFor="sendMoxusContextToggle" className="text-sm text-gray-300">
+              Send Moxus Context:
+            </label>
+            <button
+              id="sendMoxusContextToggle"
+              onClick={() => setSendMoxusContext(!sendMoxusContext)}
+              className={`px-3 py-1 rounded text-sm transition-colors ${sendMoxusContext ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'} text-white`}
+            >
+              {sendMoxusContext ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
           <button
             onClick={closeOverlay}
             className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
