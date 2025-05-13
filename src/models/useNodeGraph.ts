@@ -74,8 +74,10 @@ function useNodeGraph() {
           // Try to remove old data to make space
           try {
             localStorage.removeItem('nodeGraph');
-            const compressedNodes = LZString.compress(JSON.stringify(nodes));
-            localStorage.setItem('nodeGraph', compressedNodes);
+            // Ensure updateImage is stripped here too on retry
+            const nodesToSaveOnRetry = nodes.map(({ updateImage, ...rest }) => rest);
+            const compressedNodesOnRetry = LZString.compress(JSON.stringify(nodesToSaveOnRetry));
+            localStorage.setItem('nodeGraph', compressedNodesOnRetry);
           } catch (cleanupError) {
             console.error('Failed to save nodes even after cleanup:', cleanupError);
           }
