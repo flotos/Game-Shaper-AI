@@ -287,6 +287,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
     if (lastUserMessageIndex === -1 || !lastUserMessage) return;
 
+    // Identify assistant messages that will be removed/regenerated
+    const discardedAssistantMessages = chatHistory.slice(lastUserMessageIndex + 1);
+
+    // Log the regeneration event to Moxus
+    if (discardedAssistantMessages.length > 0) {
+      moxusService.recordLLMCall(
+        `chatRegenerate-${Date.now()}`,
+        "System Event: User requested response regeneration.",
+        `User input: '${lastUserMessage.content}'.
+        Discarded assistant response(s):
+        ${JSON.stringify(discardedAssistantMessages)}`
+      );
+    } else {
+      // Log even if no assistant messages were present after the last user message (e.g., user regenerates their own last message before assistant replies)
+      moxusService.recordLLMCall(
+        `chatRegenerate-${Date.now()}`,
+        "System Event: User requested input regeneration (before assistant reply).",
+        `User input being re-evaluated: '${lastUserMessage.content}'.`
+      );
+    }
+
     // Remove all messages after and including the last user message
     const newChatHistory = chatHistory.slice(0, lastUserMessageIndex);
     setChatHistory(newChatHistory);
