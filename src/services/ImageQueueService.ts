@@ -60,15 +60,18 @@ class ImageQueueService {
     this.isProcessing = true;
     const item = this.queue.find(item => item.status === 'pending');
     
-    if (!item) {
+    if (!item || !item.node) {
       this.isProcessing = false;
+      if (!item) console.log('No pending items in queue.');
+      else console.error('Queue item is missing node data:', item.nodeId);
+      this.processQueue();
       return;
     }
 
     try {
-      console.log('Processing queue item for node:', item.nodeId);
+      console.log('Processing queue item for node:', item.nodeId, 'Type:', item.node.type);
       item.status = 'processing';
-      const imageUrl = await generateImage(item.prompt);
+      const imageUrl = await generateImage(item.prompt, item.node.imageSeed, item.node.type);
       
       if (imageUrl && this.updateNodeCallback) {
         console.log('Generated new image for node:', item.nodeId);

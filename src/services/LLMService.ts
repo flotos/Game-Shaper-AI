@@ -160,6 +160,35 @@ Return a JSON object with the following structure:
   
 During your reasoning process, verify after every node created that you preserved ALL the original feature and did not discard any content.`;
 
+function getTypeSpecificPromptAddition(nodeType: string | undefined): string {
+  switch (nodeType) {
+    case 'character':
+      return " Ensure the character is depicted clearly, focusing on their appearance, attire, and expression as per their description.";
+    case 'item':
+    case 'object':
+      return " Present the item or object on a plain background or textured surface to make it stand out.";
+    case 'concept':
+      return " Style the image with mist or fog, emphasizing an abstract and metaphorical representation of the concept.";
+    case 'mechanic':
+      return " Illustrate the game mechanic with symbolic or metaphorical visuals, like fractured clock faces for time manipulation, or glowing glyphs for magic systems. Focus on diamond shape composition.";
+    case 'system':
+      return " Visualize the system as an intricate network, abstract color gradients, or schematic lines to represent interconnectedness or processes. Focus on square shape composition.";
+    case 'location':
+      // For locations, we want to ensure they fit the game's aesthetic, which might involve abstract or stylistic elements.
+      return " Render the location with a distinct artistic style or mood, possibly including subtle unearthly or abstract elements to fit the game's aesthetic and differentiate it from a plain depiction.";
+    case 'event':
+      return " Capture the event's dynamism, significance, or mood using symbolic or abstract visual cues, focusing on the moment of occurrence. Focus on a circular shape composition.";
+    case 'assistant': // Assuming assistant can be a character or an abstract helper
+      return " If the assistant is a character, depict as such. If abstract, use non-figurative, symbolic visuals like a glowing holographic interface or interconnected symbols.";
+    case 'image-generation': // Meta-concept
+      return " Create a metaphorical representation of the creative process of image generation, like streams of light and color coalescing or a digital canvas with dynamically forming abstract shapes.";
+    case 'library':
+      return " Depict as a stylized representation of a knowledge repository, such as shelves of glowing tomes or an abstract data hub with floating symbols, conveying vast information.";
+    default:
+      return ""; // No specific addition for other types or if type is undefined
+  }
+}
+
 export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], chatHistory: Message[] = []) => {
   console.log('LLM Call: Generating image prompt for node:', node.id);
   // Check for nodes with type "image_generation"
@@ -198,7 +227,12 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
     rules: ${node.rules}
     type: ${node.type}
     --
+    `;
 
+    // Add type-specific prompt additions
+    contentPrompt += `\n${getTypeSpecificPromptAddition(node.type)}\n`;
+
+    contentPrompt += `
     --> Additional Context
 
     Here are the other game nodes in the scene to give some context. Only use these information to help get a grasp of the scene and keep coherence:
@@ -244,6 +278,9 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
     It should describe what can be seen now.
     Use the object's long description mostly, and just a bit the information from "rules" that was given for some context.
     `;
+
+    // Add type-specific prompt additions
+    contentPrompt += `\n${getTypeSpecificPromptAddition(node.type)}\n`;
   }
 
   const messages: Message[] = [

@@ -1,6 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Node } from '../models/Node';
 import { compressImage } from '../services/ImageService';
+
+// Helper hook to get the previous value of a prop or state
+function usePrevious<T>(value: T): T | undefined {
+  const ref = useRef<T>();
+  useEffect(() => {
+    ref.current = value;
+  });
+  return ref.current;
+}
 
 interface NodeGridItemProps {
   node: Node;
@@ -81,42 +90,59 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
   }
 ) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const prevImage = usePrevious(node.image);
+  const prevIsUpdated = usePrevious(isUpdated);
 
   useEffect(() => {
     let isMounted = true;
-    if (node.image) {
-      // Initially, or if the base image changes, try to set a quick display
-      // This could be the full-res image if no thumbnail was previously set for this specific item
-      // or if the component is mounting for the first time.
-      // If a previous thumbnail exists for this node.id from a prior render, it might be better to hold off
-      // until the new one is compressed to avoid a flash of a large image.
-      // For simplicity now, let's always show node.image then refine to thumbnail.
-      setThumbnailUrl(node.image); // Show base image quickly
+    // Remove compression logic for thumbnails for now
+    // let shouldCompress = false;
+    // let reasonForCompression = "";
+    // let imageToCompress: string | null = null;
 
-      compressImage(node.image, false) // preserveQuality: false for thumbnail
-        .then(compressedUrl => {
-          if (isMounted) {
-            setThumbnailUrl(compressedUrl);
-          }
-        })
-        .catch(error => {
-          console.error(`Error compressing thumbnail for node ${node.id} in NodeGridItem:`, error);
-          if (isMounted) {
-            // Fallback to the base image if compression fails
-            setThumbnailUrl(node.image);
-          }
-        });
-    } else {
-      setThumbnailUrl(null); // No image to display
+    if (node.image !== prevImage) { // Image URL itself changed
+      if (node.image) {
+        // console.log(`NodeGridItem ${node.id}: Image changed to ${node.image.substring(0,30)}. Displaying directly.`);
+        setThumbnailUrl(node.image); 
+      } else {
+        // console.log(`NodeGridItem ${node.id}: Image changed to null.`);
+        setThumbnailUrl(null);
+      }
+    } else if (isUpdated && !prevIsUpdated && node.image) { // isUpdated just flipped from false to true, and image is the same
+      // console.log(`NodeGridItem ${node.id}: isUpdated became true, image ${node.image.substring(0,30)} (unchanged). Displaying directly.`);
+      // Ensure thumbnailUrl reflects current node.image if it was somehow different
+      if (thumbnailUrl !== node.image) {
+        setThumbnailUrl(node.image);
+      }
+    } else if (!node.image && thumbnailUrl !== null) { 
+      // This case handles if node.image becomes null and thumbnailUrl wasn't updated yet
+      // (e.g. if prevImage was not null, but current node.image is null, and isUpdated didn't change)
+      setThumbnailUrl(null);
     }
+
+    // The original compression block is removed:
+    // if (shouldCompress && imageToCompress) {
+    //   const capturedImageToCompress = imageToCompress; 
+    //   compressImage(capturedImageToCompress, { qualityProfile: 'thumbnail' }) 
+    //     .then(compressedUrl => {
+    //       if (isMounted && node.image === capturedImageToCompress) {
+    //         setThumbnailUrl(compressedUrl);
+    //       }
+    //     })
+    //     .catch(error => {
+    //       console.error(`Error compressing thumbnail for node ${node.id} (reason: ${reasonForCompression}, image: ${capturedImageToCompress ? capturedImageToCompress.substring(0,30) : 'N/A'}):`, error);
+    //       if (isMounted && node.image === capturedImageToCompress) {
+    //         setThumbnailUrl(capturedImageToCompress); 
+    //       }
+    //     });
+    // } else if (!node.image && thumbnailUrl !== null) { 
+    //     setThumbnailUrl(null);
+    // }
 
     return () => {
       isMounted = false;
     };
-  // Effect should re-run if the source image changes or if it's explicitly marked as updated.
-  // node.id is included because if the node prop itself is a new object (e.g. list reordering or replacement)
-  // we need to ensure we are processing the correct image.
-  }, [node.id, node.image, isUpdated]);
+  }, [node.id, node.image, isUpdated, prevImage, prevIsUpdated, thumbnailUrl]);
 
   const handleSelect = useCallback(() => {
     onNodeSelect(node);

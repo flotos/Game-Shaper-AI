@@ -3,22 +3,25 @@ import JSZip from 'jszip';
 
 const apiType = import.meta.env.VITE_IMG_API;
 
-export const generateImage = async (prompt: string, seed?: number): Promise<string> => {
+export const generateImage = async (prompt: string, seed?: number, nodeType?: string): Promise<string> => {
+  const storageProfile: 'storage_character' | 'storage_other' =
+    nodeType?.toLowerCase() === 'character' ? 'storage_character' : 'storage_other';
+
   if (apiType === 'openai') {
-    return generateImageFromOpenAI(prompt, seed);
+    return generateImageFromOpenAI(prompt, seed, storageProfile);
   } else if (apiType === 'openrouter') {
-    return generateImageFromOpenRouter(prompt, seed);
+    return generateImageFromOpenRouter(prompt, seed, storageProfile);
   } else if (apiType === 'automatic1111') {
-    return generateImageFromAutomatic(prompt, seed);
+    return generateImageFromAutomatic(prompt, seed, storageProfile);
   } else if (apiType === 'novelai') {
-    return generateImageFromNovelAIV4(prompt, seed);
+    return generateImageFromNovelAIV4(prompt, seed, storageProfile);
   } else {
     console.error('Unknown API type');
     return '';
   }
 };
 
-const generateImageFromOpenAI = async (prompt: string, seed?: number): Promise<string> => {
+const generateImageFromOpenAI = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
   try {
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
@@ -45,7 +48,7 @@ const generateImageFromOpenAI = async (prompt: string, seed?: number): Promise<s
 
     const data = await response.json();
     const rawImageUrl = data.data[0].url;
-    return await compressImage(rawImageUrl, true);
+    return await compressImage(rawImageUrl, { qualityProfile: storageProfile || 'storage_other' });
   } catch (error) {
     console.error('Error generating image from OpenAI:', error);
     return '';
@@ -64,7 +67,7 @@ const generateImageFromOpenAI = async (prompt: string, seed?: number): Promise<s
  * - anthropic/claude-3-opus
  */
 
-const generateImageFromOpenRouter = async (prompt: string, seed?: number): Promise<string> => {
+const generateImageFromOpenRouter = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
   try {
     const model = import.meta.env.VITE_OPENROUTER_IMAGE_MODEL || 'stability-ai/sdxl';
     const size = import.meta.env.VITE_OPENROUTER_IMAGE_SIZE || '1024x1024';
@@ -126,14 +129,14 @@ const generateImageFromOpenRouter = async (prompt: string, seed?: number): Promi
     if (!finalImageUrl) {
       throw new Error('OpenRouter Image generation timed out or failed to fetch');
     }
-    return await compressImage(finalImageUrl, true);
+    return await compressImage(finalImageUrl, { qualityProfile: storageProfile || 'storage_other' });
   } catch (error) {
     console.error('Error generating image from OpenRouter:', error);
     return '';
   }
 };
 
-const generateImageFromAutomatic = async (prompt: string, seed?: number): Promise<string> => {
+const generateImageFromAutomatic = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
   const webuiServerUrl = import.meta.env.VITE_IMG_HOST || 'http://127.0.0.1:7860';
 
   const payload = {
@@ -169,14 +172,14 @@ const generateImageFromAutomatic = async (prompt: string, seed?: number): Promis
     const data = await response.json();
     const base64Image = data.images[0];
     const rawImageUrl = `data:image/png;base64,${base64Image}`;
-    return await compressImage(rawImageUrl, true);
+    return await compressImage(rawImageUrl, { qualityProfile: storageProfile || 'storage_other' });
   } catch (error) {
     console.error('Error generating image from Automatic1111:', error);
     return '';
   }
 };
 
-const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promise<string> => {
+const generateImageFromNovelAIV4 = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
   console.log('Starting NovelAI v4 image generation...');
   const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art, bad anatomy";
   const now = new Date().toISOString();
@@ -295,7 +298,7 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promis
     const imageBlob = await imageFile.async('blob');
     rawImageUrl = URL.createObjectURL(imageBlob);
 
-    const highQualityBaseImage = await compressImage(rawImageUrl, true);
+    const highQualityBaseImage = await compressImage(rawImageUrl, { qualityProfile: storageProfile || 'storage_other' });
     return highQualityBaseImage;
   } catch (error) {
     console.error('Error in NovelAI v4 image generation:', error);
@@ -310,9 +313,12 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promis
   }
 };
 
-export const compressImage = async (imageUrl: string, preserveQuality: boolean = false): Promise<string> => {
+export const compressImage = async (
+  imageUrl: string, 
+  options: { qualityProfile: 'storage_character' | 'storage_other' | 'thumbnail' }
+): Promise<string> => {
   try {
-    console.log('Starting image compression...');
+    console.log(`Starting image compression with profile: ${options.qualityProfile}`);
     const response = await fetch(imageUrl);
     const blob = await response.blob();
     
@@ -320,8 +326,31 @@ export const compressImage = async (imageUrl: string, preserveQuality: boolean =
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    const MAX_WIDTH = preserveQuality ? 1024 : 512;
-    const MAX_HEIGHT = preserveQuality ? 1024 : 512;
+    let MAX_WIDTH: number;
+    let MAX_HEIGHT: number;
+    let qualityValue: number;
+
+    switch (options.qualityProfile) {
+      case 'storage_character':
+        MAX_WIDTH = 1024;
+        MAX_HEIGHT = 1024;
+        qualityValue = 0.85;
+        break;
+      case 'storage_other':
+        MAX_WIDTH = 512;
+        MAX_HEIGHT = 512;
+        qualityValue = 0.8;
+        break;
+      case 'thumbnail':
+        MAX_WIDTH = 512;
+        MAX_HEIGHT = 512;
+        qualityValue = 0.7;
+        break;
+      default: // Should not happen with TypeScript
+        MAX_WIDTH = 512;
+        MAX_HEIGHT = 512;
+        qualityValue = 0.7;
+    }
     
     return new Promise((resolve, reject) => {
       img.onload = () => {
@@ -350,20 +379,37 @@ export const compressImage = async (imageUrl: string, preserveQuality: boolean =
         
         ctx.drawImage(img, 0, 0, width, height);
         
-        const quality = preserveQuality ? 0.9 : 0.7;
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-        console.log('Image compression completed');
+        const compressedDataUrl = canvas.toDataURL('image/webp', qualityValue);
+        console.log(`Image compression completed for profile: ${options.qualityProfile}. Output size: ${compressedDataUrl.length}`);
         resolve(compressedDataUrl);
       };
       
-      img.onerror = () => {
+      img.onerror = (error) => {
+        console.error('Failed to load image for compression:', error);
         reject(new Error('Failed to load image for compression'));
       };
       
+      if (blob.size === 0) {
+        console.error('Blob is empty, cannot create object URL for image compression.');
+        // Fallback or reject based on how critical this is.
+        // For now, returning original URL if blob is empty, though this is unlikely if fetch succeeded.
+        // However, if imageUrl was already a data URL that somehow led to an empty blob, this is problematic.
+        // A better solution might be to reject if blob is empty.
+        // For now, let's assume fetch works or imageUrl is valid.
+        // If imageUrl itself can be an empty string or invalid, this path needs more robust handling.
+        if (imageUrl.startsWith('data:')) { // If it was already a data URL, and blob is empty, it's an issue.
+             console.warn("Empty blob from a data URL in compressImage");
+             reject(new Error("Empty blob from a data URL"));
+             return;
+        }
+        console.warn("Empty blob in compressImage, falling back to original URL");
+        resolve(imageUrl); // Fallback, though ideally should not happen with valid image URLs
+        return;
+      }
       img.src = URL.createObjectURL(blob);
     });
   } catch (error) {
-    console.error('Error compressing image:', error);
-    return imageUrl;
+    console.error(`Error compressing image (profile: ${options.qualityProfile}):`, error);
+    return imageUrl; // Fallback to original image URL on error
   }
 };
