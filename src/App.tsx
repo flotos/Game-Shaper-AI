@@ -146,6 +146,20 @@ const AppContent: React.FC = () => {
     return () => clearInterval(intervalId);
   }, []);
 
+  const handleRegenerateAllImages = () => {
+    if (nodes && nodes.length > 0) {
+      const nodeEdits = nodes.map(node => ({
+        id: node.id,
+        updateImage: true,
+      }));
+      updateGraph({ merge: nodeEdits }, [], [], true);
+      // Optionally, add a user feedback message here, e.g., using a toast notification library
+      console.log('All images queued for regeneration.');
+    } else {
+      console.log('No nodes available to regenerate images.');
+    }
+  };
+
   const clearLocalStorage = () => {
     localStorage.removeItem('nodeGraph');
     localStorage.removeItem('chatHistory');
@@ -243,6 +257,13 @@ const AppContent: React.FC = () => {
             className="px-1 relative bg-slate-800 text-white rounded hover:bg-cyan-700"
           >
             Moxus YAML{pendingMoxusTasks > 0 && ` (${pendingMoxusTasks})`}
+          </button>
+          <button
+            onClick={handleRegenerateAllImages}
+            className="px-1 bg-slate-800 text-white rounded hover:bg-teal-700" // Using teal for differentiation
+            title="Regenerate All Images"
+          >
+            Regen All Images
           </button>
           <input 
             type="file" 

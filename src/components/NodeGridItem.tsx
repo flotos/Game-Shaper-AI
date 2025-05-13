@@ -16,6 +16,56 @@ interface NodeGridItemProps {
   onDeleteNode: (nodeId: string) => void;
 }
 
+const getNodeBorderColor = (nodeType: string): string => {
+  switch (nodeType.toLowerCase()) {
+    case 'assistant':
+    case 'image-generation':
+    case 'system':
+      return 'border-black';
+    case 'character':
+      return 'border-green-500';
+    case 'location':
+      return 'border-emerald-500';
+    case 'event':
+      return 'border-teal-500';
+    case 'item':
+    case 'object':
+      return 'border-cyan-500';
+    case 'mechanic':
+    case 'concept':
+      return 'border-sky-500';
+    case 'library':
+      return 'border-blue-500';
+    default:
+      return 'border-gray-700';
+  }
+};
+
+const getNodeBadgeColorClass = (nodeType: string): string => {
+  switch (nodeType.toLowerCase()) {
+    case 'assistant':
+    case 'image-generation':
+    case 'system':
+      return 'bg-gray-300'; // Light gray for good contrast on dark background
+    case 'character':
+      return 'bg-green-500';
+    case 'location':
+      return 'bg-emerald-500';
+    case 'event':
+      return 'bg-teal-500';
+    case 'item':
+    case 'object':
+      return 'bg-cyan-500';
+    case 'mechanic':
+    case 'concept':
+      return 'bg-sky-500';
+    case 'library':
+      return 'bg-blue-500';
+    default:
+      return 'bg-gray-500'; // A visible gray for default cases
+  }
+};
+
 const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
   { 
     node, 
@@ -90,6 +140,20 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
     onMouseLeave(node.id);
   }, [node.id, onMouseLeave]);
 
+  const borderColorClass = getNodeBorderColor(node.type);
+  const badgeColorClass = getNodeBadgeColorClass(node.type);
+  const nodeTypeLower = node.type.toLowerCase();
+
+  let dynamicBadgeClasses = '';
+  if (nodeTypeLower === 'event') {
+    const badgeBorderColor = badgeColorClass.replace('bg-', 'border-');
+    dynamicBadgeClasses = `border-2 ${badgeBorderColor} rounded-full`;
+  } else if (nodeTypeLower === 'character') {
+    dynamicBadgeClasses = `${badgeColorClass}`; // Square, filled, no rounded-full
+  } else {
+    dynamicBadgeClasses = `${badgeColorClass} rounded-full`; // Default: filled circle
+  }
+
   return (
     <div 
       className="w-[calc(33.333%-1rem)] flex-shrink-0"
@@ -97,8 +161,8 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
       onMouseLeave={handleMouseLeaveItem}
     >
       <div 
-        className={`relative cursor-pointer rounded overflow-hidden aspect-square transition-all duration-200 ${
-          isUpdated ? 'animate-pulse border-2' : ''
+        className={`relative cursor-pointer rounded overflow-hidden aspect-square transition-all duration-200 border-b-2 ${borderColorClass} ${
+          isUpdated ? 'animate-pulse' : ''
         } ${deletingNode === node.id ? 'opacity-50' : ''} 
         ${!thumbnailUrl ? 'bg-gradient-to-br from-black to-gray-800' : ''}`}
       >
@@ -126,7 +190,12 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
             )}
           </div>
         )}
-        <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white p-2 text-center truncate">{node.name}</div>
+        <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 text-white p-2 flex items-center justify-between">
+          <span className="truncate max-w-[calc(100%-2.5rem)]">{node.name}</span>
+          <span 
+            className={`w-3 h-3 ${dynamicBadgeClasses} flex-shrink-0`}
+          ></span>
+        </div>
         {hoveredNodeId === node.id && deletingNode !== node.id && (
           <>
             <button

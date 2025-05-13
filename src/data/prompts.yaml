@@ -49,3 +49,4 @@ prompts:
       - Only add content in the edited nodes. The nodes can be very large in content, adding text is not a problem.
       - Don't mention variable, flag, command, or programming code.
       - Don't repeat content that is found in another node, only reference it if you add something to it.
+      - Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.

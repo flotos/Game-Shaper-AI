@@ -60,6 +60,7 @@ You are a Game Engine. Your task is to create a completely new game based on the
 5. When using the extracted story data:
   - All the listed events are possible outcomes in the game. These are NOT memories or past events.
   - All the locations are possible encounters, but consider these have not yet been visited by the player.
+6. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
 
 # User's specific instructions (very important to follow)
 [Additional Instructions will be inserted here]
@@ -117,6 +118,7 @@ You are a Game Engine. Your task is to merge the extracted story data into the e
    - All the listed events are possible outcomes in the game. These are NOT memories or past events.
    - All the locations are possible encounters, but consider these have not yet been visited by the player.
 7. In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
+8. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
 
 # User's specific instructions (very important to follow)
 [Additional Instructions will be inserted here]
@@ -212,6 +214,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
     ${chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
     
     --> Final word
+    Never generate anything related to very young people, only adults.
     Now, generate the image prompt, with no comment, no reasoning.
     `;
   } else {
@@ -563,7 +566,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
     * Story Elements: plot hooks, foreshadowing, unresolved mysteries, thematic elements
     * Game Mechanics: hidden triggers, past events impact, future developments
     * Story Generation: hints for future narrative development, character arcs, world-building opportunities
-  - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine.
+  - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine. We encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
   - updateImage: (Optional) Set to true if the node represents a physical object, character, or location that should have a visual representation. This is particularly important for:
     * New nodes that represent physical entities (characters, items, locations)
     * Existing nodes whose visual appearance has changed significantly
@@ -672,6 +675,7 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[]) => 
   8. Maintain one or few nodes for the global game systems, trying not to disseminate game rules into too many nodes. If multiple node, each should focus on a concept, but at least one node should summarize all the game systems and serve as a high-level reference.
   9. Do not update the image_generation type nodes unless explicitely mentionned.
   10. All node should represent a game system, a lore entry, character, or an object. These should NOT be used to describe events or time-limited things. If a specific event need to be remembered, store it in a "memory" game system node.
+  11. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
 
   Each node should be described in a JSON format with the following properties:
   {
