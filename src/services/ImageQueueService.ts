@@ -64,7 +64,6 @@ class ImageQueueService {
       this.isProcessing = false;
       if (!item) console.log('No pending items in queue.');
       else console.error('Queue item is missing node data:', item.nodeId);
-      this.processQueue();
       return;
     }
 
