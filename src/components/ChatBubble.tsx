@@ -87,7 +87,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({
       <div 
         className={`w-[90%] p-3 rounded-xl shadow-sm relative transition-all duration-200 ${
           message.role === "user" ? "bg-slate-600 text-white shadow-slate-500/30 animate-vibrate" :
-          message.role === "userNote" ? "bg-purple-600 text-white shadow-purple-500/30" :
+          message.role === "userMandatoryInstructions" ? "bg-purple-600 text-white shadow-purple-500/30" :
           message.role === "moxus" ? "bg-cyan-700 text-white shadow-cyan-500/30" :
           message.role === "assistant" ? `bg-slate-700 text-white shadow-slate-500/30 ${isWaiting || message.isStreaming ? '' : 'cursor-pointer hover:bg-slate-600'}` :
           expandableMessagesTypes.includes(message.role) ? "bg-gray-50/50 border border-gray-100 text-gray-700" :

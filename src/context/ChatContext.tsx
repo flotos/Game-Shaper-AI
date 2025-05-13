@@ -2,7 +2,7 @@ import { createContext, FC, useCallback, useState, useContext, ReactNode } from 
 import { moxusService } from '../services/MoxusService';
 
 export interface Message {
-  role: "assistant" | "user" | "system" | "reasoning" | "nodeEdition" | "selectedNodes" | "actions" | "userNote" | "moxus";
+  role: "assistant" | "user" | "system" | "reasoning" | "nodeEdition" | "selectedNodes" | "actions" | "userMandatoryInstructions" | "moxus";
   content: string;
   timestamp?: string;
   isStreaming?: boolean;

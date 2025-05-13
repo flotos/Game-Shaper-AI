@@ -382,7 +382,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
     const timestamp = new Date().toLocaleTimeString();
     const noteMessage: Message = {
-      role: "userNote",
+      role: "userMandatoryInstructions",
       content: input,
       timestamp: timestamp.toString()
     };

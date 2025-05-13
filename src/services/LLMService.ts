@@ -294,7 +294,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
 export const getRelevantNodes = async(userInput: string, chatHistory: Message[], nodes: Node[]) => {
   console.log('LLM Call: Getting relevant nodes');
   const stringHistory = chatHistory.reduce((acc, message) => {
-    if(message.role == "user" || message.role == "assistant" || message.role == "userNote") {
+    if(message.role == "user" || message.role == "assistant" || message.role == "userMandatoryInstructions") {
       return acc + `${message.role}: ${message.content}\n`;
     }
     return acc;
@@ -382,11 +382,11 @@ const getLastFiveInteractions = (chatHistory: Message[]): Message[] => {
     lastFiveInteractions = chatHistory;
   }
   
-  // Filter to only include user, assistant, and userNote messages
+  // Filter to only include user, assistant, and userMandatoryInstructions messages
   return lastFiveInteractions.filter(message => 
     message.role === "user" || 
     message.role === "assistant" || 
-    message.role === "userNote"
+    message.role === "userMandatoryInstructions"
   );
 };
 
@@ -409,11 +409,11 @@ export const getChatHistoryForMoxus = (chatHistory: Message[], numAssistantTurns
   // If we didn't find N assistant messages, startIndex remains 0, so it takes all history.
   const historySlice = chatHistory.slice(startIndex);
   
-  // Filter to only include user, assistant, userNote, and moxus messages
+  // Filter to only include user, assistant, userMandatoryInstructions, and moxus messages
   return historySlice.filter(message => 
     message.role === "user" || 
     message.role === "assistant" || 
-    message.role === "userNote" ||
+    message.role === "userMandatoryInstructions" ||
     message.role === "moxus"
   );
 };
