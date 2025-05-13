@@ -318,18 +318,48 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   return parsed.relevantNodes;
 }
 
+// Helper function to get the last 5 interactions from chat history
+const getLastFiveInteractions = (chatHistory: Message[]): Message[] => {
+  // Find the 5th most recent assistant message
+  let assistantCount = 0;
+  let lastFiveInteractions: Message[] = [];
+  
+  // Iterate through chat history in reverse to find the 5th assistant message
+  for (let i = chatHistory.length - 1; i >= 0; i--) {
+    const message = chatHistory[i];
+    if (message.role === "assistant") {
+      assistantCount++;
+      if (assistantCount === 5) {
+        // Found the 5th assistant message, include all messages from this point
+        lastFiveInteractions = chatHistory.slice(i);
+        break;
+      }
+    }
+  }
+  
+  // If we didn't find 5 assistant messages, use all available history
+  if (assistantCount < 5) {
+    lastFiveInteractions = chatHistory;
+  }
+  
+  // Filter to only include user, assistant, and userNote messages
+  return lastFiveInteractions.filter(message => 
+    message.role === "user" || 
+    message.role === "assistant" || 
+    message.role === "userNote"
+  );
+};
+
 export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   console.log('LLM Call: Generating chat text');
-  const stringHistory = chatHistory.reduce((acc, message) => {
-    // Include moxus messages along with user, assistant, and userNote messages
-    if (message.role === "user" || message.role === "assistant" || message.role === "userNote" || message.role === "moxus") {
-      // Special formatting for Moxus messages
-      if (message.role === "moxus") {
-        return acc + `Moxus: ${message.content.replace('**Moxus Report:**', '').trim()}\n`;
-      }
-      return acc + `${message.role}: ${message.content}\n`;
-    }
-    return acc;
+  
+  // Get last 5 interactions and find the last Moxus report
+  const lastFiveInteractions = getLastFiveInteractions(chatHistory);
+  const lastMoxusReport = [...chatHistory].reverse().find(message => message.role === "moxus");
+  
+  // Format chat history without Moxus reports
+  const stringHistory = lastFiveInteractions.reduce((acc, message) => {
+    return acc + `${message.role}: ${message.content}\n`;
   }, "");
   
   const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
@@ -374,12 +404,16 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   ### Current Nodes, sorted by relevance:
   ${nodesDescription}
   
-  ### Chat History:
-  Note: Messages from "Moxus" represent feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides guidance to maintain consistency and quality in the game world. You should take Moxus's 
-  observations into account when generating new content.
-  
+  ### Recent Chat History (Last 5 Interactions):
   ${stringHistory}
+  
+  ${lastMoxusReport ? `
+  ### Latest Moxus Analysis:
+  Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides guidance to maintain consistency and quality in the game world.
+  
+  ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
+  ` : ''}
   
   ### User Input:
   ${userInput}
@@ -422,17 +456,17 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
 
   // Format the chat narrative (could be string or Message[] array)
   let formattedChatText = chatText;
+  let lastMoxusReport = null;
+  
   if (Array.isArray(chatText) && chatText.length > 0 && 
       typeof chatText[0] === 'object' && 'role' in chatText[0]) {
-    formattedChatText = (chatText as Message[]).reduce((acc: string, message: Message) => {
-      if (message.role === "user" || message.role === "assistant" || message.role === "userNote" || message.role === "moxus") {
-        // Special formatting for Moxus messages
-        if (message.role === "moxus") {
-          return acc + `Moxus: ${message.content.replace('**Moxus Report:**', '').trim()}\n`;
-        }
-        return acc + `${message.role}: ${message.content}\n`;
-      }
-      return acc;
+    // Find the last Moxus report
+    lastMoxusReport = [...chatText].reverse().find(message => message.role === "moxus");
+    
+    // Get last 5 interactions and format them
+    const lastFiveInteractions = getLastFiveInteractions(chatText as Message[]);
+    formattedChatText = lastFiveInteractions.reduce((acc: string, message: Message) => {
+      return acc + `${message.role}: ${message.content}\n`;
     }, "");
   }
 
@@ -444,12 +478,16 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
   ## Current Game State:
   ${nodesDescription}
 
-  ## Current Narrative:
-  Note: Messages from "Moxus" represent feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides guidance to maintain consistency and quality in the game world. Consider Moxus's 
-  observations when generating actions.
-
+  ## Recent Narrative (Last 5 Interactions):
   ${formattedChatText}
+  
+  ${lastMoxusReport ? `
+  ## Latest Moxus Analysis:
+  Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides guidance to maintain consistency and quality in the game world.
+  
+  ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
+  ` : ''}
 
   ## User's Last Input:
   ${userInput}
@@ -491,18 +529,17 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
 
   // Check if chatText is a chat history array or a string
   let formattedChatHistory = "";
+  let lastMoxusReport = null;
+  
   if (Array.isArray(chatText) && chatText.length > 0 && 
       typeof chatText[0] === 'object' && 'role' in chatText[0]) {
-    // If it's a chat history array, format it including Moxus messages
-    formattedChatHistory = (chatText as Message[]).reduce((acc: string, message: Message) => {
-      if (message.role === "user" || message.role === "assistant" || message.role === "userNote" || message.role === "moxus") {
-        // Special formatting for Moxus messages
-        if (message.role === "moxus") {
-          return acc + `Moxus: ${message.content.replace('**Moxus Report:**', '').trim()}\n`;
-        }
-        return acc + `${message.role}: ${message.content}\n`;
-      }
-      return acc;
+    // Find the last Moxus report
+    lastMoxusReport = [...chatText].reverse().find(message => message.role === "moxus");
+    
+    // Get last 5 interactions and format them
+    const lastFiveInteractions = getLastFiveInteractions(chatText as Message[]);
+    formattedChatHistory = lastFiveInteractions.reduce((acc: string, message: Message) => {
+      return acc + `${message.role}: ${message.content}\n`;
     }, "");
   } else {
     // If it's already a string, use it directly
@@ -537,12 +574,16 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   ## Current Game State, sorted by relevance:
   ${nodesDescription}
 
-  ## Chat History:
-  Note: Messages from "Moxus" represent feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides guidance to maintain consistency and quality in the game world. You should incorporate Moxus's 
-  feedback when updating nodes to ensure coherence in the game world structure.
-
+  ## Recent Chat History (Last 5 Interactions):
   ${formattedChatHistory}
+  
+  ${lastMoxusReport ? `
+  ## Latest Moxus Analysis:
+  Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides guidance to maintain consistency and quality in the game world.
+  
+  ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
+  ` : ''}
 
   ## Possible Actions:
   ${actions.join('\n')}
@@ -1042,13 +1083,14 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
       content: `
         # Moxus AI Assistant Feedback
         Moxus is an AI assistant that helps identify problems with previous responses.
-        The following is brief critical feedback on previous similar requests:
+        The following is brief critical feedback on previous similar requests, with special attention to user notes and feedback:
 
         ---start of feedback---
         ${moxusService.getLLMCallsMemoryYAML()}
         ---end of feedback---
 
         Use this critical feedback to avoid making the same mistakes in your response.
+        Pay special attention to any user notes in the feedback, as they often contain important suggestions and corrections.
         `
     };
     
@@ -1248,15 +1290,14 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
 
 export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]) => {
   console.log('LLM Call: Sorting nodes by relevance');
-  const stringHistory = chatHistory.reduce((acc, message) => {
-    if (message.role === "user" || message.role === "assistant" || message.role === "userNote" || message.role === "moxus") {
-      // Special formatting for Moxus messages
-      if (message.role === "moxus") {
-        return acc + `Moxus: ${message.content.replace('**Moxus Report:**', '').trim()}\n`;
-      }
-      return acc + `${message.role}: ${message.content}\n`;
-    }
-    return acc;
+  
+  // Get last 5 interactions and find the last Moxus report
+  const lastFiveInteractions = getLastFiveInteractions(chatHistory);
+  const lastMoxusReport = [...chatHistory].reverse().find(message => message.role === "moxus");
+  
+  // Format chat history without Moxus reports
+  const stringHistory = lastFiveInteractions.reduce((acc, message) => {
+    return acc + `${message.role}: ${message.content}\n`;
   }, "");
 
   const nodesDescription = nodes.reduce((acc, node) => {
@@ -1277,12 +1318,16 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.
   Consider both the content of the nodes and the context of the conversation.
 
-  ## Chat History:
-  Note: Messages from "Moxus" represent feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides guidance to maintain consistency and quality in the game world. Consider Moxus's insights 
-  when determining node relevance.
-
+  ## Recent Chat History (Last 5 Interactions):
   ${stringHistory}
+  
+  ${lastMoxusReport ? `
+  ## Latest Moxus Analysis:
+  Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides guidance to maintain consistency and quality in the game world.
+  
+  ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
+  ` : ''}
 
   ## Nodes to Sort:
   ${nodesDescription}
@@ -1350,7 +1395,7 @@ export const getMoxusFeedback = async (promptContent: string): Promise<string> =
   const messages: Message[] = [
     { role: 'system', content: processedPrompt },
     // Add a user message to ensure a response even with truncated context
-    { role: 'user', content: 'Please provide your feedback based on the available information.' }
+    { role: 'user', content: 'Please provide your feedback based on the available information, with special attention to any user notes in the chat history. User notes often contain important feedback and suggestions that should be prioritized in your analysis.' }
   ];
 
   try {

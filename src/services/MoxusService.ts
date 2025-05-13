@@ -152,10 +152,8 @@ const saveMemory = () => {
 
 // --- LLM Call Memory Management ---
 export const recordLLMCall = (id: string, prompt: string, response: string) => {
-  // Truncate the prompt and response to reduce memory usage
-  // Limit to approximately 1000 characters for each
-  const truncatedPrompt = prompt.length > 1000 ? prompt.substring(0, 1000) + "... [truncated]" : prompt;
-  const truncatedResponse = response.length > 1000 ? response.substring(0, 1000) + "... [truncated]" : response;
+  const truncatedPrompt = prompt.length > 5000 ? prompt.substring(0, 5000) + "... [truncated]" : prompt;
+  const truncatedResponse = response.length > 5000 ? response.substring(0, 5000) + "... [truncated]" : response;
   
   // Create the call object
   const call: LLMCall = {
@@ -458,8 +456,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       
       const feedback = await getMoxusFeedbackImpl(feedbackPrompt);
       
-      // Truncate feedback to avoid memory growth
-      const truncatedFeedback = feedback.length > 500 ? feedback.substring(0, 500) + "... [truncated]" : feedback;
+      const truncatedFeedback = feedback.length > 2000 ? feedback.substring(0, 2000) + "... [truncated]" : feedback;
       
       // Store feedback for this specific LLM call
       moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = truncatedFeedback;

@@ -44,13 +44,10 @@ const generateImageFromOpenAI = async (prompt: string, seed?: number): Promise<s
     }
 
     const data = await response.json();
-    const imageUrl = data.data[0].url;
-    if (apiType === 'openai') {
-      return imageUrl;
-    }
-    return await compressImage(imageUrl);
+    const rawImageUrl = data.data[0].url;
+    return await compressImage(rawImageUrl, true);
   } catch (error) {
-    console.error('Error generating image:', error);
+    console.error('Error generating image from OpenAI:', error);
     return '';
   }
 };
@@ -102,31 +99,36 @@ const generateImageFromOpenRouter = async (prompt: string, seed?: number): Promi
     }
 
     const data = await response.json();
-    const imageUrl = data.data[0].url;
+    const rawImageUrl = data.data[0].url;
 
-    // Wait for the image to be ready
+    let finalImageUrl = '';
+
     let retries = 0;
     const maxRetries = 10;
     const retryDelay = 2000; // 2 seconds
 
     while (retries < maxRetries) {
       try {
-        const imageResponse = await fetch(imageUrl);
+        const imageResponse = await fetch(rawImageUrl);
         if (imageResponse.ok) {
-          console.log('Image is ready');
-          return await compressImage(imageUrl);
+          console.log('OpenRouter Image is ready');
+          finalImageUrl = rawImageUrl;
+          break;
         }
       } catch (error) {
-        console.log(`Image not ready yet, retrying in ${retryDelay}ms (attempt ${retries + 1}/${maxRetries})`);
+        console.log(`OpenRouter Image not ready yet, retrying in ${retryDelay}ms (attempt ${retries + 1}/${maxRetries})`);
       }
       
       await new Promise(resolve => setTimeout(resolve, retryDelay));
       retries++;
     }
 
-    throw new Error('Image generation timed out');
+    if (!finalImageUrl) {
+      throw new Error('OpenRouter Image generation timed out or failed to fetch');
+    }
+    return await compressImage(finalImageUrl, true);
   } catch (error) {
-    console.error('Error generating image:', error);
+    console.error('Error generating image from OpenRouter:', error);
     return '';
   }
 };
@@ -166,18 +168,17 @@ const generateImageFromAutomatic = async (prompt: string, seed?: number): Promis
 
     const data = await response.json();
     const base64Image = data.images[0];
-    const imageUrl = `data:image/png;base64,${base64Image}`;
-    return await compressImage(imageUrl);
+    const rawImageUrl = `data:image/png;base64,${base64Image}`;
+    return await compressImage(rawImageUrl, true);
   } catch (error) {
-    console.error('Error generating image:', error);
+    console.error('Error generating image from Automatic1111:', error);
     return '';
   }
 };
 
 const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promise<string> => {
   console.log('Starting NovelAI v4 image generation...');
-  // You may want to customize these or pass as arguments
-  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art";
+  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art, bad anatomy";
   const now = new Date().toISOString();
   const correlationId = Math.random().toString(36).substring(2, 8);
 
@@ -228,6 +229,9 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promis
     }
   };
 
+  let zipUrl = '';
+  let rawImageUrl = '';
+
   try {
     console.log('Sending request to NovelAI v4 API...');
     const response = await fetch('https://image.novelai.net/ai/generate-image', {
@@ -269,89 +273,61 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number): Promis
       throw new Error(`Unexpected error: ${response.statusText}`);
     }
 
-    // The response is a ZIP file containing the generated images
-    console.log('Converting response to blob...');
     const zipBlob = await response.blob();
-    console.log('ZIP blob created, size:', zipBlob.size);
-    
     if (zipBlob.size === 0) {
       console.error('Received empty ZIP blob from API');
       return '';
     }
 
-    // Create a temporary URL for the ZIP file
-    const zipUrl = URL.createObjectURL(zipBlob);
-    
-    try {
-      // Use JSZip to extract the image from the ZIP
-      const zip = await JSZip.loadAsync(zipBlob);
-      
-      // Find the first image file in the ZIP
-      const files = Object.values(zip.files) as any[];
-      const imageFile = files.find(file => 
-        file.name.toLowerCase().endsWith('.png') || 
-        file.name.toLowerCase().endsWith('.jpg') || 
-        file.name.toLowerCase().endsWith('.jpeg')
-      );
-      
-      if (!imageFile) {
-        console.error('No image file found in ZIP');
-        return '';
-      }
+    zipUrl = URL.createObjectURL(zipBlob);
+    const zip = await JSZip.loadAsync(zipBlob);
+    const imageFile = Object.values(zip.files).find(file => 
+      file.name.toLowerCase().endsWith('.png') || 
+      file.name.toLowerCase().endsWith('.jpg') || 
+      file.name.toLowerCase().endsWith('.jpeg')
+    ) as JSZip.JSZipObject | undefined;
 
-      // Convert the image file to a blob
-      const imageBlob = await imageFile.async('blob');
-      console.log('Image extracted from ZIP, size:', imageBlob.size);
-
-      // Create a URL for the image blob
-      const imageUrl = URL.createObjectURL(imageBlob);
-      
-      try {
-        console.log('Starting image compression...');
-        const compressedImage = await compressImage(imageUrl);
-        console.log('Image compression completed');
-        return compressedImage;
-      } catch (error) {
-        console.error('Error during image compression:', error);
-        return '';
-      } finally {
-        // Clean up the URLs
-        URL.revokeObjectURL(imageUrl);
-      }
-    } catch (error) {
-      console.error('Error processing ZIP file:', error);
+    if (!imageFile) {
+      console.error('No image file found in ZIP');
       return '';
-    } finally {
-      // Clean up the ZIP URL
-      URL.revokeObjectURL(zipUrl);
     }
+
+    const imageBlob = await imageFile.async('blob');
+    rawImageUrl = URL.createObjectURL(imageBlob);
+
+    const highQualityBaseImage = await compressImage(rawImageUrl, true);
+    return highQualityBaseImage;
   } catch (error) {
     console.error('Error in NovelAI v4 image generation:', error);
     return '';
+  } finally {
+    if (rawImageUrl) {
+      URL.revokeObjectURL(rawImageUrl);
+    }
+    if (zipUrl) {
+      URL.revokeObjectURL(zipUrl);
+    }
   }
 };
 
-const compressImage = async (imageUrl: string): Promise<string> => {
+export const compressImage = async (imageUrl: string, preserveQuality: boolean = false): Promise<string> => {
   try {
     console.log('Starting image compression...');
     const response = await fetch(imageUrl);
     const blob = await response.blob();
     
-    // Create a canvas to resize and compress the image
     const img = new Image();
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Set maximum dimensions while maintaining aspect ratio
-    const MAX_WIDTH = 512;
-    const MAX_HEIGHT = 512;
+    const MAX_WIDTH = preserveQuality ? 1024 : 512;
+    const MAX_HEIGHT = preserveQuality ? 1024 : 512;
     
     return new Promise((resolve, reject) => {
       img.onload = () => {
         let width = img.width;
         let height = img.height;
         
-        // Calculate new dimensions while maintaining aspect ratio
         if (width > height) {
           if (width > MAX_WIDTH) {
             height = Math.round((height * MAX_WIDTH) / width);
@@ -372,11 +348,10 @@ const compressImage = async (imageUrl: string): Promise<string> => {
           return;
         }
         
-        // Draw image with reduced quality
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Convert to JPEG with reduced quality
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        const quality = preserveQuality ? 0.9 : 0.7;
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
         console.log('Image compression completed');
         resolve(compressedDataUrl);
       };
@@ -389,6 +364,6 @@ const compressImage = async (imageUrl: string): Promise<string> => {
     });
   } catch (error) {
     console.error('Error compressing image:', error);
-    return imageUrl; // Return original URL if compression fails
+    return imageUrl;
   }
 };
