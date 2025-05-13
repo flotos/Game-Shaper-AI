@@ -390,6 +390,34 @@ const getLastFiveInteractions = (chatHistory: Message[]): Message[] => {
   );
 };
 
+export const getChatHistoryForMoxus = (chatHistory: Message[], numAssistantTurns: number): Message[] => {
+  let assistantCount = 0;
+  let startIndex = 0; // Default to start of history if not enough assistant turns
+
+  // Iterate through chat history in reverse to find the Nth assistant message
+  for (let i = chatHistory.length - 1; i >= 0; i--) {
+    const message = chatHistory[i];
+    if (message.role === "assistant") {
+      assistantCount++;
+      if (assistantCount === numAssistantTurns) {
+        startIndex = i; // Found the Nth assistant message, slice from here
+        break;
+      }
+    }
+  }
+  
+  // If we didn't find N assistant messages, startIndex remains 0, so it takes all history.
+  const historySlice = chatHistory.slice(startIndex);
+  
+  // Filter to only include user, assistant, userNote, and moxus messages
+  return historySlice.filter(message => 
+    message.role === "user" || 
+    message.role === "assistant" || 
+    message.role === "userNote" ||
+    message.role === "moxus"
+  );
+};
+
 export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   console.log('LLM Call: Generating chat text');
   
@@ -420,12 +448,12 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
         type: ${node.type}
         `;
     } else {
-      // Original behavior for maxIncludedNodes or more nodes
+      // Original behavior for maxIncludedNodes or more nodes TODO one day once we dev this feature
       return acc + `
         id: ${node.id}
         name: ${node.name}
         longDescription: ${node.longDescription}
-        rules: ${node.rules}${node.id in detailledNodeIds || node.type == "Game Rule" ? `\n${node.longDescription}\n` : ""}
+        rules: ${node.rules}
         type: ${node.type}
         `;
     }
@@ -448,9 +476,10 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   ${stringHistory}
   
   ${lastMoxusReport ? `
-  ### Latest Moxus Analysis:
+  ### Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
   Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides guidance to maintain consistency and quality in the game world.
+  the story and provides VITAL guidance to maintain consistency and quality in the game world.
+  ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
   ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
   ` : ''}
@@ -522,9 +551,10 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
   ${formattedChatText}
   
   ${lastMoxusReport ? `
-  ## Latest Moxus Analysis:
+  ## Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
   Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides guidance to maintain consistency and quality in the game world.
+  the story and provides VITAL guidance to maintain consistency and quality in the game world.
+  ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
   ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
   ` : ''}
@@ -618,9 +648,10 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   ${formattedChatHistory}
   
   ${lastMoxusReport ? `
-  ## Latest Moxus Analysis:
+  ## Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
   Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides guidance to maintain consistency and quality in the game world.
+  the story and provides VITAL guidance to maintain consistency and quality in the game world.
+  ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
   ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
   ` : ''}
@@ -1036,8 +1067,7 @@ Return a JSON object with the following structure:
       "rules": "updated rules",
       "updateImage": true/false
     }
-  ]
-}`;
+  ]}`;
 
   const messages: Message[] = [
     { role: 'system', content: focusedPrompt },
@@ -1122,16 +1152,17 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
     const feedbackMessage: Message = {
       role: 'system',
       content: `
-        # Moxus AI Assistant Feedback
-        Moxus is an AI assistant that helps identify problems with previous responses.
-        The following is brief critical feedback on previous similar requests, with special attention to user notes and feedback:
+        # Moxus AI Assistant Feedback - CRITICAL GUIDANCE
+        Moxus is an AI assistant that helps identify problems with previous responses and provides CRITICAL feedback.
+        The following is VITAL feedback on previous similar requests. You MUST pay close attention to it. User notes and feedback within this section are ESPECIALLY important.
 
         ---start of feedback---
         ${moxusService.getLLMCallsMemoryYAML()}
         ---end of feedback---
 
-        Use this critical feedback to avoid making the same mistakes in your response.
-        Pay special attention to any user notes in the feedback, as they often contain important suggestions and corrections.
+        You MUST use this critical feedback to avoid making the same mistakes in your response.
+        ABSOLUTELY prioritize any user notes in the feedback, as they often contain important suggestions and corrections that MUST be followed.
+        Failure to adhere to Moxus feedback will result in suboptimal outcomes.
         `
     };
     
@@ -1363,9 +1394,10 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   ${stringHistory}
   
   ${lastMoxusReport ? `
-  ## Latest Moxus Analysis:
+  ## Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
   Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides guidance to maintain consistency and quality in the game world.
+  the story and provides VITAL guidance to maintain consistency and quality in the game world.
+  ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
   ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
   ` : ''}

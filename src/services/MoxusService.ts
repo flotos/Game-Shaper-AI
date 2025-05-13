@@ -1,6 +1,7 @@
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
 import yaml from 'js-yaml';
+import { getChatHistoryForMoxus } from './LLMService';
 
 // Avoid circular dependency by forward declaring the function type
 type GetMoxusFeedbackFn = (promptContent: string) => Promise<string>;
@@ -100,18 +101,16 @@ const sanitizeNodesForMoxus = (nodes: Node[]): any[] => {
   });
 };
 
-// Function to truncate chat history to reduce token usage
-const truncateChatHistoryForMoxus = (chatHistory: Message[]): Message[] => {
-  if (!chatHistory || !Array.isArray(chatHistory)) return [];
-  
-  // Take only the last 10 messages to reduce context size
-  const recentMessages = chatHistory.slice(-10);
-  
-  // Truncate long messages
-  return recentMessages.map(msg => ({
-    role: msg.role,
-    content: msg.content.length > 500 ? msg.content.substring(0, 500) + "... [truncated]" : msg.content
-  }));
+// NEW Helper function to get and format chat history for Moxus prompts
+const getFormattedChatHistoryStringForMoxus = (chatHistory: Message[], numTurns: number): string => {
+  if (!chatHistory || !Array.isArray(chatHistory) || chatHistory.length === 0) {
+    return "(No chat history available)";
+  }
+  const relevantHistory = getChatHistoryForMoxus(chatHistory, numTurns); // Uses the imported function
+  if (relevantHistory.length === 0) {
+    return "(No relevant chat history for the last " + numTurns + " turns)";
+  }
+  return relevantHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n');
 };
 
 // --- Memory Management ---
@@ -226,11 +225,23 @@ const initialize = (getNodes: () => Node[], addMessage: (message: Message) => vo
 };
 
 // Function to add a task to the queue
-const addTask = (type: MoxusTaskType, data: any) => {
+const addTask = (type: MoxusTaskType, data: any, chatHistoryContext?: Message[]) => {
+  const taskData = { ...data }; // Clone data to avoid modifying the original object
+
+  if (chatHistoryContext) {
+    // Store a snapshot of the chat history context if provided
+    // This is distinct from any chatHistory that might be within the main `data` object for specific tasks
+    taskData.chatHistoryContext = getFormattedChatHistoryStringForMoxus(chatHistoryContext, 10);
+  } else if (type === 'finalReport' || type === 'updateGeneralMemory') {
+    // For tasks that generate broad reports, ensure a placeholder if no explicit history is passed
+    // Other tasks get their specific history via getMemoryUpdatePrompt if their data includes it
+    taskData.chatHistoryContext = "(Chat history context not explicitly provided for this report task)";
+  }
+
   const newTask: MoxusTask = {
     id: nextTaskId++,
     type,
-    data,
+    data: taskData, // Use the potentially augmented taskData
     timestamp: new Date(),
   };
   taskQueue.push(newTask);
@@ -249,22 +260,25 @@ const triggerProcessing = () => {
 const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string => {
   const assistantNodesContent = getAssistantNodesContent();
   
-  // Create a safe copy of task data with size limits to prevent token explosions
   let safeTaskData: any;
-  
+  let formattedChatHistory = "(Chat history not applicable for this task type or not available)"; // Default
+
   if (task.type === 'nodeUpdateFeedback' || task.type === 'storyFeedback') {
-    // Handle node-related tasks by summarizing large data structures
     const { nodes, chatHistory, ...otherData } = task.data || {};
     
+    if (chatHistory) {
+      // Use the new helper to get formatted chat history for the last 10 turns
+      formattedChatHistory = getFormattedChatHistoryStringForMoxus(chatHistory, 10);
+    }
+
     safeTaskData = {
       ...otherData,
       nodesCount: nodes?.length || 0,
       nodeTypes: nodes ? Array.from(new Set(nodes.map((n: any) => n.type))).join(', ') : '',
-      nodeNames: nodes ? nodes.slice(0, 5).map((n: any) => n.name).join(', ') + (nodes.length > 5 ? '...' : '') : '',
-      chatHistoryLength: chatHistory?.length || 0
+      nodeNames: nodes ? nodes.slice(0, 5).map((n: any) => n.name).join(', ') + (nodes.length > 5 ? '...' : '') : ''
+      // Removed chatHistoryLength as we now include the actual history string
     };
   } else {
-    // For other task types, stringify and limit size if needed
     const stringData = JSON.stringify(task.data, null, 2);
     safeTaskData = stringData.length > 5000 ? 
       JSON.parse(stringData.substring(0, 5000) + '... [truncated]') : 
@@ -280,6 +294,9 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   ${assistantNodesContent}
   ---` : ""}
   
+  # CHAT HISTORY CONTEXT (Last 10 turns)
+  ${formattedChatHistory}
+  
   # CURRENT MEMORY DOCUMENT
   Below is your current memory document. You should update this document to be very brief and focused on criticism:
   
@@ -293,14 +310,14 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   \`\`\`
   
   # INSTRUCTIONS
-  1. Analyze the new information focusing ONLY on problems and issues
-  2. Update the memory document to be extremely concise (1-3 sentences per section maximum)
-  3. Focus exclusively on criticism and improvement areas, not what works well
-  4. Use minimal bullet points for critical observations only
-  5. Only include observations that highlight problems or inconsistencies
-  6. The memory document should identify specific issues requiring attention
-  7. Keep any section about your own personality very brief
-  8. The entire document should be concise and critical in nature
+  1. Analyze the new information (including Chat History Context if provided) focusing ONLY on problems and issues.
+  2. Update the memory document to be extremely concise (1-3 sentences per section maximum).
+  3. Focus exclusively on criticism and improvement areas, not what works well.
+  4. Use minimal bullet points for critical observations only.
+  5. Only include observations that highlight problems or inconsistencies.
+  6. The memory document should identify specific issues requiring attention.
+  7. Keep any section about your own personality very brief.
+  8. The entire document should be concise and critical in nature.
 
   Return the complete updated memory document.`;
 };
@@ -326,7 +343,7 @@ const processQueue = async () => {
   try {
     // Handle final report differently from memory updates
     if (task.type === 'finalReport') {
-      await handleFinalReport();
+      await handleFinalReport(task);
     } else {
       await handleMemoryUpdate(task);
     }
@@ -342,20 +359,22 @@ const processQueue = async () => {
 };
 
 // Handle final report generation
-const handleFinalReport = async () => {
-  // Get assistant node content for context
+const handleFinalReport = async (task: MoxusTask) => {
   const assistantNodesContent = getAssistantNodesContent();
+  const chatHistoryContextString = task.data?.chatHistoryContext || "(Chat history context not available for this report)";
 
-  // Comprehensive prompt using all memory sources
   const promptContent = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
   
-  Generate a very brief critical analysis based on your accumulated memory documents below.
+  Generate a very brief critical analysis based on your accumulated memory documents and the recent chat context below.
   
   ${assistantNodesContent ? `Additional features:
   ---
   ${assistantNodesContent}
   ---` : ""}
+
+  # CHAT HISTORY CONTEXT (Last 10 turns, if available)
+  ${chatHistoryContextString}
   
   # GENERAL MEMORY
   ${moxusStructuredMemory.GeneralMemory || '(No general memory available)'}
@@ -486,10 +505,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       case 'storyFeedback':
         memoryKey = 'nodeEdition';
         memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
-        // Sanitize chat history to reduce token usage
-        if (task.data && task.data.chatHistory) {
-          task.data.chatHistory = truncateChatHistoryForMoxus(task.data.chatHistory);
-        }
         break;
       case 'nodeUpdateFeedback':
         memoryKey = 'nodeEdition';
@@ -500,11 +515,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           // Clean nodes data to remove any base64 images
           if (task.data.nodes) {
             task.data.nodes = sanitizeNodesForMoxus(task.data.nodes);
-          }
-          
-          // Truncate chat history to reduce token usage
-          if (task.data.chatHistory) {
-            task.data.chatHistory = truncateChatHistoryForMoxus(task.data.chatHistory);
           }
         }
         break;
