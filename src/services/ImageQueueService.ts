@@ -24,6 +24,10 @@ class ImageQueueService {
   }
 
   async addToQueue(node: Node, allNodes: Node[], chatHistory: any[]) {
+    if (!node.updateImage) {
+      console.log(`Skipping image queue for node ${node.id} because updateImage is not true.`);
+      return;
+    }
     try {
       const prompt = await generateImagePrompt(node, allNodes, chatHistory);
       this.queue.push({
@@ -42,6 +46,10 @@ class ImageQueueService {
   }
 
   async addToQueueWithExistingPrompt(node: Node, prompt: string) {
+    if (!node.updateImage) {
+      console.log(`Skipping image queue for node ${node.id} with existing prompt because updateImage is not true.`);
+      return;
+    }
     this.queue.push({
       nodeId: node.id,
       prompt,

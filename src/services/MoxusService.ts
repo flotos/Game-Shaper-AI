@@ -279,10 +279,38 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
       // Removed chatHistoryLength as we now include the actual history string
     };
   } else {
-    const stringData = JSON.stringify(task.data, null, 2);
-    safeTaskData = stringData.length > 5000 ? 
-      JSON.parse(stringData.substring(0, 5000) + '... [truncated]') : 
-      task.data;
+    // Deep clone task.data to avoid modifying the original object
+    safeTaskData = JSON.parse(JSON.stringify(task.data)); // Simple deep clone
+
+    const MAX_FIELD_LENGTH = 5000; // Max length for individual string fields like descriptions/rules
+
+    const truncateField = (obj: any, fieldName: string) => {
+      if (obj && typeof obj[fieldName] === 'string' && obj[fieldName].length > MAX_FIELD_LENGTH) {
+        obj[fieldName] = obj[fieldName].substring(0, MAX_FIELD_LENGTH) + "... [truncated]";
+      }
+    };
+
+    // For nodeEditFeedback, task.data contains 'before' and 'after' nodes
+    if (safeTaskData && safeTaskData.before) {
+      truncateField(safeTaskData.before, 'longDescription');
+      truncateField(safeTaskData.before, 'rules');
+      // Add other potentially long string fields from the Node model if necessary
+    }
+    if (safeTaskData && safeTaskData.after) {
+      truncateField(safeTaskData.after, 'longDescription');
+      truncateField(safeTaskData.after, 'rules');
+      // Add other potentially long string fields from the Node model if necessary
+    }
+    
+    // Fallback for other task types if their data is a large string itself
+    // This part is less likely to be an issue now but kept for safety,
+    // though the main problem was with nested long strings in objects.
+    const stringifiedData = JSON.stringify(safeTaskData);
+    if (stringifiedData.length > 5000 && typeof task.data === 'string') {
+        // This case handles if task.data itself was a massive string that needs truncation.
+        // The JSON.parse error was from the object case, but this is a safeguard.
+        safeTaskData = task.data.substring(0, 4950) + "... [task.data string truncated]";
+    }
   }
   
   return `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
@@ -298,7 +326,7 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   ${formattedChatHistory}
   
   # CURRENT MEMORY DOCUMENT
-  Below is your current memory document. You should update this document to be very brief and focused on criticism:
+  Below is your current memory document. You should update this document focusing on criticism:
   
   ${existingMemory}
   
@@ -311,13 +339,13 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   
   # INSTRUCTIONS
   1. Analyze the new information (including Chat History Context if provided) focusing ONLY on problems and issues.
-  2. Update the memory document to be extremely concise (1-3 sentences per section maximum).
+  2. Update the memory document.
   3. Focus exclusively on criticism and improvement areas, not what works well.
-  4. Use minimal bullet points for critical observations only.
+  4. Use bullet points for critical observations.
   5. Only include observations that highlight problems or inconsistencies.
   6. The memory document should identify specific issues requiring attention.
-  7. Keep any section about your own personality very brief.
-  8. The entire document should be concise and critical in nature.
+  7. Keep any section about your own personality detailled and rich.
+  8. The entire document should be critical in nature.
 
   Return the complete updated memory document.`;
 };
@@ -366,7 +394,7 @@ const handleFinalReport = async (task: MoxusTask) => {
   const promptContent = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
   
-  Generate a very brief critical analysis based on your accumulated memory documents and the recent chat context below.
+  Generate a brief, concise, and straight-to-the-point critical analysis based on your accumulated memory documents and the recent chat context below.
   
   ${assistantNodesContent ? `Additional features:
   ---
@@ -386,8 +414,8 @@ const handleFinalReport = async (task: MoxusTask) => {
   ${moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)'}
   
   # INSTRUCTIONS
-  Create a brief critical report focusing ONLY on problems and issues.
-  Keep the entire report to 1-3 short paragraphs maximum.
+  Create a brief, concise, and straight-to-the-point critical report focusing ONLY on problems and issues.
+  The entire report must be one paragraphs maximum to plan the guide the next "Narrative AI's" message.
   Use minimal markdown formatting.
   
   Focus exclusively on:
@@ -396,7 +424,7 @@ const handleFinalReport = async (task: MoxusTask) => {
   - Major character development issues
   - Serious gameplay mechanic flaws
   
-  Be direct and concise. Focus only on problems requiring attention, not what works well.
+  Be direct, concise, and straight to the point. Focus only on problems requiring attention, not what works well.
   This will be displayed to the user as a Moxus critical analysis report.`;
 
   console.log(`[MoxusService] Generating final report using all memory sources...`);
@@ -464,8 +492,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       ${task.data.response}
       ---end of response---
       
-      Provide VERY brief, critical feedback focusing ONLY on problems with this response.
-      Keep your feedback to a maximum of 1-3 short sentences.
+      Provide critical feedback focusing ONLY on problems with this response.
       Focus exclusively on what could be improved, not what went well.
       Identify specific issues with quality, relevance, coherence, or accuracy.`;
       
@@ -617,13 +644,13 @@ const updateGeneralMemoryFromAllSources = async () => {
   ${JSON.stringify(recentFeedbacks, null, 2)}
   
   # INSTRUCTIONS
-  1. Create a VERY BRIEF updated GeneralMemory document that synthesizes only the most critical issues from ALL memory sources
-  2. Keep each section extremely short - use 1-3 sentences maximum per section
+  1. Create an updated GeneralMemory document that synthesizes the most critical issues from ALL memory sources
+  2. Keep each section short - use bullet points.
   3. Focus exclusively on problems, issues, and areas for improvement - NOT what works well
-  4. Use minimal bullet points for each critical observation
+  4. Use bullet points for each critical observation
   5. Only include observations that highlight problems or inconsistencies in the game world
-  6. Keep any section about your own personality very brief (1-2 sentences maximum)
-  7. The entire document should be concise and focused on critique
+  6. Keep any section about your own personality brief
+  7. The entire document should be focused on critique
   
   Return ONLY the complete updated GeneralMemory document.`;
   
