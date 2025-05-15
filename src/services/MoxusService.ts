@@ -82,11 +82,16 @@ const MOXUS_STRUCTURED_MEMORY_KEY = 'moxusStructuredMemory';
 
 // Initialize memory structure
 let moxusStructuredMemory = createDefaultMemoryStructure();
-let isProcessing = false;
+// let isProcessing = false; // REMOVED: Replaced with more granular active task tracking
 let taskQueue: MoxusTask[] = [];
 let nextTaskId = 1;
 let getNodesCallback: () => Node[] = () => []; // Callback to get current nodes
 let addMessageCallback: (message: Message) => void = () => {}; // Callback to add chat message
+
+// State for active feedback tasks
+let activeStoryFeedback: Promise<void> | null = null;
+let activeNodeUpdateFeedback: Promise<void> | null = null;
+let processingTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 // Function to sanitize nodes for Moxus feedback - removes any base64 image data
 const sanitizeNodesForMoxus = (nodes: Node[]): any[] => {
@@ -246,14 +251,19 @@ const addTask = (type: MoxusTaskType, data: any, chatHistoryContext?: Message[])
   };
   taskQueue.push(newTask);
   console.log(`[MoxusService] Task added: ${type} (ID: ${newTask.id}). Queue size: ${taskQueue.length}`);
-  triggerProcessing(); // Attempt to process immediately
+  triggerProcessing(); // Attempt to process immediately (will be debounced)
 };
 
-// Function to trigger queue processing if not already running
+// Function to trigger queue processing if not already running (debounced)
 const triggerProcessing = () => {
-  if (!isProcessing) {
-    processQueue();
+  if (processingTimeoutId) {
+    clearTimeout(processingTimeoutId);
   }
+  processingTimeoutId = setTimeout(() => {
+    processingTimeoutId = null; // Clear the ID once the timeout has fired
+    // console.log("[MoxusService] Triggering queue processing via timeout."); // Can be verbose
+    processQueue();
+  }, 50); // Small delay to batch up quick additions or allow current event loop to clear
 };
 
 // Modified prompt template for memory updating tasks
@@ -352,37 +362,87 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
 
 // Asynchronous function to process the queue
 const processQueue = async () => {
-  if (taskQueue.length === 0) {
-    console.log('[MoxusService] Queue empty. Processor idle.');
-    isProcessing = false;
-    return;
-  }
+  // console.log(`[MoxusService] processQueue. Queue: ${taskQueue.map(t=>t.type)}. ActiveSF: ${!!activeStoryFeedback}, ActiveNUF: ${!!activeNodeUpdateFeedback}`);
 
-  isProcessing = true;
-  const task = taskQueue.shift(); 
-
-  if (!task) {
-    isProcessing = false;
-    return; 
-  }
-
-  console.log(`[MoxusService] Processing task: ${task.type} (ID: ${task.id}). Remaining: ${taskQueue.length}`);
-
-  try {
-    // Handle final report differently from memory updates
-    if (task.type === 'finalReport') {
-      await handleFinalReport(task);
-    } else {
-      await handleMemoryUpdate(task);
+  // Highest priority: Final Report if its conditions are met
+  if (!activeStoryFeedback && !activeNodeUpdateFeedback && taskQueue[0]?.type === 'finalReport') {
+    const task = taskQueue.shift()!;
+    console.log(`[MoxusService] Processing task: ${task.type} (ID: ${task.id})`);
+    try {
+      await handleFinalReport(task); // Await as it's a concluding step for a sequence
+      console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
+    } catch (error) {
+      console.error(`[MoxusService] Error processing task ${task.id} (${task.type}):`, error);
+    } finally {
+      // After finalReport, trigger again to see if other, unrelated tasks are pending.
+      if (taskQueue.length > 0) {
+        triggerProcessing();
+      } else {
+        console.log('[MoxusService] Queue empty after finalReport. Processor idle.');
+      }
+      return; // Exclusive processing for finalReport when its turn comes.
     }
-  } catch (error) {
-    console.error(`[MoxusService] Error processing task ${task.id} (${task.type}):`, error);
-  } finally {
-    // Process the next task recursively after a short delay
-    setTimeout(() => {
-      isProcessing = false; // Allow next trigger
-      triggerProcessing(); // Check if more tasks arrived while processing
-    }, 500); 
+  }
+
+  let didLaunchOrProcessTaskThisCycle = false;
+
+  // Attempt to launch storyFeedback
+  if (!activeStoryFeedback && taskQueue[0]?.type === 'storyFeedback') {
+    const task = taskQueue.shift()!;
+    console.log(`[MoxusService] Launching task: ${task.type} (ID: ${task.id})`);
+    didLaunchOrProcessTaskThisCycle = true;
+    activeStoryFeedback = handleMemoryUpdate(task)
+      .catch(err => console.error(`[MoxusService] Error in ${task.type} (ID: ${task.id}):`, err))
+      .finally(() => {
+        console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
+        activeStoryFeedback = null;
+        triggerProcessing(); // Check queue again for follow-ups or other tasks
+      });
+  }
+
+  // Attempt to launch nodeUpdateFeedback (can run with storyFeedback or alone)
+  // Must check queue again because storyFeedback might have been shifted by the block above
+  if (!activeNodeUpdateFeedback && taskQueue[0]?.type === 'nodeUpdateFeedback') {
+    const task = taskQueue.shift()!;
+    console.log(`[MoxusService] Launching task: ${task.type} (ID: ${task.id})`);
+    didLaunchOrProcessTaskThisCycle = true;
+    activeNodeUpdateFeedback = handleMemoryUpdate(task)
+      .catch(err => console.error(`[MoxusService] Error in ${task.type} (ID: ${task.id}):`, err))
+      .finally(() => {
+        console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
+        activeNodeUpdateFeedback = null;
+        triggerProcessing(); // Check queue again
+      });
+  }
+
+  // If no feedback tasks are active, and none were launched this cycle, and the queue has other items:
+  // This handles tasks that are not 'storyFeedback', 'nodeUpdateFeedback', or 'finalReport'.
+  if (!activeStoryFeedback && !activeNodeUpdateFeedback && !didLaunchOrProcessTaskThisCycle && taskQueue.length > 0) {
+    const otherTask = taskQueue.shift()!; // Should not be feedback/finalReport due to checks above
+    console.log(`[MoxusService] Processing other task: ${otherTask.type} (ID: ${otherTask.id}) sequentially`);
+    didLaunchOrProcessTaskThisCycle = true;
+    try {
+      // Assuming 'other' tasks are also handled by handleMemoryUpdate or a similar async function.
+      // If 'other' tasks need different handlers, a switch/case would be needed here.
+      await handleMemoryUpdate(otherTask); 
+      console.log(`[MoxusService] Completed other task: ${otherTask.type} (ID: ${otherTask.id})`);
+    } catch (error) {
+      console.error(`[MoxusService] Error processing other task ${otherTask.id} (${otherTask.type}):`, error);
+    } finally {
+      if (taskQueue.length > 0) {
+        triggerProcessing();
+      } else {
+        console.log('[MoxusService] Queue empty after other task. Processor idle.');
+      }
+    }
+  } else if (didLaunchOrProcessTaskThisCycle && taskQueue.length > 0) {
+    // If a feedback task was launched (or another task processed), and there are still items in the queue,
+    // ensure processing is triggered to check them.
+    // The .finally() blocks of async tasks also call triggerProcessing, this is an additional safeguard/optimization.
+    triggerProcessing();
+  } else if (!activeStoryFeedback && !activeNodeUpdateFeedback && taskQueue.length === 0 && !didLaunchOrProcessTaskThisCycle) {
+     // This condition means: no feedback tasks are running, queue is empty, and nothing was processed/launched in this cycle.
+     console.log('[MoxusService] Queue empty and no active tasks. Processor idle.');
   }
 };
 

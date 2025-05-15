@@ -1,0 +1,487 @@
+# src/prompts.yaml
+common:
+  moxus_feedback_system_message: |
+    # Moxus AI Assistant Feedback - CRITICAL GUIDANCE
+    Moxus is an AI assistant that helps identify problems with previous responses and provides CRITICAL feedback.
+    The following is VITAL feedback on previous similar requests. You MUST pay close attention to it. User notes and feedback within this section are ESPECIALLY important.
+
+    ---start of feedback---
+    {moxus_llm_calls_memory_yaml}
+    ---end of feedback---
+
+    You MUST use this critical feedback to avoid making the same mistakes in your response.
+    ABSOLUTELY prioritize any user notes in the feedback, as they often contain important suggestions and corrections that MUST be followed.
+    Failure to adhere to Moxus feedback will result in suboptimal outcomes.
+  moxus_get_feedback_user_message: "Please provide your feedback based on the available information, with special attention to any user notes in the chat history. User notes often contain important feedback and suggestions that should be prioritized in your analysis."
+
+twine_import:
+  data_extraction: |
+    /think
+
+    # Instructions
+    You are a Game Engine. Your task is to analyze and extract structured data from a Twine story.
+      
+    # Rules
+    1. Extract key story elements, characters, locations, and events
+    2. Preserve important narrative structures and branching paths
+    3. Remove any technical or formatting elements not relevant to the story
+    4. Structure the data in a way that can be used to generate game nodes
+
+    {additional_instructions}
+
+    # Twine content
+    ---start of twine content---
+    {twine_content}
+    ---end of twine content---
+
+    # Return format
+
+    Return a JSON object with the following structure:
+    {
+      "elements": [
+        {
+          "type": "character|location|event|item|concept|paragraph",
+          "name": "element name",
+          "content": "detailed description or content"
+        }
+      ]
+    }
+  node_generation_new_game: |
+    /think
+
+    # Instructions
+    You are a Game Engine. Your task is to create a completely new game based on the extracted story data.
+
+    # Rules
+    1. Create a new game world based on the extracted story elements
+    2. Use the existing node structure only as a template for formatting
+    3. Generate a complete new set of nodes that form a coherent game world
+    4. Set updateImage to true for nodes that represent physical entities
+    5. When using the extracted story data:
+      - All the listed events are possible outcomes in the game. These are NOT memories or past events.
+      - All the locations are possible encounters, but consider these have not yet been visited by the player.
+    6. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
+
+    # User's specific instructions (very important to follow)
+    {additional_instructions}
+
+    # Extracted Story Data
+    ---
+    {extracted_data}
+    ---
+
+    # Existing Nodes (for structure reference only)
+    ---
+    {nodes_description}
+    ---
+
+    # Return format
+
+    Return a JSON object with the following structure:
+    {
+      "new": [
+        {
+          "id": "unique-id",
+          "name": "node name",
+          "longDescription": "detailed description",
+          "rules": "rules and internal info",
+          "type": "node type",
+          "updateImage": true/false
+        }
+      ],
+      "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
+    }
+  node_generation_merge: |
+    /think
+
+    # Instructions
+    You are a Game Engine. Your task is to merge the extracted story data into the existing game world.
+
+    # Rules
+    1. Your PRIMARY task is to UPDATE EXISTING NODES rather than create new ones
+    2. For each element in the extracted data:
+       - First identify which existing node it relates to
+       - Update that node to incorporate the new content
+       - Only create a new node if there is NO existing node that could reasonably incorporate the concept
+    3. When updating nodes:
+       - Preserve all existing content
+       - Add new content that expands and enhances the existing concepts
+       - Ensure new content integrates seamlessly with existing content
+       - Set updateImage to true if the visual appearance has changed significantly
+    4. For new story elements that truly cannot fit in existing nodes:
+       - Create new nodes with unique IDs
+       - Ensure they connect properly with existing nodes
+       - Set updateImage to true for physical entities
+    5. Maintain consistency between old and new elements
+    6. When using the extracted story data:
+       - All the listed events are possible outcomes in the game. These are NOT memories or past events.
+       - All the locations are possible encounters, but consider these have not yet been visited by the player.
+    7. In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
+    8. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
+
+    # User's specific instructions (very important to follow)
+    {additional_instructions}
+
+    # Extracted Story Data
+    ---
+    {extracted_data}
+    ---
+
+    # Existing Nodes to Merge With
+    ---
+    {nodes_description}
+    ---
+
+    # Return format
+
+    Return a JSON object with the following structure:
+    {
+      "new": [
+        {
+          "id": "unique-id",
+          "name": "node name",
+          "longDescription": "detailed description",
+          "rules": "rules and internal info",
+          "type": "node type",
+          "updateImage": true/false
+        }
+      ],
+      "update": [
+        {
+          "id": "existing-node-id",
+          "longDescription": "updated description that merges existing and new content",
+          "rules": "updated rules",
+          "updateImage": true/false
+        }
+      ],
+      "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
+    }
+      
+    During your reasoning process, verify after every node created that you preserved ALL the original feature and did not discard any content.
+  regenerate_single_node: |
+    /think
+
+    # Instructions
+    You are a Game Engine. An AI generated nodes for a game. However, the user deemed the node didn't follow the guidelines he expected.
+    Your task is to generate a new node, following more closely the guildelines provided by the user.
+    In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
+
+
+    # User's specific instructions (very important to follow)
+    {node_generation_instructions}
+
+    # Original Node (from the game)
+    ---
+    id: {existing_node_id}
+    name: {existing_node_name}
+    longDescription: {existing_node_long_description}
+    rules: {existing_node_rules}
+    type: {existing_node_type}
+    ---
+
+    # Recently Generated Node (that needs improvement)
+    ---
+    {recently_generated_node_details}
+    ---
+
+    # Extracted Story Data
+    ---
+    {extracted_data}
+    ---
+
+    # Existing Nodes (for context)
+    ---
+    {nodes_description}
+    ---
+
+    # Return format
+
+    Return a JSON object with the following structure:
+    {
+      "new": [
+        {
+          "id": "{node_id_to_regenerate}",
+          "name": "node name",
+          "longDescription": "detailed description",
+          "rules": "rules and internal info",
+          "type": "node type",
+          "updateImage": true/false
+        }
+      ],
+      "update": [
+        {
+          "id": "{node_id_to_regenerate}",
+          "longDescription": "updated description",
+          "rules": "updated rules",
+          "updateImage": true/false
+        }
+      ]
+    }
+
+image_generation:
+  base_prompt_with_instructions_node: |
+    /no_think
+    --> Your task
+    The following instructions are to generate ONE image. It is very important to ensure only one image is generated.
+    Your reply should be the prompt directly, with no comment, no reasoning.
+    The "real" titles of these instructions are separated by the "-->" flag.
+
+    --> Image generation instructions Guidelines
+    {image_generation_nodes_content}
+
+    --> The Game object to generate the image for
+
+    You will generate the caption of image for a game object.
+    The image is for the following object :
+    --
+    name: {node_name}
+    longDescription: {node_long_description}
+    rules: {node_rules}
+    type: {node_type}
+    --
+    {type_specific_prompt_addition}
+
+    --> Additional Context
+
+    Here are the other game nodes in the scene to give some context. Only use these information to help get a grasp of the scene and keep coherence:
+    {all_nodes_context}
+    
+    --> Recent Chat History
+    {chat_history_context}
+    
+    --> Final word
+    Never generate anything related to very young people, only adults.
+    Now, generate the image prompt, with no comment, no reasoning.
+  base_prompt_default: |
+    You will generate the caption of image for a game object.
+    The image is for the following object :
+    --
+    name: {node_name}
+    longDescription: {node_long_description}
+    rules: {node_rules}
+    type: {node_type}
+
+    Here are the other nodes in the scene to give some context:
+    {all_nodes_context}
+
+    Recent Chat History:
+    {chat_history_context}
+
+    The caption should be a concise text at most 2 sentences describing what we can see on the image. Don't write anything else.
+    It should describe what can be seen now.
+    Use the object's long description mostly, and just a bit the information from "rules" that was given for some context.
+    {type_specific_prompt_addition}
+  type_specific_additions:
+    character: " Ensure the character is depicted clearly, focusing on their appearance, attire, and expression as per their description."
+    item: " Present the item or object on a plain background or textured surface to make it stand out."
+    object: " Present the item or object on a plain background or textured surface to make it stand out."
+    concept: " Style the image with mist or fog, emphasizing an abstract and metaphorical representation of the concept."
+    mechanic: " Illustrate the game mechanic with symbolic or metaphorical visuals, like fractured clock faces for time manipulation, or glowing glyphs for magic systems. Focus on diamond shape composition."
+    system: " Visualize the system as an intricate network, abstract color gradients, or schematic lines to represent interconnectedness or processes. Focus on square shape composition."
+    location: " Render the location with a distinct artistic style or mood, possibly including subtle unearthly or abstract elements to fit the game's aesthetic and differentiate it from a plain depiction."
+    event: " Capture the event's dynamism, significance, or mood using symbolic or abstract visual cues, focusing on the moment of occurrence. Focus on a circular shape composition."
+    assistant: " If the assistant is a character, depict as such. If abstract, use non-figurative, symbolic visuals like a glowing holographic interface or interconnected symbols."
+    image_generation: " Create a metaphorical representation of the creative process of image generation, like streams of light and color coalescing or a digital canvas with dynamically forming abstract shapes."
+    library: " Depict as a stylized representation of a knowledge repository, such as shelves of glowing tomes or an abstract data hub with floating symbols, conveying vast information."
+    default: ""
+
+node_operations:
+  get_relevant_nodes: |
+    Given the following nodes from a graph, find the ones that are relevant to the user's action.
+    You should consider the nodes descriptions and their content.
+
+    Return a JSON object with a single field "relevantNodes" containing an array of node IDs.
+    Each ID entry in the array should be enclosed in quotes.
+
+    # Example 1:
+    ## Nodes
+    ---
+    id: "98ak"
+    name: A playing card
+    rules: The card has heavy wear and can be distinguished
+    type: Card
+    ---
+    id: "10eg"
+    name: A deck of cards
+    rules: Only one card (the 10 of heart) is not mint.
+    type: Object
+
+    ## User message history with the narrator
+    assistant: You are in a dark room and can only the one card
+    user: take and observe the card
+
+    ## Your answer
+    {
+      "relevantNodes": ["98ak"]
+    }
+
+    # Your turn:
+    ## Nodes
+    {nodes_description}
+
+    ## User message history with the narrator
+    {string_history}
+
+    ##Your answer
+  generate_chat_text: |
+    /think
+    # TASK:
+    You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
+    Generate appropriate dialogue based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
+    You will make the world progress by itself at every round, in addition to any action the player make in the world. Each user action should have a significant impact.
+
+    Do not mention any node updates/change/deletion, as another LLM call will handle this.
+
+    ## Game Content:
+    ### Current Nodes, sorted by relevance:
+    {nodes_description}
+    
+    ### Recent Chat History (Last 5 Interactions):
+    {string_history}
+    
+    {last_moxus_report_section}
+    
+    ### User Input:
+    {user_input}
+    
+    Generate a detailed chapter (3 to 4 paragraphs) making the story progress, with efficient but short descriptions.
+    Don't ask questions to the player.
+    Produce new content, make the plot progress, and avoid repeating what was said before.
+  generate_actions: |
+    # TASK:
+    Based on the following game state and narrative, generate two interesting actions the player can take next.
+    The actions should be natural continuations of the story and make sense in the current context.
+
+    ## Current Game State:
+    {nodes_description}
+
+    ## Recent Narrative (Last 5 Interactions):
+    {formatted_chat_text}
+    
+    {last_moxus_report_section}
+
+    ## User's Last Input:
+    {user_input}
+
+    Return a JSON object with a single field "actions" containing an array of exactly two strings, each describing one possible action.
+    Example: { "actions": ["examine the mysterious door", "ask the merchant about the strange artifact"] }
+  generate_node_edition: |
+    {think_mode}
+    # TASK:
+    Based on the following game state, narrative, and possible actions, update the game graph.
+    Consider node content and possible actions for a coherent game state update.
+
+    ## Node Properties:
+    - id: Unique id string
+    - name: title
+    - longDescription: (Mandatory) Detailed description, write everything that is visible or that the player should know.
+    - rules: (Mandatory) Internal info for AI that player shouldn't see. Store rich, reusable information in a structured format:
+      * Use semicolons to separate different aspects
+      * Character and World: traits, motivations, relationships, physical characteristics, cultural context
+      * Environment and Atmosphere: details, mood, potential interactions and consequences
+      * Story Elements: plot hooks, foreshadowing, unresolved mysteries, thematic elements
+      * Game Mechanics: hidden triggers, past events impact, future developments
+      * Story Generation: hints for future narrative development, character arcs, world-building opportunities
+    - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine. We encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
+    - updateImage: (Optional) Set to true if the node represents a physical object, character, or location that should have a visual representation. This is particularly important for:
+      * New nodes that represent physical entities (characters, items, locations)
+      * Existing nodes whose visual appearance has changed significantly
+      * Nodes that need their first image generated
+      * Nodes that need an image update due to significant changes in their description or rules
+      DO NOT set updateImage to true for abstract concepts, game rules, or system nodes that don't need visual representation.
+
+    ## Current Game State, sorted by relevance:
+    {nodes_description}
+
+    ## Recent Chat History (Last 5 Interactions):
+    {formatted_chat_history}
+    
+    {last_moxus_report_section}
+
+    ## Possible Actions:
+    {actions_list}
+
+    ## User Input:
+    {user_input}
+
+    Return a JSON object with the following structure:
+    {
+      "merge": [
+        {
+          "id": "node-id (specify a new one if you want to create a new node)",
+          "name": "updated name",
+          "longDescription": "updated description",
+          "rules": "updated rules",
+          "type": "updated type",
+          "updateImage": true/false
+        }
+      ],
+      "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
+    }
+
+    Update up to 3 nodes maximum, and you can create up to one new node.
+  generate_nodes_from_prompt: |
+    You are a Game Engine. The user asked to update how the game work or to change some aspect of the world.
+    Your task is to update the game nodes based on the following prompt, for a Game Engine:
+    ---
+    {user_prompt}
+    ---
+    {moxus_context_string}
+
+    Here are the existing nodes:
+    ---
+    {nodes_description}
+
+    IMPORTANT: When updating nodes, you must follow these critical rules:
+    1. NEVER reference or assume knowledge of the previous state of a node. Each node update is a complete replacement.
+    2. You must explicitly include ALL content you want to preserve in the updated node. Any content not included will be lost.
+    3. Each node update should be self-contained and complete, with no dependencies on previous states.
+    4. If you want to keep any information from the previous state, you must explicitly copy it into the new node.
+    5. The updateImage field MUST be included for each node and set to true if there are significant visual changes that should trigger a new image generation (but game systems or lore nodes shouldn't have an image).
+    6. If there are instructions about "merging multiple nodes together", choose one of the existing node to update, and delete the others.
+    7. A node is worthy to exist only if it contains at least a full paragraph, otherwise another node should cover its content. For example for room containing lot of object, the objects should be stored in the "room" node if they aren't too detailled each. Or use a "hand of cards" node for a deck related node-graph instead of each card separately.
+    8. Maintain one or few nodes for the global game systems, trying not to disseminate game rules into too many nodes. If multiple node, each should focus on a concept, but at least one node should summarize all the game systems and serve as a high-level reference.
+    9. Do not update the image_generation type nodes unless explicitely mentionned.
+    10. All node should represent a game system, a lore entry, character, or an object. These should NOT be used to describe events or time-limited things. If a specific event need to be remembered, store it in a "memory" game system node.
+    11. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
+
+    Each node should be described in a JSON format with the following properties:
+    {
+      "id": "unique-id",
+      "name": "node name",
+      "longDescription": "Lengthy description, detailling the node completely. For game Systems, be exhaustive. For content or characters, generate at least a full paragraph.",
+      "rules": "rules, written in a concise, compressed way.",
+      "type": "node type",
+      "updateImage": true/false  // Set to true if the node's visual appearance has changed significantly, false otherwise
+    }
+
+    The generated nodes should NOT count as a game round and make the content progress. You have to create either Game systems or content in the world.
+    Ensure proper JSON syntax and do not include any other text except the JSON array.
+    Return an object in this format:
+    {
+      "merge": [{node1Content...}, {node2Content...}],
+      "delete": ["nodeID1ToDelete","nodeID2ToDelete", ...]
+    }
+  sort_nodes_by_relevance: |
+    # TASK:
+    You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.
+    Consider both the content of the nodes and the context of the conversation.
+
+    ## Recent Chat History (Last 5 Interactions):
+    {string_history}
+    
+    {last_moxus_report_section}
+
+    ## Nodes to Sort:
+    {nodes_description}
+
+    Return a JSON object with a single field "sortedIds" containing an array of node IDs in order of relevance (most relevant first).
+    Each ID entry in the array should be enclosed in quotes.
+
+    Example response:
+    {
+      "sortedIds": ["node1", "node2", "node3"]
+    }
+
+    Your focus is to order the nodes to sort them, from the most related to the chatHistory, to the least. This will be used to have the Story Generation AI focus on the first.
+    For example, the main character and active characters should be first, then the location, then ongoing game systems, ... 

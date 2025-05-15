@@ -1,7 +1,49 @@
 import { Node } from '../models/Node';
-import prompts from '../../prompts.json';
+import * as yaml from 'js-yaml';
+import rawPrompts from '../prompts.yaml?raw'; // Import YAML as raw text
 import { Message } from '../context/ChatContext';
 import { moxusService, setMoxusFeedbackImpl } from './MoxusService';
+
+// Load and parse prompts
+interface PromptsConfig {
+  common: {
+    moxus_feedback_system_message: string;
+    moxus_get_feedback_user_message: string;
+  };
+  twine_import: {
+    data_extraction: string;
+    node_generation_new_game: string;
+    node_generation_merge: string;
+    regenerate_single_node: string;
+  };
+  image_generation: {
+    base_prompt_with_instructions_node: string;
+    base_prompt_default: string;
+    type_specific_additions: { [key: string]: string };
+  };
+  node_operations: {
+    get_relevant_nodes: string;
+    generate_chat_text: string;
+    generate_actions: string;
+    generate_node_edition: string;
+    generate_nodes_from_prompt: string;
+    sort_nodes_by_relevance: string;
+  };
+}
+
+const loadedPrompts = yaml.load(rawPrompts) as PromptsConfig;
+
+// Utility function to format prompts
+function formatPrompt(promptTemplate: string, replacements: Record<string, string | undefined>): string {
+  let formattedPrompt = promptTemplate;
+  for (const key in replacements) {
+    const value = replacements[key];
+    // Ensure value is a string, treat undefined as empty string for replacement
+    const replacementValue = value === undefined ? '' : String(value);
+    formattedPrompt = formattedPrompt.replace(new RegExp(`\\{[${key}]\\}`, 'g'), replacementValue);
+  }
+  return formattedPrompt;
+}
 
 interface ExtractedElement {
   type: string;
@@ -13,281 +55,60 @@ interface ExtractedData {
   chunks: ExtractedElement[][];
 }
 
-// Twine import prompts
-export const TWINE_DATA_EXTRACTION_PROMPT = `
-/think
-
-# Instructions
-You are a Game Engine. Your task is to analyze and extract structured data from a Twine story.
-  
-# Rules
-1. Extract key story elements, characters, locations, and events
-2. Preserve important narrative structures and branching paths
-3. Remove any technical or formatting elements not relevant to the story
-4. Structure the data in a way that can be used to generate game nodes
-
-[Additional Instructions will be inserted here]
-
-# Twine content
----start of twine content---
-[Content will be inserted here]
----end of twine content---
-
-# Return format
-
-Return a JSON object with the following structure:
-{
-  "elements": [
-    {
-      "type": "character|location|event|item|concept|paragraph",
-      "name": "element name",
-      "content": "detailed description or content"
-    }
-  ]
-}`;
-
-export const TWINE_NODE_GENERATION_PROMPT_NEW_GAME = `
-/think
-
-# Instructions
-You are a Game Engine. Your task is to create a completely new game based on the extracted story data.
-
-# Rules
-1. Create a new game world based on the extracted story elements
-2. Use the existing node structure only as a template for formatting
-3. Generate a complete new set of nodes that form a coherent game world
-4. Set updateImage to true for nodes that represent physical entities
-5. When using the extracted story data:
-  - All the listed events are possible outcomes in the game. These are NOT memories or past events.
-  - All the locations are possible encounters, but consider these have not yet been visited by the player.
-6. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
-
-# User's specific instructions (very important to follow)
-[Additional Instructions will be inserted here]
-
-# Extracted Story Data
----
-[Extracted data will be inserted here]
----
-
-# Existing Nodes (for structure reference only)
----
-[Nodes description will be inserted here]
----
-
-# Return format
-
-Return a JSON object with the following structure:
-{
-  "new": [
-    {
-      "id": "unique-id",
-      "name": "node name",
-      "longDescription": "detailed description",
-      "rules": "rules and internal info",
-      "type": "node type",
-      "updateImage": true/false
-    }
-  ],
-  "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
-}`;
-
-export const TWINE_NODE_GENERATION_PROMPT_MERGE = `
-/think
-
-# Instructions
-You are a Game Engine. Your task is to merge the extracted story data into the existing game world.
-
-# Rules
-1. Your PRIMARY task is to UPDATE EXISTING NODES rather than create new ones
-2. For each element in the extracted data:
-   - First identify which existing node it relates to
-   - Update that node to incorporate the new content
-   - Only create a new node if there is NO existing node that could reasonably incorporate the concept
-3. When updating nodes:
-   - Preserve all existing content
-   - Add new content that expands and enhances the existing concepts
-   - Ensure new content integrates seamlessly with existing content
-   - Set updateImage to true if the visual appearance has changed significantly
-4. For new story elements that truly cannot fit in existing nodes:
-   - Create new nodes with unique IDs
-   - Ensure they connect properly with existing nodes
-   - Set updateImage to true for physical entities
-5. Maintain consistency between old and new elements
-6. When using the extracted story data:
-   - All the listed events are possible outcomes in the game. These are NOT memories or past events.
-   - All the locations are possible encounters, but consider these have not yet been visited by the player.
-7. In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
-8. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
-
-# User's specific instructions (very important to follow)
-[Additional Instructions will be inserted here]
-
-# Extracted Story Data
----
-[Extracted data will be inserted here]
----
-
-# Existing Nodes to Merge With
----
-[Nodes description will be inserted here]
----
-
-# Return format
-
-Return a JSON object with the following structure:
-{
-  "new": [
-    {
-      "id": "unique-id",
-      "name": "node name",
-      "longDescription": "detailed description",
-      "rules": "rules and internal info",
-      "type": "node type",
-      "updateImage": true/false
-    }
-  ],
-  "update": [
-    {
-      "id": "existing-node-id",
-      "longDescription": "updated description that merges existing and new content",
-      "rules": "updated rules",
-      "updateImage": true/false
-    }
-  ],
-  "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
-}
-  
-During your reasoning process, verify after every node created that you preserved ALL the original feature and did not discard any content.`;
-
 function getTypeSpecificPromptAddition(nodeType: string | undefined): string {
-  switch (nodeType) {
-    case 'character':
-      return " Ensure the character is depicted clearly, focusing on their appearance, attire, and expression as per their description.";
-    case 'item':
-    case 'object':
-      return " Present the item or object on a plain background or textured surface to make it stand out.";
-    case 'concept':
-      return " Style the image with mist or fog, emphasizing an abstract and metaphorical representation of the concept.";
-    case 'mechanic':
-      return " Illustrate the game mechanic with symbolic or metaphorical visuals, like fractured clock faces for time manipulation, or glowing glyphs for magic systems. Focus on diamond shape composition.";
-    case 'system':
-      return " Visualize the system as an intricate network, abstract color gradients, or schematic lines to represent interconnectedness or processes. Focus on square shape composition.";
-    case 'location':
-      // For locations, we want to ensure they fit the game's aesthetic, which might involve abstract or stylistic elements.
-      return " Render the location with a distinct artistic style or mood, possibly including subtle unearthly or abstract elements to fit the game's aesthetic and differentiate it from a plain depiction.";
-    case 'event':
-      return " Capture the event's dynamism, significance, or mood using symbolic or abstract visual cues, focusing on the moment of occurrence. Focus on a circular shape composition.";
-    case 'assistant': // Assuming assistant can be a character or an abstract helper
-      return " If the assistant is a character, depict as such. If abstract, use non-figurative, symbolic visuals like a glowing holographic interface or interconnected symbols.";
-    case 'image-generation': // Meta-concept
-      return " Create a metaphorical representation of the creative process of image generation, like streams of light and color coalescing or a digital canvas with dynamically forming abstract shapes.";
-    case 'library':
-      return " Depict as a stylized representation of a knowledge repository, such as shelves of glowing tomes or an abstract data hub with floating symbols, conveying vast information.";
-    default:
-      return ""; // No specific addition for other types or if type is undefined
-  }
+  const typeKey = nodeType || 'default';
+  return loadedPrompts.image_generation.type_specific_additions[typeKey] || loadedPrompts.image_generation.type_specific_additions['default'] || '';
 }
 
 export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], chatHistory: Message[] = []) => {
   console.log('LLM Call: Generating image prompt for node:', node.id);
-  // Check for nodes with type "image_generation"
   const imageGenerationNodes = allNodes.filter(n => n.type === "image_generation");
   
   let contentPrompt = "";
+  const typeSpecificAddition = getTypeSpecificPromptAddition(node.type);
+  const allNodesContext = allNodes.reduce((acc, nodet) => {
+    return acc + `
+    ---
+    name: ${nodet.name}
+    rules: ${nodet.rules}
+    `;
+  }, "");
+  const chatHistoryContext = chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n');
 
-  // If there are image generation nodes, use their content
   if (imageGenerationNodes.length > 0) {
-    contentPrompt += `
-    /no_think
-    --> Your task
-    The following instructions are to generate ONE image. It is very important to ensure only one image is generated.
-    Your reply should be the prompt directly, with no comment, no reasoning.
-    The "real" titles of these instructions are separated by the "-->" flag.
-
-    --> Image generation instructions Guidelines
-    `
-    
-    contentPrompt += imageGenerationNodes.map(n => {
+    const imageGenerationNodesContent = imageGenerationNodes.map(n => {
       let prompt = "";
       if (n.longDescription) prompt += n.longDescription + "\n";
       if (n.rules) prompt += n.rules + "\n";
       return prompt;
     }).join("\n");
 
-    // Add the nodes details from allNodes
-    contentPrompt += `
-    --> The Game object to generate the image for
-
-    You will generate the caption of image for a game object.
-    The image is for the following object :
-    --
-    name: ${node.name}
-    longDescription: ${node.longDescription}
-    rules: ${node.rules}
-    type: ${node.type}
-    --
-    `;
-
-    // Add type-specific prompt additions
-    contentPrompt += `\n${getTypeSpecificPromptAddition(node.type)}\n`;
-
-    contentPrompt += `
-    --> Additional Context
-
-    Here are the other game nodes in the scene to give some context. Only use these information to help get a grasp of the scene and keep coherence:
-    ${allNodes.reduce((acc, nodet) => {
-      return acc + `
-      ---
-      name: ${nodet.name}
-      rules: ${nodet.rules}
-      `;
-    }, "")}
-    
-    --> Recent Chat History
-    ${chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
-    
-    --> Final word
-    Never generate anything related to very young people, only adults.
-    Now, generate the image prompt, with no comment, no reasoning.
-    `;
+    contentPrompt = formatPrompt(loadedPrompts.image_generation.base_prompt_with_instructions_node, {
+      image_generation_nodes_content: imageGenerationNodesContent,
+      node_name: node.name,
+      node_long_description: node.longDescription,
+      node_rules: node.rules,
+      node_type: node.type,
+      type_specific_prompt_addition: typeSpecificAddition,
+      all_nodes_context: allNodesContext,
+      chat_history_context: chatHistoryContext
+    });
   } else {
-    // Default prompt when no image generation nodes exist
-    contentPrompt = `
-    You will generate the caption of image for a game object.
-    The image is for the following object :
-    --
-    name: ${node.name}
-    longDescription: ${node.longDescription}
-    rules: ${node.rules}
-    type: ${node.type}
-
-    Here are the other nodes in the scene to give some context:
-    ${allNodes.reduce((acc, nodet) => {
-      return acc + `
-      ---
-      name: ${nodet.name}
-      rules: ${nodet.rules}
-      `;
-    }, "")}
-
-    Recent Chat History:
-    ${chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n')}
-
-    The caption should be a concise text at most 2 sentences describing what we can see on the image. Don't write anything else.
-    It should describe what can be seen now.
-    Use the object's long description mostly, and just a bit the information from "rules" that was given for some context.
-    `;
-
-    // Add type-specific prompt additions
-    contentPrompt += `\n${getTypeSpecificPromptAddition(node.type)}\n`;
+    contentPrompt = formatPrompt(loadedPrompts.image_generation.base_prompt_default, {
+      node_name: node.name,
+      node_long_description: node.longDescription,
+      node_rules: node.rules,
+      node_type: node.type,
+      type_specific_prompt_addition: typeSpecificAddition, // Ensure this is included here too
+      all_nodes_context: allNodesContext,
+      chat_history_context: chatHistoryContext
+    });
   }
 
   const messages: Message[] = [
     { role: 'system', content: contentPrompt },
   ];
 
-  // Skip Moxus feedback for image prompt generation
   return getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true });
 }
 
@@ -310,44 +131,10 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     `;
   }, "");
 
-  const prompt = `
-    Given the following nodes from a graph, find the ones that are relevant to the user's action.
-    You should consider the nodes descriptions and their content.
-
-    Return a JSON object with a single field "relevantNodes" containing an array of node IDs.
-    Each ID entry in the array should be enclosed in quotes.
-
-    # Example 1:
-    ## Nodes
-    ---
-    id: "98ak"
-    name: A playing card
-    rules: The card has heavy wear and can be distinguished
-    type: Card
-    ---
-    id: "10eg"
-    name: A deck of cards
-    rules: Only one card (the 10 of heart) is not mint.
-    type: Object
-
-    ## User message history with the narrator
-    assistant: You are in a dark room and can only the one card
-    user: take and observe the card
-
-    ## Your answer
-    {
-      "relevantNodes": ["98ak"]
-    }
-
-    # Your turn:
-    ## Nodes
-    ${nodesDescription}
-
-    ## User message history with the narrator
-    ${stringHistory}
-
-    ##Your answer
-  `;
+  const prompt = formatPrompt(loadedPrompts.node_operations.get_relevant_nodes, {
+    nodes_description: nodesDescription,
+    string_history: stringHistory
+  });
 
   const messages: Message[] = [
     { role: 'system', content: prompt },
@@ -421,11 +208,9 @@ export const getChatHistoryForMoxus = (chatHistory: Message[], numAssistantTurns
 export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   console.log('LLM Call: Generating chat text');
   
-  // Get last 5 interactions and find the last Moxus report
   const lastFiveInteractions = getLastFiveInteractions(chatHistory);
-  const lastMoxusReport = [...chatHistory].reverse().find(message => message.role === "moxus");
+  const lastMoxusReportMessage = [...chatHistory].reverse().find(message => message.role === "moxus");
   
-  // Format chat history without Moxus reports
   const stringHistory = lastFiveInteractions.reduce((acc, message) => {
     return acc + `${message.role}: ${message.content}\n`;
   }, "");
@@ -433,12 +218,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
   
   const nodesDescription = nodes.reduce((acc, node) => {
-    // Skip image_generation nodes
-    if (node.type === "image_generation") {
-      return acc;
-    }
-
-    // If there are less than maxIncludedNodes nodes, include full content
+    if (node.type === "image_generation") return acc;
     if (nodes.length < maxIncludedNodes) {
       return acc + `
         id: ${node.id}
@@ -448,7 +228,6 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
         type: ${node.type}
         `;
     } else {
-      // Original behavior for maxIncludedNodes or more nodes TODO one day once we dev this feature
       return acc + `
         id: ${node.id}
         name: ${node.name}
@@ -459,38 +238,21 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
     }
   }, "");
 
-  const chatTextPrompt = `
-  /think
-  # TASK:
-  You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
-  Generate appropriate dialogue based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
-  You will make the world progress by itself at every round, in addition to any action the player make in the world. Each user action should have a significant impact.
-
-  Do not mention any node updates/change/deletion, as another LLM call will handle this.
-
-  ## Game Content:
-  ### Current Nodes, sorted by relevance:
-  ${nodesDescription}
-  
-  ### Recent Chat History (Last 5 Interactions):
-  ${stringHistory}
-  
-  ${lastMoxusReport ? `
+  const lastMoxusReportSection = lastMoxusReportMessage ? `
   ### Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
   Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
   the story and provides VITAL guidance to maintain consistency and quality in the game world.
   ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
-  ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
-  ` : ''}
-  
-  ### User Input:
-  ${userInput}
-  
-  Generate a detailed chapter (3 to 4 paragraphs) making the story progress, with efficient but short descriptions.
-  Don't ask questions to the player.
-  Produce new content, make the plot progress, and avoid repeating what was said before.
-  `;
+  ${lastMoxusReportMessage.content.replace('**Moxus Report:**', '').trim()}
+  ` : '';
+
+  const chatTextPrompt = formatPrompt(loadedPrompts.node_operations.generate_chat_text, {
+    nodes_description: nodesDescription,
+    string_history: stringHistory,
+    last_moxus_report_section: lastMoxusReportSection,
+    user_input: userInput
+  });
 
   const chatTextMessages: Message[] = [
     { role: 'system', content: chatTextPrompt },
@@ -511,9 +273,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
 export const generateActions = async(chatText: string, nodes: Node[], userInput: string) => {
   console.log('LLM Call: Generating actions');
   const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "image_generation") {
-      return acc;
-    }
+    if (node.type === "image_generation") return acc;
     return acc + `
       id: ${node.id}
       name: ${node.name}
@@ -523,48 +283,36 @@ export const generateActions = async(chatText: string, nodes: Node[], userInput:
       `;
   }, "");
 
-  // Format the chat narrative (could be string or Message[] array)
-  let formattedChatText = chatText;
-  let lastMoxusReport = null;
+  let formattedChatText = "";
+  let lastMoxusReportContent = null;
   
-  if (Array.isArray(chatText) && chatText.length > 0 && 
-      typeof chatText[0] === 'object' && 'role' in chatText[0]) {
-    // Find the last Moxus report
-    lastMoxusReport = [...chatText].reverse().find(message => message.role === "moxus");
-    
-    // Get last 5 interactions and format them
-    const lastFiveInteractions = getLastFiveInteractions(chatText as Message[]);
+  if (Array.isArray(chatText) && chatText.length > 0 && typeof chatText[0] === 'object' && 'role' in chatText[0]) {
+    const chatHistoryMessages = chatText as Message[];
+    lastMoxusReportContent = [...chatHistoryMessages].reverse().find(message => message.role === "moxus");
+    const lastFiveInteractions = getLastFiveInteractions(chatHistoryMessages);
     formattedChatText = lastFiveInteractions.reduce((acc: string, message: Message) => {
       return acc + `${message.role}: ${message.content}\n`;
     }, "");
+  } else {
+    formattedChatText = chatText as string;
+    // Cannot get Moxus report if chatText is just a string, assume it's not present or handled upstream
   }
 
-  const actionsPrompt = `
-  # TASK:
-  Based on the following game state and narrative, generate two interesting actions the player can take next.
-  The actions should be natural continuations of the story and make sense in the current context.
-
-  ## Current Game State:
-  ${nodesDescription}
-
-  ## Recent Narrative (Last 5 Interactions):
-  ${formattedChatText}
-  
-  ${lastMoxusReport ? `
+  const lastMoxusReportSection = lastMoxusReportContent ? `
   ## Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
   Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
   the story and provides VITAL guidance to maintain consistency and quality in the game world.
   ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
-  ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
-  ` : ''}
+  ${(lastMoxusReportContent as Message).content.replace('**Moxus Report:**', '').trim()}
+  ` : '';
 
-  ## User's Last Input:
-  ${userInput}
-
-  Return a JSON object with a single field "actions" containing an array of exactly two strings, each describing one possible action.
-  Example: { "actions": ["examine the mysterious door", "ask the merchant about the strange artifact"] }
-  `;
+  const actionsPrompt = formatPrompt(loadedPrompts.node_operations.generate_actions, {
+    nodes_description: nodesDescription,
+    formatted_chat_text: formattedChatText,
+    last_moxus_report_section: lastMoxusReportSection,
+    user_input: userInput
+  });
 
   const actionsMessages: Message[] = [
     { role: 'system', content: actionsPrompt },
@@ -585,9 +333,7 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   });
 
   const nodesDescription = sortedNodes.reduce((acc, node) => {
-    if (node.type === "image_generation" || node.type === "system") {
-      return acc;
-    }
+    if (node.type === "image_generation" || node.type === "system") return acc;
     return acc + `
       id: ${node.id}
       name: ${node.name}
@@ -597,88 +343,39 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
       `;
   }, "");
 
-  // Check if chatText is a chat history array or a string
   let formattedChatHistory = "";
-  let lastMoxusReport = null;
+  let lastMoxusReportContent = null;
   
-  if (Array.isArray(chatText) && chatText.length > 0 && 
-      typeof chatText[0] === 'object' && 'role' in chatText[0]) {
-    // Find the last Moxus report
-    lastMoxusReport = [...chatText].reverse().find(message => message.role === "moxus");
-    
-    // Get last 5 interactions and format them
-    const lastFiveInteractions = getLastFiveInteractions(chatText as Message[]);
+  if (Array.isArray(chatText) && chatText.length > 0 && typeof chatText[0] === 'object' && 'role' in chatText[0]) {
+    const chatHistoryMessages = chatText as Message[];
+    lastMoxusReportContent = [...chatHistoryMessages].reverse().find(message => message.role === "moxus");
+    const lastFiveInteractions = getLastFiveInteractions(chatHistoryMessages);
     formattedChatHistory = lastFiveInteractions.reduce((acc: string, message: Message) => {
       return acc + `${message.role}: ${message.content}\n`;
     }, "");
   } else {
-    // If it's already a string, use it directly
     formattedChatHistory = chatText as string;
   }
 
-  const nodeEditionPrompt = `
-  ${isUserInteraction ? '/no_think' : '/think'}
-  # TASK:
-  Based on the following game state, narrative, and possible actions, update the game graph.
-  Consider node content and possible actions for a coherent game state update.
-
-  ## Node Properties:
-  - id: Unique id string
-  - name: title
-  - longDescription: (Mandatory) Detailed description, write everything that is visible or that the player should know.
-  - rules: (Mandatory) Internal info for AI that player shouldn't see. Store rich, reusable information in a structured format:
-    * Use semicolons to separate different aspects
-    * Character and World: traits, motivations, relationships, physical characteristics, cultural context
-    * Environment and Atmosphere: details, mood, potential interactions and consequences
-    * Story Elements: plot hooks, foreshadowing, unresolved mysteries, thematic elements
-    * Game Mechanics: hidden triggers, past events impact, future developments
-    * Story Generation: hints for future narrative development, character arcs, world-building opportunities
-  - type: Category/type (e.g., 'item', 'location', 'character', 'event', ...). The special type "Game Rule" should be used for rules that should be enforced by the Game Engine. We encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
-  - updateImage: (Optional) Set to true if the node represents a physical object, character, or location that should have a visual representation. This is particularly important for:
-    * New nodes that represent physical entities (characters, items, locations)
-    * Existing nodes whose visual appearance has changed significantly
-    * Nodes that need their first image generated
-    * Nodes that need an image update due to significant changes in their description or rules
-    DO NOT set updateImage to true for abstract concepts, game rules, or system nodes that don't need visual representation.
-
-  ## Current Game State, sorted by relevance:
-  ${nodesDescription}
-
-  ## Recent Chat History (Last 5 Interactions):
-  ${formattedChatHistory}
-  
-  ${lastMoxusReport ? `
+  const lastMoxusReportSection = lastMoxusReportContent ? `
   ## Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
   Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
   the story and provides VITAL guidance to maintain consistency and quality in the game world.
   ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
-  ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
-  ` : ''}
+  ${(lastMoxusReportContent as Message).content.replace('**Moxus Report:**', '').trim()}
+  ` : '';
+  
+  const thinkMode = isUserInteraction ? '/no_think' : '/think';
 
-  ## Possible Actions:
-  ${actions.join('\n')}
-
-  ## User Input:
-  ${userInput}
-
-  Return a JSON object with the following structure:
-  {
-    "merge": [
-      {
-        "id": "node-id (specify a new one if you want to create a new node)",
-        "name": "updated name",
-        "longDescription": "updated description",
-        "rules": "updated rules",
-        "type": "updated type",
-        "updateImage": true/false
-      }
-    ],
-    "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
-  }
-
-  Update up to 3 nodes maximum, and you can create up to one new node.
-  `;
+  const nodeEditionPrompt = formatPrompt(loadedPrompts.node_operations.generate_node_edition, {
+    think_mode: thinkMode,
+    nodes_description: nodesDescription,
+    formatted_chat_history: formattedChatHistory,
+    last_moxus_report_section: lastMoxusReportSection,
+    actions_list: actions.join('\n'),
+    user_input: userInput
+  });
 
   const messages: Message[] = [
     { role: 'system', content: nodeEditionPrompt },
@@ -688,30 +385,9 @@ export const generateNodeEdition = async(chatText: string, actions: string[], no
   return JSON.parse(response);
 };
 
-export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
-  // First generate chat text
-  const chatText = await generateChatText(userInput, chatHistory, nodes, detailledNodeIds);
-  
-  // Run processes in parallel
-  const [actions, nodeEdition] = await Promise.all([
-    generateActions(chatText, nodes, userInput),
-    generateNodeEdition(chatText, [], nodes, userInput, true)
-  ]);
-  
-  // Return the results
-  return {
-    chatText,
-    actions,
-    nodeEdition,
-    // Image generation will be handled separately for new nodes only
-  };
-}
-
 export const generateNodesFromPrompt = async (prompt: string, nodes: Node[], moxusMemoryInput?: { general?: string; chatText?: string; nodeEdition?: string; }, moxusPersonality?: string) => {
   const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "system") {
-      return acc;
-    }
+    if (node.type === "system") return acc;
     return acc + `
     id: ${node.id}
     name: ${node.name}
@@ -724,65 +400,19 @@ export const generateNodesFromPrompt = async (prompt: string, nodes: Node[], mox
   let moxusContextString = "";
   if (moxusPersonality || moxusMemoryInput) {
     moxusContextString = "\n\n# MOXUS CONTEXT";
-    if (moxusPersonality) {
-      moxusContextString += `\n\n## Moxus Personality:\n${moxusPersonality}`;
-    }
+    if (moxusPersonality) moxusContextString += `\n\n## Moxus Personality:\n${moxusPersonality}`;
     if (moxusMemoryInput) {
-      if (moxusMemoryInput.general) {
-        moxusContextString += `\n\n## Moxus General Memory:\n${moxusMemoryInput.general}`;
-      }
-      if (moxusMemoryInput.chatText) {
-        moxusContextString += `\n\n## Moxus Chat Text Analysis:\n${moxusMemoryInput.chatText}`;
-      }
-      if (moxusMemoryInput.nodeEdition) {
-        moxusContextString += `\n\n## Moxus Node Editions Analysis:\n${moxusMemoryInput.nodeEdition}`;
-      }
+      if (moxusMemoryInput.general) moxusContextString += `\n\n## Moxus General Memory:\n${moxusMemoryInput.general}`;
+      if (moxusMemoryInput.chatText) moxusContextString += `\n\n## Moxus Chat Text Analysis:\n${moxusMemoryInput.chatText}`;
+      if (moxusMemoryInput.nodeEdition) moxusContextString += `\n\n## Moxus Node Editions Analysis:\n${moxusMemoryInput.nodeEdition}`;
     }
   }
 
-  const promptMessage = `
-  You are a Game Engine. The user asked to update how the game work or to change some aspect of the world.
-  Your task is to update the game nodes based on the following prompt, for a Game Engine:
-  ---
-  ${prompt}
-  ---
-${moxusContextString}
-
-  Here are the existing nodes:
-  ---
-  ${nodesDescription}
-
-  IMPORTANT: When updating nodes, you must follow these critical rules:
-  1. NEVER reference or assume knowledge of the previous state of a node. Each node update is a complete replacement.
-  2. You must explicitly include ALL content you want to preserve in the updated node. Any content not included will be lost.
-  3. Each node update should be self-contained and complete, with no dependencies on previous states.
-  4. If you want to keep any information from the previous state, you must explicitly copy it into the new node.
-  5. The updateImage field MUST be included for each node and set to true if there are significant visual changes that should trigger a new image generation (but game systems or lore nodes shouldn't have an image).
-  6. If there are instructions about "merging multiple nodes together", choose one of the existing node to update, and delete the others.
-  7. A node is worthy to exist only if it contains at least a full paragraph, otherwise another node should cover its content. For example for room containing lot of object, the objects should be stored in the "room" node if they aren't too detailled each. Or use a "hand of cards" node for a deck related node-graph instead of each card separately.
-  8. Maintain one or few nodes for the global game systems, trying not to disseminate game rules into too many nodes. If multiple node, each should focus on a concept, but at least one node should summarize all the game systems and serve as a high-level reference.
-  9. Do not update the image_generation type nodes unless explicitely mentionned.
-  10. All node should represent a game system, a lore entry, character, or an object. These should NOT be used to describe events or time-limited things. If a specific event need to be remembered, store it in a "memory" game system node.
-  11. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
-
-  Each node should be described in a JSON format with the following properties:
-  {
-    "id": "unique-id",
-    "name": "node name",
-    "longDescription": "Lengthy description, detailling the node completely. For game Systems, be exhaustive. For content or characters, generate at least a full paragraph.",
-    "rules": "rules, written in a concise, compressed way.",
-    "type": "node type",
-    "updateImage": true/false  // Set to true if the node's visual appearance has changed significantly, false otherwise
-  }
-
-  The generated nodes should NOT count as a game round and make the content progress. You have to create either Game systems or content in the world.
-  Ensure proper JSON syntax and do not include any other text except the JSON array.
-  Return an object in this format:
-  {
-    "merge": [{node1Content...}, {node2Content...}],
-    "delete": ["nodeID1ToDelete","nodeID2ToDelete", ...]
-  }
-  `;
+  const promptMessage = formatPrompt(loadedPrompts.node_operations.generate_nodes_from_prompt, {
+    user_prompt: prompt,
+    moxus_context_string: moxusContextString,
+    nodes_description: nodesDescription
+  });
 
   const messages: Message[] = [
     { role: 'system', content: promptMessage },
@@ -800,7 +430,6 @@ export const extractDataFromTwine = async (
 ) => {
   console.log('LLM Call: Extracting data from Twine content');
   
-  // Split content into chunks and perform parallel data extraction
   const totalLength = content.length;
   const chunkSize = Math.ceil(totalLength / extractionCount);
   const chunks: string[] = [];
@@ -812,9 +441,10 @@ export const extractDataFromTwine = async (
   }
 
   const processChunk = async (chunk: string, index: number, retryCount: number = 0): Promise<ExtractedElement[]> => {
-    const extractionPrompt = TWINE_DATA_EXTRACTION_PROMPT
-      .replace('[Additional Instructions will be inserted here]', dataExtractionInstructions || '')
-      .replace('[Content will be inserted here]', chunk);
+    const extractionPrompt = formatPrompt(loadedPrompts.twine_import.data_extraction, {
+      additional_instructions: dataExtractionInstructions || '',
+      twine_content: chunk
+    });
 
     const extractionMessages: Message[] = [
       { role: 'system', content: extractionPrompt },
@@ -891,14 +521,15 @@ export const generateNodesFromExtractedData = async (
     `;
   }, "");
 
-  const generationPromptTemplate = mode === 'new_game' ? 
-    TWINE_NODE_GENERATION_PROMPT_NEW_GAME : 
-    TWINE_NODE_GENERATION_PROMPT_MERGE;
+  const promptTemplateKey = mode === 'new_game' ? 
+    loadedPrompts.twine_import.node_generation_new_game : 
+    loadedPrompts.twine_import.node_generation_merge;
 
-  const generationPrompt = generationPromptTemplate
-    .replace('[Additional Instructions will be inserted here]', nodeGenerationInstructions || '')
-    .replace('[Extracted data will be inserted here]', JSON.stringify(extractedData, null, 2))
-    .replace('[Nodes description will be inserted here]', nodesDescription);
+  const generationPrompt = formatPrompt(promptTemplateKey, {
+    additional_instructions: nodeGenerationInstructions || '',
+    extracted_data: JSON.stringify(extractedData, null, 2),
+    nodes_description: nodesDescription
+  });
 
   const generationMessages: Message[] = [
     { role: 'system', content: generationPrompt },
@@ -1024,70 +655,22 @@ export const regenerateSingleNode = async (
     `;
   }, "");
 
-  const focusedPrompt = `
-/think
+  const recentlyGeneratedNodeDetails = recentlyGeneratedNode ? 
+    `id: ${recentlyGeneratedNode.id}\nname: ${recentlyGeneratedNode.name}\nlongDescription: ${recentlyGeneratedNode.longDescription}\nrules: ${recentlyGeneratedNode.rules}\ntype: ${recentlyGeneratedNode.type}`
+    : 'No recently generated node provided';
 
-# Instructions
-You are a Game Engine. An AI generated nodes for a game. However, the user deemed the node didn't follow the guidelines he expected.
-Your task is to generate a new node, following more closely the guildelines provided by the user.
-In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
-
-
-# User's specific instructions (very important to follow)
-${nodeGenerationInstructions || ''}
-
-# Original Node (from the game)
----
-id: ${existingNode.id}
-name: ${existingNode.name}
-longDescription: ${existingNode.longDescription}
-rules: ${existingNode.rules}
-type: ${existingNode.type}
----
-
-# Recently Generated Node (that needs improvement)
----
-${recentlyGeneratedNode ? `
-id: ${recentlyGeneratedNode.id}
-name: ${recentlyGeneratedNode.name}
-longDescription: ${recentlyGeneratedNode.longDescription}
-rules: ${recentlyGeneratedNode.rules}
-type: ${recentlyGeneratedNode.type}
-` : 'No recently generated node provided'}
----
-
-# Extracted Story Data
----
-${JSON.stringify(extractedData, null, 2)}
----
-
-# Existing Nodes (for context)
----
-${nodesDescription}
----
-
-# Return format
-
-Return a JSON object with the following structure:
-{
-  "new": [
-    {
-      "id": "${nodeId}",
-      "name": "node name",
-      "longDescription": "detailed description",
-      "rules": "rules and internal info",
-      "type": "node type",
-      "updateImage": true/false
-    }
-  ],
-  "update": [
-    {
-      "id": "${nodeId}",
-      "longDescription": "updated description",
-      "rules": "updated rules",
-      "updateImage": true/false
-    }
-  ]}`;
+  const focusedPrompt = formatPrompt(loadedPrompts.twine_import.regenerate_single_node, {
+    node_generation_instructions: nodeGenerationInstructions || '',
+    existing_node_id: existingNode.id || '',
+    existing_node_name: existingNode.name || '',
+    existing_node_long_description: existingNode.longDescription || '',
+    existing_node_rules: existingNode.rules || '',
+    existing_node_type: existingNode.type || '',
+    recently_generated_node_details: recentlyGeneratedNodeDetails,
+    extracted_data: JSON.stringify(extractedData, null, 2),
+    nodes_description: nodesDescription,
+    node_id_to_regenerate: nodeId
+  });
 
   const messages: Message[] = [
     { role: 'system', content: focusedPrompt },
@@ -1164,29 +747,17 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
   const maxRetries = 3;
   const retryDelay = 1000; // 1 second
 
-  // Generate a unique ID for this LLM call
   const callId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   
-  // Add Moxus feedback if available and not skipped
   if (!options?.skipMoxusFeedback && !stream) {
+    const moxusFeedbackContent = formatPrompt(loadedPrompts.common.moxus_feedback_system_message, {
+      moxus_llm_calls_memory_yaml: moxusService.getLLMCallsMemoryYAML()
+    });
     const feedbackMessage: Message = {
       role: 'system',
-      content: `
-        # Moxus AI Assistant Feedback - CRITICAL GUIDANCE
-        Moxus is an AI assistant that helps identify problems with previous responses and provides CRITICAL feedback.
-        The following is VITAL feedback on previous similar requests. You MUST pay close attention to it. User notes and feedback within this section are ESPECIALLY important.
-
-        ---start of feedback---
-        ${moxusService.getLLMCallsMemoryYAML()}
-        ---end of feedback---
-
-        You MUST use this critical feedback to avoid making the same mistakes in your response.
-        ABSOLUTELY prioritize any user notes in the feedback, as they often contain important suggestions and corrections that MUST be followed.
-        Failure to adhere to Moxus feedback will result in suboptimal outcomes.
-        `
+      content: moxusFeedbackContent
     };
     
-    // Insert Moxus feedback as the second message (after the first system message if it exists)
     if (messages.length > 0 && messages[0].role === 'system') {
       messages.splice(1, 0, feedbackMessage);
     } else {
@@ -1383,19 +954,15 @@ const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: Strin
 export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]) => {
   console.log('LLM Call: Sorting nodes by relevance');
   
-  // Get last 5 interactions and find the last Moxus report
   const lastFiveInteractions = getLastFiveInteractions(chatHistory);
-  const lastMoxusReport = [...chatHistory].reverse().find(message => message.role === "moxus");
+  const lastMoxusReportMessage = [...chatHistory].reverse().find(message => message.role === "moxus");
   
-  // Format chat history without Moxus reports
   const stringHistory = lastFiveInteractions.reduce((acc, message) => {
     return acc + `${message.role}: ${message.content}\n`;
   }, "");
 
   const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "image_generation") {
-      return acc;
-    }
+    if (node.type === "image_generation") return acc;
     return acc + `
       id: ${node.id}
       name: ${node.name}
@@ -1405,37 +972,20 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
       `;
   }, "");
 
-  const prompt = `
-  # TASK:
-  You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.
-  Consider both the content of the nodes and the context of the conversation.
-
-  ## Recent Chat History (Last 5 Interactions):
-  ${stringHistory}
-  
-  ${lastMoxusReport ? `
+  const lastMoxusReportSection = lastMoxusReportMessage ? `
   ## Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
   Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
   the story and provides VITAL guidance to maintain consistency and quality in the game world.
   ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
-  ${lastMoxusReport.content.replace('**Moxus Report:**', '').trim()}
-  ` : ''}
+  ${lastMoxusReportMessage.content.replace('**Moxus Report:**', '').trim()}
+  ` : '';
 
-  ## Nodes to Sort:
-  ${nodesDescription}
-
-  Return a JSON object with a single field "sortedIds" containing an array of node IDs in order of relevance (most relevant first).
-  Each ID entry in the array should be enclosed in quotes.
-
-  Example response:
-  {
-    "sortedIds": ["node1", "node2", "node3"]
-  }
-
-  Your focus is to order the nodes to sort them, from the most related to the chatHistory, to the least. This will be used to have the Story Generation AI focus on the first.
-  For example, the main character and active characters should be first, then the location, then ongoing game systems, ...
-  `;
+  const prompt = formatPrompt(loadedPrompts.node_operations.sort_nodes_by_relevance, {
+    string_history: stringHistory,
+    last_moxus_report_section: lastMoxusReportSection,
+    nodes_description: nodesDescription
+  });
 
   const messages: Message[] = [
     { role: 'system', content: prompt },
@@ -1450,49 +1000,37 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
 export const getMoxusFeedback = async (promptContent: string): Promise<string> => {
   console.log('[LLMService] Moxus request received.');
   
-  // Basic token estimation - roughly 4 characters per token for English text
   const estimatedTokens = Math.ceil(promptContent.length / 4);
   console.log(`[LLMService] Estimated tokens for Moxus request: ~${estimatedTokens}`);
   
-  // Safety check - if estimated tokens are too high, truncate the prompt
-  const MAX_SAFE_TOKENS = 100000; // Set a safe limit below Claude's 163,840 limit
+  const MAX_SAFE_TOKENS = 100000; 
   let processedPrompt = promptContent;
   
   if (estimatedTokens > MAX_SAFE_TOKENS) {
     console.warn(`[LLMService] Moxus prompt exceeds safe token limit (~${estimatedTokens} tokens). Truncating...`);
-    
-    // Find a clean breaking point by looking for section headers
     const sections = promptContent.split(/^#\s+/m);
-    let truncatedPrompt = sections[0]; // Always keep the first section
-    
-    // Add sections until we approach the limit
+    let truncatedPrompt = sections[0];
     let currentLength = truncatedPrompt.length;
     let i = 1;
-    
     while (i < sections.length && (currentLength + sections[i].length) / 4 < MAX_SAFE_TOKENS) {
-      truncatedPrompt += `# ${sections[i]}`; // Re-add the header marker
-      currentLength += sections[i].length + 2; // +2 for "# "
+      truncatedPrompt += `# ${sections[i]}`;
+      currentLength += sections[i].length + 2;
       i++;
     }
-    
-    // If we couldn't find enough section breaks, do a hard truncation as last resort
     if (truncatedPrompt.length / 4 > MAX_SAFE_TOKENS || truncatedPrompt === sections[0]) {
       truncatedPrompt = promptContent.substring(0, MAX_SAFE_TOKENS * 4);
       truncatedPrompt += "\n\n[CONTENT TRUNCATED DUE TO LENGTH CONSTRAINTS]\n\n";
     }
-    
     processedPrompt = truncatedPrompt;
     console.log(`[LLMService] Truncated Moxus prompt to ~${Math.ceil(processedPrompt.length / 4)} tokens`);
   }
   
   const messages: Message[] = [
-    { role: 'system', content: processedPrompt },
-    // Add a user message to ensure a response even with truncated context
-    { role: 'user', content: 'Please provide your feedback based on the available information, with special attention to any user notes in the chat history. User notes often contain important feedback and suggestions that should be prioritized in your analysis.' }
+    { role: 'system', content: processedPrompt }, // This is the main content from the caller
+    { role: 'user', content: loadedPrompts.common.moxus_get_feedback_user_message } // Use the prompt from YAML
   ];
 
   try {
-    // Using the existing getResponse function but skipping Moxus feedback to avoid loops
     const response = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true });
     console.log('[LLMService] Moxus feedback generated.');
     return response;

@@ -42,10 +42,21 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
   const updateStreamingMessage = useCallback((content: string) => {
     setChatHistoryState((prevChatHistory) => {
-      const lastMessage = prevChatHistory[prevChatHistory.length - 1];
-      if (lastMessage && lastMessage.isStreaming) {
-        const updatedMessage = { ...lastMessage, content: lastMessage.content + content };
-        const updatedChatHistory = [...prevChatHistory.slice(0, -1), updatedMessage];
+      // Find the streaming message by iterating backwards
+      let streamingMessageIndex = -1;
+      for (let i = prevChatHistory.length - 1; i >= 0; i--) {
+        if (prevChatHistory[i].isStreaming) {
+          streamingMessageIndex = i;
+          break;
+        }
+      }
+
+      if (streamingMessageIndex !== -1) {
+        const streamingMessage = prevChatHistory[streamingMessageIndex];
+        const updatedMessage = { ...streamingMessage, content: streamingMessage.content + content };
+        const updatedChatHistory = [...prevChatHistory];
+        updatedChatHistory[streamingMessageIndex] = updatedMessage;
+        
         localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
         return updatedChatHistory;
       }
@@ -55,10 +66,21 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
   const endStreaming = useCallback(() => {
     setChatHistoryState((prevChatHistory) => {
-      const lastMessage = prevChatHistory[prevChatHistory.length - 1];
-      if (lastMessage && lastMessage.isStreaming) {
-        const updatedMessage = { ...lastMessage, isStreaming: false };
-        const updatedChatHistory = [...prevChatHistory.slice(0, -1), updatedMessage];
+      // Find the streaming message by iterating backwards
+      let streamingMessageIndex = -1;
+      for (let i = prevChatHistory.length - 1; i >= 0; i--) {
+        if (prevChatHistory[i].isStreaming) {
+          streamingMessageIndex = i;
+          break;
+        }
+      }
+
+      if (streamingMessageIndex !== -1) {
+        const streamingMessage = prevChatHistory[streamingMessageIndex];
+        const updatedMessage = { ...streamingMessage, isStreaming: false };
+        const updatedChatHistory = [...prevChatHistory];
+        updatedChatHistory[streamingMessageIndex] = updatedMessage;
+
         localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
         return updatedChatHistory;
       }

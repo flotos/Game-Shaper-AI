@@ -142,11 +142,12 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         // Explicitly pass false for isFromUserInteraction to prevent sorting
         await updateGraph(finalChanges, undefined, undefined, false); 
         
+        closeOverlay();
+        // Add Moxus task after closing the overlay
         moxusService.addTask('assistantFeedback', {
           query: preview.prompt,
           result: finalChanges
         });
-        closeOverlay();
       } catch (error) {
         console.error("Error updating graph or adding Moxus task:", error);
         setError('Failed to apply changes. Please try again.');
