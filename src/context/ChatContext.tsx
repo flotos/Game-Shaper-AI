@@ -94,10 +94,12 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
   }, []);
 
   const clearChatHistory = useCallback(() => {
-    moxusService.recordLLMCall(
+    // Use the new function to record this system event for Moxus processing & UI logging
+    moxusService.recordInternalSystemEvent(
       `chatReset-${Date.now()}`,
       "System Event: User initiated chat reset.",
-      "Chat history has been cleared." 
+      "Chat history has been cleared.",
+      "chat_reset_event" // Specific eventType
     );
 
     localStorage.removeItem('chatHistory');
@@ -109,12 +111,13 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
       if (index >= 0 && index < prevChatHistory.length) {
         const originalMessage = prevChatHistory[index];
 
-        // Log to Moxus if an assistant's message was edited
         if (originalMessage.role === "assistant") {
-          moxusService.recordLLMCall(
+          // Use the new function to record this system event for Moxus processing & UI logging
+          moxusService.recordInternalSystemEvent(
             `assistantMessageEdit-${Date.now()}-${index}`,
             "System Event: User edited an assistant's message.",
-            `Message at index ${index} (role: assistant) was edited. Original content: '${originalMessage.content}'. New content: '${newContent}'.`
+            `Message at index ${index} (role: assistant) was edited. Original content: '${originalMessage.content}'. New content: '${newContent}'.`,
+            "assistant_message_edit_event" // Specific eventType
           );
         }
 

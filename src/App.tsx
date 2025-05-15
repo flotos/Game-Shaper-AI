@@ -9,6 +9,8 @@ import TwineImportOverlay from './components/TwineImportOverlay';
 import { moxusService } from './services/MoxusService';
 import './services/llm';
 import { ChatProvider } from './context/ChatContext';
+import { LLMLoggerBubble } from './components/LLMLoggerBubble';
+import { LLMLoggerPanel } from './components/LLMLoggerPanel';
 
 const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [memoryYaml, setMemoryYaml] = useState<string>("");
@@ -124,6 +126,7 @@ const AppContent: React.FC = () => {
   const [showTwineImport, setShowTwineImport] = useState(false);
   const [showMoxusMemory, setShowMoxusMemory] = useState(false);
   const [pendingMoxusTasks, setPendingMoxusTasks] = useState(0);
+  const [isLLMLoggerOpen, setIsLLMLoggerOpen] = useState(false);
 
   useEffect(() => {
     moxusService.initialize(() => nodes, addMessage);
@@ -203,6 +206,10 @@ const AppContent: React.FC = () => {
       }
     };
     reader.readAsText(file);
+  };
+
+  const toggleLLMLoggerPanel = () => {
+    setIsLLMLoggerOpen(prev => !prev);
   };
 
   return (
@@ -311,6 +318,10 @@ const AppContent: React.FC = () => {
           onClose={() => setShowMoxusMemory(false)}
         />
       )}
+
+      {/* LLM Logger UI */}
+      <LLMLoggerBubble isOpen={isLLMLoggerOpen} togglePanel={toggleLLMLoggerPanel} />
+      <LLMLoggerPanel isOpen={isLLMLoggerOpen} togglePanel={toggleLLMLoggerPanel} />
     </div>
   );
 };

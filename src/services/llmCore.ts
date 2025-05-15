@@ -133,14 +133,25 @@ export const getChatHistoryForMoxus = (chatHistory: Message[], numAssistantTurns
   );
 };
 
-export const getResponse = async (messages: Message[], model = 'gpt-4o', grammar: String | undefined = undefined, stream = false, responseFormat?: { type: string }, options?: { skipMoxusFeedback?: boolean }) => {
+export const getResponse = async (
+  messages: Message[], 
+  model = 'gpt-4o', 
+  grammar: String | undefined = undefined, 
+  stream = false, 
+  responseFormat?: { type: string }, 
+  options?: { skipMoxusFeedback?: boolean },
+  callType: string = 'unknown'
+) => {
   const apiType = import.meta.env.VITE_LLM_API;
   const includeReasoning = import.meta.env.VITE_LLM_INCLUDE_REASONING !== 'false';
   const maxRetries = 3;
   const retryDelay = 1000;
 
   const callId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  
+  const originalPromptString = JSON.stringify(messages);
+
+  moxusService.initiateLLMCallRecord(callId, callType, model, originalPromptString, stream && false);
+
   if (!options?.skipMoxusFeedback && !stream) {
     const moxusFeedbackContent = formatPrompt(loadedPrompts.common.moxus_feedback_system_message, {
       moxus_llm_calls_memory_yaml: moxusService.getLLMCallsMemoryYAML()
@@ -163,8 +174,6 @@ export const getResponse = async (messages: Message[], model = 'gpt-4o', grammar
       messages.push({ role: 'user', content: 'Please process the system instructions.' });
     }
   }
-
-  const originalPrompt = JSON.stringify(messages);
 
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -305,13 +314,20 @@ export const getResponse = async (messages: Message[], model = 'gpt-4o', grammar
         throw new Error('No valid response received from LLM API');
       }
 
-      if (!stream && !options?.skipMoxusFeedback) {
-        moxusService.recordLLMCall(callId, originalPrompt, llmResult);
+      if (!stream) {
+        moxusService.finalizeLLMCallRecord(callId, llmResult as string);
+      } else {
+        // For streaming responses, the call remains 'running'. 
+        // The consumer of the stream will be responsible for calling finalizeLLMCallRecord or failLLMCallRecord.
+        // console.log(`[llmCore] Streaming call ${callId} initiated. Consumer must finalize.`);
       }
       return llmResult;
     } catch (error) {
       lastError = error;
       console.warn(`Attempt ${attempt} failed:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      moxusService.failLLMCallRecord(callId, errorMessage);
+
       if (error instanceof TypeError && error.message.includes('NetworkError')) {
         if (attempt < maxRetries) {
           await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -321,7 +337,7 @@ export const getResponse = async (messages: Message[], model = 'gpt-4o', grammar
       throw error;
     }
   }
-  throw lastError; // Should be unreachable if loop always throws or returns
+  throw lastError;
 };
 
 export const getMoxusFeedback = async (promptContent: string): Promise<string> => {
@@ -357,7 +373,7 @@ export const getMoxusFeedback = async (promptContent: string): Promise<string> =
   ];
 
   try {
-    const response = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true });
+    const response = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true }, 'moxus_feedback_generation');
     console.log('[LLMCore] Moxus feedback generated.');
     return response;
   } catch (error) {

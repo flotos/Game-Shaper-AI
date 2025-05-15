@@ -31,12 +31,20 @@ interface MoxusTask {
   timestamp: Date;
 }
 
-// LLM Call interface structure
-interface LLMCall {
-  prompt: string;
-  response: string;
-  timestamp: Date;
+// LLM Call interface structure (Restored full version)
+export interface LLMCall {
+  id: string; 
+  prompt: string; 
+  response?: string; 
+  timestamp: Date; 
   feedback?: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  startTime: Date;
+  endTime?: Date;
+  callType: string; 
+  modelUsed: string; 
+  error?: string; 
+  duration?: number; 
 }
 
 // LLM Calls memory structure
@@ -93,6 +101,26 @@ let activeStoryFeedback: Promise<void> | null = null;
 let activeNodeUpdateFeedback: Promise<void> | null = null;
 let processingTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+// --- Listener Pattern for UI Updates (Restored) ---
+type LLMLogListener = (logEntries: LLMCall[]) => void;
+const llmLogListeners: LLMLogListener[] = [];
+
+const subscribeToLLMLogUpdates = (listener: LLMLogListener) => {
+  llmLogListeners.push(listener);
+  return () => {
+    const index = llmLogListeners.indexOf(listener);
+    if (index > -1) {
+      llmLogListeners.splice(index, 1);
+    }
+  };
+};
+
+const emitLLMLogUpdate = () => {
+  const entries = getLLMLogEntries();
+  llmLogListeners.forEach(listener => listener(entries));
+};
+// --- End Listener Pattern ---
+
 // Function to sanitize nodes for Moxus feedback - removes any base64 image data
 const sanitizeNodesForMoxus = (nodes: Node[]): any[] => {
   if (!nodes || !Array.isArray(nodes)) return [];
@@ -138,7 +166,32 @@ const loadMemory = () => {
         }
       };
       
-      console.log('[MoxusService] Loaded structured memory from localStorage.');
+      // (Restored) Ensure all loaded LLMCall objects have the 'id' field and other defaults
+      if (moxusStructuredMemory.featureSpecificMemory.llmCalls) {
+        const migratedCalls: LLMCallsMemoryMap = {};
+        for (const key in moxusStructuredMemory.featureSpecificMemory.llmCalls) {
+          if (Object.prototype.hasOwnProperty.call(moxusStructuredMemory.featureSpecificMemory.llmCalls, key)) {
+            const call = moxusStructuredMemory.featureSpecificMemory.llmCalls[key] as any; // Cast to any for migration
+            migratedCalls[key] = {
+              id: key,  
+              prompt: call.prompt || "[prompt unavailable]",
+              response: call.response,
+              timestamp: call.timestamp ? new Date(call.timestamp) : new Date(0), 
+              feedback: call.feedback,
+              status: call.status || 'completed', 
+              startTime: call.startTime ? new Date(call.startTime) : (call.timestamp ? new Date(call.timestamp) : new Date(0)),
+              endTime: call.endTime ? new Date(call.endTime) : (call.status === 'completed' || call.status === 'failed' ? new Date(call.timestamp || 0) : undefined),
+              callType: call.callType || 'unknown_migrated',
+              modelUsed: call.modelUsed || 'unknown_migrated',
+              error: call.error,
+              duration: call.duration
+            };
+          }
+        }
+        moxusStructuredMemory.featureSpecificMemory.llmCalls = migratedCalls;
+      }
+      
+      console.log('[MoxusService] Loaded structured memory from localStorage and ensured LLM call structure.');
     }
   } catch (error) {
     console.error('[MoxusService] Error loading memory from localStorage:', error);
@@ -155,64 +208,145 @@ const saveMemory = () => {
 };
 
 // --- LLM Call Memory Management ---
-export const recordLLMCall = (id: string, prompt: string, response: string) => {
-  const truncatedPrompt = prompt.length > 5000 ? prompt.substring(0, 5000) + "... [truncated]" : prompt;
-  const truncatedResponse = response.length > 5000 ? response.substring(0, 5000) + "... [truncated]" : response;
-  
-  // Create the call object
-  const call: LLMCall = {
+export const initiateLLMCallRecord = (
+  id: string,
+  callType: string,
+  modelUsed: string,
+  promptContent: string,
+) => {
+  const startTime = new Date();
+  const truncatedPrompt = promptContent.length > 5000 ? promptContent.substring(0, 5000) + "... [truncated]" : promptContent;
+  const newCall: LLMCall = {
+    id,
     prompt: truncatedPrompt,
-    response: truncatedResponse,
-    timestamp: new Date()
+    timestamp: startTime, 
+    status: 'running',
+    startTime,
+    callType,
+    modelUsed,
   };
-  
-  // Store in the structured memory
-  moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = call;
-  
-  // Check for chat text generation prompts (match patterns seen in the LLMService)
-  if (prompt.includes('Generate a detailed chapter') || 
-      prompt.includes('Generate appropriate dialogue') || 
-      id.startsWith('chatText-') || 
-      prompt.includes('# TASK:\nYou are the Game Engine of a Node-base game')) {
-    console.log(`[MoxusService] Adding chatText feedback task for: ${id}`);
-    // Add to special task queue for chat text feedback
-    addTask('chatTextFeedback', {
-      id: id,
-      prompt: truncatedPrompt,
-      response: truncatedResponse
-    });
+  moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = newCall;
+  saveMemory();
+  emitLLMLogUpdate();
+  console.log(`[MoxusService] Initiated LLM call: ${id} (${callType}, ${modelUsed}, status: ${newCall.status})`);
+};
+
+export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
+  const call = moxusStructuredMemory.featureSpecificMemory.llmCalls[id];
+  if (!call || call.status !== 'running') {
+    console.warn(`[MoxusService] finalizeLLMCallRecord: Call with ID ${id} not found or not in 'running' state.`);
+    return;
   }
-  // Add llmCallFeedback task for all other types of calls
-  else {
-    addTask('llmCallFeedback', {
-      id: id,
-      prompt: truncatedPrompt,
-      response: truncatedResponse
-    });
-  }
-  
-  // Clean up old LLM calls to prevent memory growth
+  const endTime = new Date();
+  const truncatedResponse = responseContent.length > 5000 ? responseContent.substring(0, 5000) + "... [truncated]" : responseContent;
+  call.response = truncatedResponse;
+  call.status = 'completed';
+  call.endTime = endTime;
+  call.timestamp = endTime; 
+  call.duration = endTime.getTime() - call.startTime.getTime();
+  // Cleanup old calls (Restored logic)
   const llmCalls = moxusStructuredMemory.featureSpecificMemory.llmCalls;
   const callIds = Object.keys(llmCalls);
-  
-  // Keep only the 50 most recent calls
   if (callIds.length > 50) {
-    const sortedIds = callIds.sort((a, b) => {
-      const timeA = new Date(llmCalls[a].timestamp).getTime();
-      const timeB = new Date(llmCalls[b].timestamp).getTime();
-      return timeB - timeA; // Sort descending (newest first)
+    const sortedCalls = Object.values(llmCalls).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    const callsToDelete = sortedCalls.slice(50);
+    callsToDelete.forEach(oldCall => {
+      delete llmCalls[oldCall.id];
     });
-    
-    // Delete older calls beyond the 50 most recent
-    for (let i = 50; i < sortedIds.length; i++) {
-      delete llmCalls[sortedIds[i]];
-    }
-    
-    console.log(`[MoxusService] Cleaned up ${sortedIds.length - 50} old LLM calls`);
+    console.log(`[MoxusService] Cleaned up ${callsToDelete.length} old LLM calls.`);
   }
-  
   saveMemory();
-  console.log(`[MoxusService] Recorded LLM call: ${id}`);
+  emitLLMLogUpdate();
+  console.log(`[MoxusService] Finalized LLM call: ${id} (type: ${call.callType}, status: completed, duration: ${call.duration}ms)`);
+  
+  // Prevent feedback loop: Do not generate feedback tasks for Moxus's own feedback generation calls.
+  if (call.callType !== 'moxus_feedback_generation') {
+    addFeedbackTasksForCall(call);
+  } else {
+    console.log(`[MoxusService] Skipping feedback task generation for internal call type: ${call.callType}`);
+  }
+};
+
+const addFeedbackTasksForCall = (call: LLMCall) => {
+  if (!call.response) {
+    console.warn(`[MoxusService] No response content for call ${call.id}, skipping feedback tasks.`);
+    return;
+  }
+  const promptForTask = call.prompt; 
+  const responseForTask = call.response;
+  const taskType = (promptForTask.includes('Generate a detailed chapter') || 
+                  promptForTask.includes('Generate appropriate dialogue') || 
+                  (call.id && call.id.startsWith('chatText-')) ||
+                  promptForTask.includes('# TASK:\nYou are the Game Engine of a Node-base game')) 
+                  ? 'chatTextFeedback' : 'llmCallFeedback';
+  console.log(`[MoxusService] Adding ${taskType} feedback task for completed call ID: ${call.id}, original callType: ${call.callType}`);
+  addTask(taskType, {
+    id: call.id,
+    prompt: promptForTask,
+    response: responseForTask,
+    callType: call.callType, 
+    modelUsed: call.modelUsed 
+  });
+};
+
+export const failLLMCallRecord = (id: string, errorMessage: string) => {
+  const call = moxusStructuredMemory.featureSpecificMemory.llmCalls[id];
+  if (!call || (call.status !== 'running' && call.status !== 'queued')) { // Allow failing queued calls too
+    console.warn(`[MoxusService] failLLMCallRecord: Call with ID ${id} not found or not in a fail-able state.`);
+    return;
+  }
+  const endTime = new Date();
+  call.status = 'failed';
+  call.endTime = endTime;
+  call.timestamp = endTime; 
+  call.error = errorMessage.length > 1000 ? errorMessage.substring(0, 1000) + "..." : errorMessage;
+  call.duration = call.startTime ? endTime.getTime() - call.startTime.getTime() : undefined;
+  saveMemory();
+  emitLLMLogUpdate();
+  console.log(`[MoxusService] Failed LLM call: ${id} (status: failed, error: ${call.error})`);
+};
+
+export const recordInternalSystemEvent = (
+  eventId: string,
+  eventPrompt: string, 
+  eventResponse: string,
+  eventType: string = 'system_event'
+) => {
+  const now = new Date();
+  const truncatedPrompt = eventPrompt.length > 5000 ? eventPrompt.substring(0, 5000) + "..." : eventPrompt;
+  const truncatedResponse = eventResponse.length > 5000 ? eventResponse.substring(0, 5000) + "..." : eventResponse;
+
+  const eventCall: LLMCall = {
+    id: eventId,
+    prompt: truncatedPrompt,
+    response: truncatedResponse,
+    timestamp: now, // Represents event time
+    status: 'completed', // System events are typically completed immediately
+    startTime: now,
+    endTime: now,
+    callType: eventType,
+    modelUsed: 'N/A', // Not an LLM call
+    duration: 0
+  };
+
+  moxusStructuredMemory.featureSpecificMemory.llmCalls[eventId] = eventCall;
+  // No need to call saveMemory() or emitLLMLogUpdate() if this is not meant for the logger UI directly,
+  // but we DO want Moxus to process it via feedback tasks.
+  // However, if we want it in the log UI, we should emit.
+  // Let's include it in the UI log for now for visibility.
+  saveMemory();
+  emitLLMLogUpdate(); 
+  
+  console.log(`[MoxusService] Recorded internal system event: ${eventId} (${eventType})`);
+  
+  // Directly trigger feedback task creation for this event
+  addFeedbackTasksForCall(eventCall);
+};
+
+// (Restored) To get log entries for the UI
+export const getLLMLogEntries = (): LLMCall[] => {
+  const callsMap = moxusStructuredMemory.featureSpecificMemory.llmCalls;
+  return Object.values(callsMap).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 };
 
 export const getLLMCallFeedback = (id: string): string | undefined => {
@@ -511,139 +645,127 @@ const handleFinalReport = async (task: MoxusTask) => {
 
 // Handle memory updates for different task types
 const handleMemoryUpdate = async (task: MoxusTask) => {
-  // Determine which memory to update based on task type
-  let memoryToUpdate = '';
-  let memoryKey: keyof MoxusMemoryStructure['featureSpecificMemory'] | 'GeneralMemory' = 'GeneralMemory';
-  
+  // Refactored logic for clarity and to prevent unintended GeneralMemory updates
+
   if (task.type === 'llmCallFeedback' || task.type === 'chatTextFeedback') {
-    // Handle specific LLM call feedback storage
     if (task.data && task.data.id) {
       const callId = task.data.id;
+      // Ensure call exists for feedback processing (reconstruction if necessary)
       if (!moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
-        // The call might have been deleted during cleanup, reuse truncated data from task
+        console.warn(`[MoxusService] LLM call ${callId} not found for feedback. Reconstructing.`);
+        const now = new Date();
         moxusStructuredMemory.featureSpecificMemory.llmCalls[callId] = {
-          prompt: task.data.prompt,
-          response: task.data.response,
-          timestamp: new Date()
+          id: callId, prompt: task.data.prompt || "[prompt unavailable]",
+          response: task.data.response || "[response unavailable]", timestamp: now,
+          status: 'completed', startTime: new Date(task.data.timestamp || now), endTime: now,
+          callType: task.data.callType || 'unknown_reconstructed', 
+          modelUsed: task.data.modelUsed || 'unknown_reconstructed',
         };
       }
-      
-      // Get assistant node content for context
-      const assistantNodesContent = getAssistantNodesContent();
-      
-      // Get prompt for LLM feedback
-      const feedbackPrompt = `
-      
-      # Task
-      You have to analyze an LLM call.
 
-      ${assistantNodesContent ? `## Additional features:
-      ---
-      ${assistantNodesContent}
-      ---` : ""}
+      // 1. Generate and store specific feedback for the call
+      const assistantNodesContent = getAssistantNodesContent();
+      const feedbackPrompt = `\n      # Task\n      You have to analyze an LLM call.\n\n      ${assistantNodesContent ? `## Additional features:\n      ---\n      ${assistantNodesContent}\n      ---` : ""}\n      \n      ## PROMPT:\n      ---start of prompt---\n      ${task.data.prompt}\n      ---end of prompt---\n      \n      ## RESPONSE:\n      ---start of response---\n      ${task.data.response}\n      ---end of response---\n      \n      Provide critical feedback focusing ONLY on problems with this response.\n      Focus exclusively on what could be improved, not what went well.\n      Identify specific issues with quality, relevance, coherence, or accuracy.`;
       
-      ## PROMPT:
-      ---start of prompt---
-      ${task.data.prompt}
-      ---end of prompt---
-      
-      ## RESPONSE:
-      ---start of response---
-      ${task.data.response}
-      ---end of response---
-      
-      Provide critical feedback focusing ONLY on problems with this response.
-      Focus exclusively on what could be improved, not what went well.
-      Identify specific issues with quality, relevance, coherence, or accuracy.`;
-      
-      if (!getMoxusFeedbackImpl) {
-        throw new Error('getMoxusFeedback implementation not set.');
-      }
-      
-      const feedback = await getMoxusFeedbackImpl(feedbackPrompt);
-      
+      if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
+      const feedback = await getMoxusFeedbackImpl(feedbackPrompt); // FIRST LLM CALL for this task type
       const truncatedFeedback = feedback.length > 2000 ? feedback.substring(0, 2000) + "... [truncated]" : feedback;
       
-      // Store feedback for this specific LLM call
-      moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = truncatedFeedback;
-      
-      // For chatTextFeedback, also update the chatText memory document
-      if (task.type === 'chatTextFeedback') {
-        memoryKey = 'chatText';
-        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
+      if (moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
+         moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = truncatedFeedback;
+         saveMemory(); // Save after updating feedback
+         emitLLMLogUpdate(); // Update UI after feedback is stored
       }
+
+      // 2. Check if a separate 'updateGeneralMemory' task needs to be scheduled
+      const processedFeedbacks = Object.values(moxusStructuredMemory.featureSpecificMemory.llmCalls).filter(c => c.feedback).length;
+      const FEEDBACK_THRESHOLD_FOR_GENERAL_MEMORY_UPDATE = 5;
+      const systemEventCallTypes = ['chat_reset_event', 'assistant_message_edit_event'];
       
-      // Schedule GeneralMemory update after 5 processed feedback tasks
-      const processedFeedbacks = Object.values(moxusStructuredMemory.featureSpecificMemory.llmCalls)
-        .filter(call => call.feedback).length;
-      
-      if (processedFeedbacks > 0 && processedFeedbacks % 5 === 0) {
-        console.log(`[MoxusService] Scheduling GeneralMemory update after ${processedFeedbacks} processed feedbacks.`);
-        addTask('updateGeneralMemory', { reason: 'periodic_update_after_feedbacks' });
-      }
-    }
-  } else {
-    // For other tasks, determine which memory section to update
-    switch (task.type) {
-      case 'nodeEditFeedback':
-        memoryKey = 'nodeEdit';
-        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdit;
-        break;
-      case 'storyFeedback':
-        memoryKey = 'nodeEdition';
-        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
-        break;
-      case 'nodeUpdateFeedback':
-        memoryKey = 'nodeEdition';
-        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
-        
-        // Sanitize data to prevent token limit issues
-        if (task.data) {
-          // Clean nodes data to remove any base64 images
-          if (task.data.nodes) {
-            task.data.nodes = sanitizeNodesForMoxus(task.data.nodes);
-          }
+      if (!systemEventCallTypes.includes(task.data.callType)) {
+        if (processedFeedbacks > 0 && processedFeedbacks % FEEDBACK_THRESHOLD_FOR_GENERAL_MEMORY_UPDATE === 0) {
+          console.log(`[MoxusService] Scheduling GeneralMemory update. Processed feedbacks: ${processedFeedbacks}. Triggered by feedback for call: ${callId} (type: ${task.data.callType})`);
+          addTask('updateGeneralMemory', { reason: `periodic_update_after_${processedFeedbacks}_feedbacks`, triggeringCallId: callId, triggeringCallType: task.data.callType });
         }
-        break;
-      case 'assistantFeedback':
-        memoryKey = 'assistantFeedback';
-        memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.assistantFeedback;
-        break;
-      case 'updateGeneralMemory':
-        await updateGeneralMemoryFromAllSources();
-        return; // Skip the regular memory update process
-      default:
-        memoryKey = 'GeneralMemory';
-        memoryToUpdate = moxusStructuredMemory.GeneralMemory;
+      } else {
+        console.log(`[MoxusService] Feedback for system event ${task.data.callType} (ID: ${callId}) will not trigger periodic GeneralMemory update.`);
+      }
+
+      // 3. If this task was specifically 'chatTextFeedback', it also updates the 'chatText' memory document.
+      if (task.type === 'chatTextFeedback') {
+        console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating chatText memory document.`);
+        const chatTextMemoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
+        const chatTextUpdatePrompt = getMemoryUpdatePrompt(task, chatTextMemoryToUpdate); // task here is chatTextFeedback task
+        const updatedChatTextMemory = await getMoxusFeedbackImpl(chatTextUpdatePrompt); // SECOND LLM CALL, but only for chatTextFeedback tasks
+        moxusStructuredMemory.featureSpecificMemory.chatText = updatedChatTextMemory;
+        console.log(`[MoxusService] Updated chatText memory document via task ${task.id}.`);
+        saveMemory();
+      }
     }
+    // This type of task (llmCallFeedback or chatTextFeedback) is now considered fully handled.
+    return;
+  } 
+  
+  // Handle other task types not covered above
+  let memoryToUpdate = '';
+  let memoryKey: keyof MoxusMemoryStructure['featureSpecificMemory'] | 'GeneralMemory' = 'GeneralMemory';
+
+  switch (task.type) {
+    case 'nodeEditFeedback':
+      memoryKey = 'nodeEdit';
+      memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdit;
+      break;
+    case 'storyFeedback':
+      memoryKey = 'nodeEdition'; // Assuming this is the target memory for storyFeedback
+      memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
+      break;
+    case 'nodeUpdateFeedback':
+      memoryKey = 'nodeEdition'; // Assuming this is the target memory for nodeUpdateFeedback
+      memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
+      if (task.data && task.data.nodes) {
+        task.data.nodes = sanitizeNodesForMoxus(task.data.nodes);
+      }
+      break;
+    case 'assistantFeedback':
+      memoryKey = 'assistantFeedback';
+      memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.assistantFeedback;
+      break;
+    case 'updateGeneralMemory': // This is the dedicated task for updating GeneralMemory
+      console.log(`[MoxusService] Task ${task.id} (${task.type}) is calling updateGeneralMemoryFromAllSources.`);
+      await updateGeneralMemoryFromAllSources(); // This makes its own LLM call to update GeneralMemory
+      return; // Task is complete
+    default:
+      // For any other unhandled task types, default to updating GeneralMemory
+      // This might be noisy if there are unexpected task types. Consider logging a warning.
+      console.warn(`[MoxusService] Task ${task.id} of unhandled type '${task.type}' falling through to update GeneralMemory.`);
+      memoryKey = 'GeneralMemory';
+      memoryToUpdate = moxusStructuredMemory.GeneralMemory;
   }
   
-  // Only proceed with memory document update if we have a valid memory key to update
-  if (memoryToUpdate !== undefined) {
-    // Get memory update prompt
-    const updatePrompt = getMemoryUpdatePrompt(task, memoryToUpdate);
+  // This block is now for tasks handled by the switch statement above (that didn't return)
+  // e.g., nodeEditFeedback, storyFeedback, assistantFeedback, or the default GeneralMemory update for unhandled types.
+  if (memoryToUpdate !== undefined && memoryToUpdate !== '') { 
+    console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating ${memoryKey} memory document.`);
+    const updatePrompt = getMemoryUpdatePrompt(task, memoryToUpdate); 
+    if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set for general update path.');
+    const updatedMemory = await getMoxusFeedbackImpl(updatePrompt); // LLM CALL for these specific tasks
     
-    if (!getMoxusFeedbackImpl) {
-      throw new Error('getMoxusFeedback implementation not set.');
-    }
-    
-    const updatedMemory = await getMoxusFeedbackImpl(updatePrompt);
-    
-    // Update the appropriate memory section
     if (memoryKey === 'GeneralMemory') {
       moxusStructuredMemory.GeneralMemory = updatedMemory;
-    } else {
-      moxusStructuredMemory.featureSpecificMemory[memoryKey] = updatedMemory;
+    } else if (memoryKey && moxusStructuredMemory.featureSpecificMemory[memoryKey as keyof typeof moxusStructuredMemory.featureSpecificMemory]) {
+      (moxusStructuredMemory.featureSpecificMemory as any)[memoryKey] = updatedMemory;
     }
-    
-    console.log(`[MoxusService] Updated ${memoryKey} memory document.`);
+    console.log(`[MoxusService] Updated ${memoryKey} memory document via task ${task.id}.`);
     saveMemory();
+  } else {
+    console.log(`[MoxusService] Task ${task.id} (${task.type}) did not result in a memory update via the final block (memoryToUpdate was empty or undefined).`);
   }
 };
 
 // New function to update GeneralMemory from all memory sources
 const updateGeneralMemoryFromAllSources = async () => {
-  console.log('[MoxusService] Updating GeneralMemory from all available memory sources...');
+  // Enhanced logging for when this function is called
+  console.log('[MoxusService] Attempting to update GeneralMemory from all available memory sources...');
   
   // Get assistant node content for context
   const assistantNodesContent = getAssistantNodesContent();
@@ -811,11 +933,24 @@ const formatMoxusReport = (text: string): string => {
   return text;
 };
 
+export const clearLLMLogEntries = (): void => {
+  moxusStructuredMemory.featureSpecificMemory.llmCalls = {};
+  saveMemory();
+  emitLLMLogUpdate();
+  console.log('[MoxusService] LLM log entries cleared.');
+};
+
 // Export the service functions
 export const moxusService = {
   initialize,
   addTask,
-  recordLLMCall,
+  initiateLLMCallRecord,
+  finalizeLLMCallRecord,
+  failLLMCallRecord,
+  recordInternalSystemEvent,
+  getLLMLogEntries,
+  subscribeToLLMLogUpdates,
+  clearLLMLogEntries,
   getLLMCallFeedback,
   getLLMCallsMemoryYAML,
   // Get the number of pending tasks in the queue
