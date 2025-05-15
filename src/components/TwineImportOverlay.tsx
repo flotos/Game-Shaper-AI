@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Node } from '../models/Node';
-import { extractDataFromTwine, generateNodesFromExtractedData, regenerateSingleNode } from '../services/LLMService';
+import {
+  extractDataFromTwine,
+  generateNodesFromExtractedData,
+  regenerateSingleNode,
+  ExtractedData
+} from '../services/llm';
 import { PromptSelector } from './PromptSelector';
 import { Message } from '../context/ChatContext';
 import DiffViewer from './DiffViewer';
@@ -370,7 +375,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         }
       );
 
-      if (extractedData.failedChunks > 0) {
+      if ((extractedData.failedChunks ?? 0) > 0) {
         setError(`Warning: ${extractedData.failedChunks} out of ${extractionCount} chunks failed to process.`);
       }
 

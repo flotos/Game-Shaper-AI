@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition, generateImagePrompt } from '../services/LLMService';
+import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition, generateImagePrompt } from '../services/llm';
 import { Node } from '../models/Node';
 import { useChat, Message } from '../context/ChatContext';
 import ChatHistory from './ChatHistory';

@@ -7,7 +7,7 @@ import NodeEditorOverlay from './components/NodeEditorOverlay';
 import AssistantOverlay from './components/AssistantOverlay';
 import TwineImportOverlay from './components/TwineImportOverlay';
 import { moxusService } from './services/MoxusService';
-import './services/LLMService';
+import './services/llm';
 import { ChatProvider } from './context/ChatContext';
 
 const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {

@@ -1,7 +1,7 @@
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
 import yaml from 'js-yaml';
-import { getChatHistoryForMoxus } from './LLMService';
+import { getChatHistoryForMoxus } from './llmCore';
 
 // Avoid circular dependency by forward declaring the function type
 type GetMoxusFeedbackFn = (promptContent: string) => Promise<string>;

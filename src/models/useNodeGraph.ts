@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Node } from './Node';
 import { generateImage } from '../services/ImageService';
-import { generateImagePrompt } from '../services/LLMService';
+import { generateImagePrompt } from '../services/llm';
 import LZString from 'lz-string';
 import { imageQueueService } from '../services/ImageQueueService';
-import { sortNodesByRelevance } from '../services/LLMService';
+import { sortNodesByRelevance } from '../services/llm';
 import { useChat, Message } from '../context/ChatContext';
 import { moxusService } from '../services/MoxusService';
 
@@ -130,7 +130,7 @@ function useNodeGraph() {
   imagePrompts: { nodeId: string; prompt: string }[] = [], 
   providedChatHistory?: Message[],
   isFromUserInteraction: boolean = false
-  ) => {
+  ): Promise<void> => {
     if (!nodeEdition) return;
 
     console.log('Starting graph update with node edition:', nodeEdition);
@@ -313,7 +313,7 @@ function useNodeGraph() {
     // Skip image generation for delete-only operations
     if (isDeleteOnly) {
       console.log('Skipping image generation for delete-only operation');
-      return finalNodesState;
+      return;
     }
 
     // Queue image generation for nodes that need it (using imagePrompts argument)
@@ -347,9 +347,7 @@ function useNodeGraph() {
         }, i * 50); // Stagger image processing
       }
     }
-
-    return finalNodesState;
-  }, [nodes, chatHistory]);
+  }, [nodes, chatHistory, addMessage]);
   
   // Helper function to check if the update only affects images
   const isOnlyImageUpdate = useCallback((nodeEdition: { 
@@ -391,9 +389,9 @@ function useNodeGraph() {
         nodes: finalNodesState, // Use the final state after sorting/update
         chatHistory: currentChatHistory
       });
-      moxusService.addTask('finalReport', {}); // Trigger the final report synthesis
+      moxusService.addTask('finalReport', {}, currentChatHistory); // Pass chat history for context
     } else {
-      console.log('[useNodeGraph] Skipping Moxus feedback for image-only update');
+      console.log('[useNodeGraph] Skipping Moxus feedback for image-only update or no history');
     }
   }, []);
 

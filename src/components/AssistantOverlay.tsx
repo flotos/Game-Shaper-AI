@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Node } from '../models/Node';
-import { generateNodesFromPrompt } from '../services/LLMService';
+import { generateNodesFromPrompt } from '../services/llm';
 import { Message } from '../context/ChatContext';
 import DiffViewer from './DiffViewer';
 import { moxusService } from '../services/MoxusService';

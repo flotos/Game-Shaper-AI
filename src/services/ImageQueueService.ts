@@ -1,6 +1,6 @@
 import { Node } from '../models/Node';
 import { generateImage } from './ImageService';
-import { generateImagePrompt } from './LLMService';
+import { generateImagePrompt } from './llm';
 
 interface QueuedImage {
   nodeId: string;
