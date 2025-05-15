@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 import { getChatHistoryForMoxus } from './llmCore';
 
 // Avoid circular dependency by forward declaring the function type
-type GetMoxusFeedbackFn = (promptContent: string) => Promise<string>;
+type GetMoxusFeedbackFn = (promptContent: string, originalCallType?: string) => Promise<string>;
 let getMoxusFeedbackImpl: GetMoxusFeedbackFn | null = null;
 
 // This function will be called to set the actual implementation after LLMService is initialized

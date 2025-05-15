@@ -340,8 +340,8 @@ export const getResponse = async (
   throw lastError;
 };
 
-export const getMoxusFeedback = async (promptContent: string): Promise<string> => {
-  console.log('[LLMCore] Moxus request received.');
+export const getMoxusFeedback = async (promptContent: string, originalCallType?: string): Promise<string> => {
+  console.log(`[LLMCore] Moxus request received. Generating feedback for original call type: ${originalCallType || 'unknown_original_type'}`);
   const estimatedTokens = Math.ceil(promptContent.length / 4);
   console.log(`[LLMCore] Estimated tokens for Moxus request: ~${estimatedTokens}`);
   
@@ -372,9 +372,14 @@ export const getMoxusFeedback = async (promptContent: string): Promise<string> =
     { role: 'user', content: loadedPrompts.common.moxus_get_feedback_user_message }
   ];
 
+  // Determine the specific callType for this moxus feedback generation
+  const moxusCallType = originalCallType 
+    ? `moxus_feedback_on_${originalCallType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}` 
+    : 'moxus_feedback_generation';
+
   try {
-    const response = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true }, 'moxus_feedback_generation');
-    console.log('[LLMCore] Moxus feedback generated.');
+    const response = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true }, moxusCallType);
+    console.log(`[LLMCore] Moxus feedback generated for type: ${moxusCallType}`);
     return response;
   } catch (error) {
     console.error('[LLMCore] Error getting Moxus feedback:', error);

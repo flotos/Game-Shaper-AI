@@ -157,11 +157,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
         const storyDuration = storyEndTime - storyStartTime;
         console.log('Story generation completed in:', storyDuration, 'ms');
         
-        // Record the complete chat text with Moxus
+        // Record the complete chat text with Moxus using the new system event logger
         const chatTextCallId = `chatText-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        moxusService.recordLLMCall(chatTextCallId, 
-          `Game Engine Chat Generation: User input: "${input}"`, 
-          accumulatedContent);
+        moxusService.recordInternalSystemEvent(
+          chatTextCallId,
+          `Streamed Chat Text Fully Received: User input: "${input}"`, // More descriptive prompt for the event
+          accumulatedContent,
+          "streamed_chat_text_completed" // Specific eventType
+        );
 
         // Update loading message for the next steps
         setLoadingMessage('Generating actions and updating game state...');
@@ -292,19 +295,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
     // Log the regeneration event to Moxus
     if (discardedAssistantMessages.length > 0) {
-      moxusService.recordLLMCall(
+      moxusService.recordInternalSystemEvent(
         `chatRegenerate-${Date.now()}`,
         "System Event: User requested response regeneration.",
-        `User input: '${lastUserMessage.content}'.
-        Discarded assistant response(s):
-        ${JSON.stringify(discardedAssistantMessages)}`
+        `User input: '${lastUserMessage.content}'. Discarded assistant response(s): ${JSON.stringify(discardedAssistantMessages)}`,
+        "chat_regenerate_event"
       );
     } else {
-      // Log even if no assistant messages were present after the last user message (e.g., user regenerates their own last message before assistant replies)
-      moxusService.recordLLMCall(
+      // Log even if no assistant messages were present after the last user message
+      moxusService.recordInternalSystemEvent(
         `chatRegenerate-${Date.now()}`,
         "System Event: User requested input regeneration (before assistant reply).",
-        `User input being re-evaluated: '${lastUserMessage.content}'.`
+        `User input being re-evaluated: '${lastUserMessage.content}'.`,
+        "chat_input_regenerate_event"
       );
     }
 

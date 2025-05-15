@@ -26,7 +26,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   });
 
   const messages: Message[] = [{ role: 'system', content: prompt }];
-  const response = await getResponse(messages, "gpt-3.5-turbo", undefined, false, { type: 'json_object' });
+  const response = await getResponse(messages, "gpt-3.5-turbo", undefined, false, { type: 'json_object' }, undefined, 'node_relevance_check');
   const parsed = JSON.parse(response);
   return parsed.relevantNodes;
 };
@@ -66,7 +66,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   });
 
   const chatTextMessages: Message[] = [{ role: 'system', content: chatTextPrompt }];
-  return getResponse(chatTextMessages, 'gpt-4o', undefined, true); // Stream response
+  return getResponse(chatTextMessages, 'gpt-4o', undefined, true, undefined, undefined, 'chat_text_generation'); // Stream response
 };
 
 export const generateActions = async(chatText: string | Message[], nodes: Node[], userInput: string): Promise<string[]> => {
@@ -104,7 +104,7 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
   });
 
   const actionsMessages: Message[] = [{ role: 'system', content: actionsPrompt }];
-  const actionsResponse = await getResponse(actionsMessages, 'gpt-4o', undefined, false, { type: 'json_object' });
+  const actionsResponse = await getResponse(actionsMessages, 'gpt-4o', undefined, false, { type: 'json_object' }, undefined, 'action_generation');
   const parsed = JSON.parse(actionsResponse);
   return parsed.actions;
 };
@@ -155,7 +155,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   });
 
   const messages: Message[] = [{ role: 'system', content: nodeEditionPrompt }];
-  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' });
+  const response = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'node_edition_generation');
   return JSON.parse(response);
 };
 
@@ -184,7 +184,7 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   });
 
   const messages: Message[] = [{ role: 'system', content: promptMessageContent }];
-  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' });
+  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_creation_from_prompt');
   return JSON.parse(response);
 };
 
@@ -219,7 +219,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   });
 
   const messages: Message[] = [{ role: 'system', content: prompt }];
-  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' });
+  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_sort_by_relevance');
   const parsed = JSON.parse(response);
   return parsed.sortedIds;
 };
