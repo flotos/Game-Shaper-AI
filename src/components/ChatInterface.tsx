@@ -45,13 +45,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
     imageGeneration: number[];
   }>({ story: 0, imagePrompts: [], imageGeneration: [] });
   const [isLoading, setIsLoading] = useState(false);
+  let chatTextCallId_to_finalize: string | null = null;
 
   useEffect(() => {
     if (actionTriggered) {
+      chatTextCallId_to_finalize = null;
       handleSend();
       setActionTriggered(false);
     }
-  }, [input]);
+  }, [input, actionTriggered]);
 
   useEffect(() => {
     if (chatHistory.length === 0) {
@@ -64,15 +66,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
   }, [chatHistory]);
 
   const handleSend = async (retry = false) => {
+    chatTextCallId_to_finalize = null;
     if (!input.trim() || isLoading) return;
 
     setIsLoading(true);
     setErrorMessage('');
     setLoadingMessage('Processing your request...');
     const timestamp = new Date().toLocaleTimeString();
+    const storyStartTime = Date.now();
 
     try {
-      const storyStartTime = Date.now();
       console.log('Starting new interaction at:', timestamp);
 
       // Add user message
@@ -118,53 +121,59 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
       // First, generate and display the chat text
       console.log('Starting chat text generation');
-      const chatTextStartTime = Date.now();
-      const chatTextResponse = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
+      const chatTextResult = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
+      const chatTextResponse = chatTextResult.streamResponse;
+      chatTextCallId_to_finalize = chatTextResult.callId;
       
-      // Handle the streamed response
       if (chatTextResponse instanceof Response) {
         const reader = chatTextResponse.body?.getReader();
-        if (!reader) throw new Error('No reader available');
+        if (!reader) throw new Error('No reader available for chat text stream');
 
         let accumulatedContent = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          const chunk = new TextDecoder().decode(value);
-          const lines = chunk.split('\n');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') break;
-              
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices[0].delta.content || '';
-                if (content) {
-                  accumulatedContent += content;
-                  updateStreamingMessage(content);
-                }
-              } catch (e) {
-                console.error('Error parsing stream chunk:', e);
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = new TextDecoder().decode(value);
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') break;
+                try {
+                  const parsed = JSON.parse(data);
+                  const content = parsed.choices[0].delta.content || '';
+                  if (content) {
+                    accumulatedContent += content;
+                    updateStreamingMessage(content);
+                  }
+                } catch (e) { console.error('Error parsing stream chunk:', e); }
               }
             }
+            if (lines.some(line => line.startsWith('data: [DONE]'))) break;
           }
+          endStreaming();
+          if (chatTextCallId_to_finalize) {
+            moxusService.finalizeLLMCallRecord(chatTextCallId_to_finalize, accumulatedContent);
+          }
+          const storyEndTime = Date.now();
+          const storyDuration = storyEndTime - storyStartTime;
+          console.log('Story generation completed in:', storyDuration, 'ms');
+          moxusService.recordInternalSystemEvent(
+            `chatText-${Date.now()}`,
+            `Streamed Chat Text Fully Received: User input: "${input}"`,
+            accumulatedContent,
+            "streamed_chat_text_completed"
+          );
+
+        } catch (streamError) {
+          console.error('Error processing chat text stream:', streamError);
+          endStreaming();
+          if (chatTextCallId_to_finalize) {
+            moxusService.failLLMCallRecord(chatTextCallId_to_finalize, streamError instanceof Error ? streamError.message : String(streamError));
+          }
+          throw streamError;
         }
-        endStreaming();
-        const storyEndTime = Date.now();
-        const storyDuration = storyEndTime - storyStartTime;
-        console.log('Story generation completed in:', storyDuration, 'ms');
-        
-        // Record the complete chat text with Moxus using the new system event logger
-        const chatTextCallId = `chatText-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        moxusService.recordInternalSystemEvent(
-          chatTextCallId,
-          `Streamed Chat Text Fully Received: User input: "${input}"`, // More descriptive prompt for the event
-          accumulatedContent,
-          "streamed_chat_text_completed" // Specific eventType
-        );
 
         // Update loading message for the next steps
         setLoadingMessage('Generating actions and updating game state...');
@@ -240,10 +249,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
         // Apply the node edition to update the graph in the background
         console.log('Applying node edition to graph...');
         await updateGraph(nodeEdition, [], contextHistory, true);
+      } else {
+        console.warn('generateChatText did not return a Response object for streaming as expected.');
+        if (chatTextCallId_to_finalize) {
+          moxusService.failLLMCallRecord(chatTextCallId_to_finalize, 'generateChatText did not return a streamable Response.');
+        }
+        throw new Error('Chat text generation failed to produce a stream.');
       }
     } catch (error) {
       console.error('Error during chat handling:', error);
       setErrorMessage('An error occurred. Please try again.');
+      if (chatTextCallId_to_finalize && !moxusService.getLLMLogEntries().find(log => log.id === chatTextCallId_to_finalize && (log.status === 'completed' || log.status === 'failed'))) {
+        moxusService.failLLMCallRecord(chatTextCallId_to_finalize, error instanceof Error ? error.message : String(error));
+      }
       setLastFailedRequest({
         input,
         chatHistory: [...chatHistory],

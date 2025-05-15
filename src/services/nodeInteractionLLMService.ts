@@ -6,6 +6,29 @@ import {
   loadedPrompts, 
   getLastFiveInteractions 
 } from './llmCore';
+import { moxusService } from '../services/MoxusService';
+
+// Helper function to manage try/catch for JSON parsing and logging
+async function processJsonResponse<T>(
+  serviceName: string, 
+  operationName: string, 
+  responsePayload: { llmResult: string, callId: string },
+  parseFn: (jsonString: string) => T
+): Promise<T> {
+  try {
+    const parsedResult = parseFn(responsePayload.llmResult);
+    // Successfully parsed, finalize the LLM call as completed
+    moxusService.finalizeLLMCallRecord(responsePayload.callId, "JSON content successfully parsed"); // Don't log actual content
+    console.log(`[${serviceName}] ${operationName} successful for callId: ${responsePayload.callId}`);
+    return parsedResult;
+  } catch (error) {
+    const parseErrorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[${serviceName}] ${operationName} failed JSON parsing for callId: ${responsePayload.callId}. Error: ${parseErrorMessage}. Raw response: ${responsePayload.llmResult}`);
+    // Mark the LLM call as failed due to parsing error
+    moxusService.failLLMCallRecord(responsePayload.callId, `JSON parsing error: ${parseErrorMessage}`);
+    throw new Error(`Failed to parse JSON response for ${operationName}: ${parseErrorMessage}`);
+  }
+}
 
 export const getRelevantNodes = async(userInput: string, chatHistory: Message[], nodes: Node[]): Promise<string[]> => {
   console.log('LLM Call (NodeInteractionService): Getting relevant nodes');
@@ -26,12 +49,19 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   });
 
   const messages: Message[] = [{ role: 'system', content: prompt }];
-  const response = await getResponse(messages, "gpt-3.5-turbo", undefined, false, { type: 'json_object' }, undefined, 'node_relevance_check');
-  const parsed = JSON.parse(response);
-  return parsed.relevantNodes;
+  let responsePayload: { llmResult: string, callId: string };
+  try {
+    responsePayload = await getResponse(messages, "gpt-3.5-turbo", undefined, false, { type: 'json_object' }, undefined, 'node_relevance_check');
+  } catch (error) {
+    // getResponse already calls failLLMCallRecord if the fetch itself fails or returns an API error.
+    // So, if an error is caught here, it implies the call was already marked as failed by getResponse.
+    console.error('[NodeInteractionService] getRelevantNodes: getResponse failed.', error);
+    throw error; // Re-throw the original error which should have failure details
+  }
+  return processJsonResponse('NodeInteractionService', 'getRelevantNodes', responsePayload, (jsonString) => JSON.parse(jsonString).relevantNodes);
 };
 
-export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], _detailledNodeIds: String[]): Promise<any> => { // _detailledNodeIds seems unused
+export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], _detailledNodeIds: String[]): Promise<{ streamResponse: Response, callId: string }> => {
   console.log('LLM Call (NodeInteractionService): Generating chat text');
   
   const lastFiveInteractions = getLastFiveInteractions(chatHistory);
@@ -66,7 +96,8 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   });
 
   const chatTextMessages: Message[] = [{ role: 'system', content: chatTextPrompt }];
-  return getResponse(chatTextMessages, 'gpt-4o', undefined, true, undefined, undefined, 'chat_text_generation'); // Stream response
+  const result = await getResponse(chatTextMessages, 'gpt-4o', undefined, true, undefined, undefined, 'chat_text_generation');
+  return result as { streamResponse: Response, callId: string };
 };
 
 export const generateActions = async(chatText: string | Message[], nodes: Node[], userInput: string): Promise<string[]> => {
@@ -104,9 +135,14 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
   });
 
   const actionsMessages: Message[] = [{ role: 'system', content: actionsPrompt }];
-  const actionsResponse = await getResponse(actionsMessages, 'gpt-4o', undefined, false, { type: 'json_object' }, undefined, 'action_generation');
-  const parsed = JSON.parse(actionsResponse);
-  return parsed.actions;
+  let responsePayload: { llmResult: string, callId: string };
+  try {
+    responsePayload = await getResponse(actionsMessages, 'gpt-4o', undefined, false, { type: 'json_object' }, undefined, 'action_generation');
+  } catch (error) {
+    console.error('[NodeInteractionService] generateActions: getResponse failed.', error);
+    throw error;
+  }
+  return processJsonResponse('NodeInteractionService', 'generateActions', responsePayload, (jsonString) => JSON.parse(jsonString).actions);
 };
 
 export const generateNodeEdition = async(chatText: string | Message[], actions: string[], nodes: Node[], userInput: string, isUserInteraction: boolean = false): Promise<any> => {
@@ -155,8 +191,14 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   });
 
   const messages: Message[] = [{ role: 'system', content: nodeEditionPrompt }];
-  const response = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'node_edition_generation');
-  return JSON.parse(response);
+  let responsePayload: { llmResult: string, callId: string };
+  try {
+    responsePayload = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'node_edition_generation');
+  } catch (error) {
+    console.error('[NodeInteractionService] generateNodeEdition: getResponse failed.', error);
+    throw error;
+  }
+  return processJsonResponse('NodeInteractionService', 'generateNodeEdition', responsePayload, JSON.parse);
 };
 
 export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[], moxusMemoryInput?: { general?: string; chatText?: string; nodeEdition?: string; }, moxusPersonality?: string): Promise<any> => {
@@ -184,8 +226,14 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   });
 
   const messages: Message[] = [{ role: 'system', content: promptMessageContent }];
-  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_creation_from_prompt');
-  return JSON.parse(response);
+  let responsePayload: { llmResult: string, callId: string };
+  try {
+    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_creation_from_prompt');
+  } catch (error) {
+    console.error('[NodeInteractionService] generateNodesFromPrompt: getResponse failed.', error);
+    throw error;
+  }
+  return processJsonResponse('NodeInteractionService', 'generateNodesFromPrompt', responsePayload, JSON.parse);
 };
 
 export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]): Promise<string[]> => {
@@ -219,29 +267,26 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   });
 
   const messages: Message[] = [{ role: 'system', content: prompt }];
-  const response = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_sort_by_relevance');
-  const parsed = JSON.parse(response);
-  return parsed.sortedIds;
+  let responsePayload: { llmResult: string, callId: string };
+  try {
+    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_sort_by_relevance');
+  } catch (error) {
+    console.error('[NodeInteractionService] sortNodesByRelevance: getResponse failed.', error);
+    throw error;
+  }
+  return processJsonResponse('NodeInteractionService', 'sortNodesByRelevance', responsePayload, (jsonString) => JSON.parse(jsonString).sortedIds);
 };
 
-// This function was originally part of LLMService, combining generateChatText, generateActions, and generateNodeEdition.
-// It can either live here or be recomposed by the UI/application layer if preferred.
-// For now, keeping it here to maintain a similar public API surface for this part.
 export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   console.log('LLM Call (NodeInteractionService): Generating full user input response');
-  // First generate chat text
-  const chatTextStream = await generateChatText(userInput, chatHistory, nodes, detailledNodeIds);
   
-  // Note: If generateChatText returns a stream, we need to resolve it to a string 
-  // before passing to generateActions and generateNodeEdition if they expect full text.
-  // Assuming for now the caller of generateUserInputResponse handles stream consumption and then calls for actions/edits separately,
-  // OR that generateActions/NodeEdition are adapted for potentially partial/streamed chatText if that's the flow.
-  // The original LLMService awaited generateChatText which implies it was resolved before passing.
-  // If chatTextStream is a Response object from fetch (for streaming), we need to process it.
-  
+  const chatTextResult = await generateChatText(userInput, chatHistory, nodes, detailledNodeIds);
+  const chatTextStreamResponse = chatTextResult.streamResponse;
+  const chatTextCallId = chatTextResult.callId;
+
   let accumulatedChatText = "";
-  if (chatTextStream && chatTextStream.body) { // Check if it's a fetch Response stream
-    const reader = chatTextStream.body.getReader();
+  if (chatTextStreamResponse && chatTextStreamResponse.body) {
+    const reader = chatTextStreamResponse.body.getReader();
     const decoder = new TextDecoder();
     while (true) {
         const { done, value } = await reader.read();
@@ -249,19 +294,18 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
         accumulatedChatText += decoder.decode(value, { stream: true });
     }
   } else {
-    // If it wasn't a stream or couldn't be read as one, assume it's already the text (though this path needs review based on getResponse stream handling)
-    accumulatedChatText = chatTextStream; 
+    accumulatedChatText = chatTextStreamResponse as any; 
   }
   
-  // Run processes in parallel AFTER chat text is fully accumulated
   const [actions, nodeEdition] = await Promise.all([
-    generateActions(accumulatedChatText, nodes, userInput), // Pass accumulated string
-    generateNodeEdition(accumulatedChatText, [], nodes, userInput, true) // Pass accumulated string, empty actions for this specific call context
+    generateActions(accumulatedChatText, nodes, userInput),
+    generateNodeEdition(accumulatedChatText, [], nodes, userInput, true) 
   ]);
   
   return {
-    chatText: accumulatedChatText, // Return the resolved chat text string
+    chatText: accumulatedChatText,
     actions,
     nodeEdition,
+    chatTextCallId
   };
 } 

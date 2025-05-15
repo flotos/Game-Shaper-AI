@@ -259,11 +259,14 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
   emitLLMLogUpdate();
   console.log(`[MoxusService] Finalized LLM call: ${id} (type: ${call.callType}, status: completed, duration: ${call.duration}ms)`);
   
-  // Prevent feedback loop: Do not generate feedback tasks for Moxus's own feedback generation calls.
-  if (call.callType !== 'moxus_feedback_generation') {
+  // Prevent feedback loop: Do not generate feedback tasks for Moxus's own feedback/internal calls.
+  const isMoxusInternalProcessingCall = call.callType === 'moxus_feedback_generation' || 
+                                      (call.callType && call.callType.startsWith('moxus_feedback_on_'));
+
+  if (!isMoxusInternalProcessingCall) {
     addFeedbackTasksForCall(call);
   } else {
-    console.log(`[MoxusService] Skipping feedback task generation for internal call type: ${call.callType}`);
+    console.log(`[MoxusService] Skipping feedback task generation for internal/Moxus-feedback call type: ${call.callType}`);
   }
 };
 
@@ -626,7 +629,7 @@ const handleFinalReport = async (task: MoxusTask) => {
     throw new Error('getMoxusFeedback implementation not set. Make sure to call setMoxusFeedbackImpl first.');
   }
   
-  const report = await getMoxusFeedbackImpl(promptContent);
+  const report = await getMoxusFeedbackImpl(promptContent, 'final_report_generation');
   console.log(`[MoxusService] Final report generated. Sending to chat.`);
   
   // Send the report to chat interface
@@ -639,7 +642,7 @@ const handleFinalReport = async (task: MoxusTask) => {
   console.log('[MoxusService] Automatically updating GeneralMemory after report generation');
   setTimeout(() => {
     // Use setTimeout to ensure the report is shown in chat first
-    updateGeneralMemoryFromAllSources();
+    updateGeneralMemoryFromAllSources(task.type);
   }, 1000);
 };
 
@@ -650,6 +653,8 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
   if (task.type === 'llmCallFeedback' || task.type === 'chatTextFeedback') {
     if (task.data && task.data.id) {
       const callId = task.data.id;
+      const originalCallTypeForFeedback = task.data.callType;
+
       // Ensure call exists for feedback processing (reconstruction if necessary)
       if (!moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
         console.warn(`[MoxusService] LLM call ${callId} not found for feedback. Reconstructing.`);
@@ -658,7 +663,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           id: callId, prompt: task.data.prompt || "[prompt unavailable]",
           response: task.data.response || "[response unavailable]", timestamp: now,
           status: 'completed', startTime: new Date(task.data.timestamp || now), endTime: now,
-          callType: task.data.callType || 'unknown_reconstructed', 
+          callType: originalCallTypeForFeedback || 'unknown_reconstructed', 
           modelUsed: task.data.modelUsed || 'unknown_reconstructed',
         };
       }
@@ -668,7 +673,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       const feedbackPrompt = `\n      # Task\n      You have to analyze an LLM call.\n\n      ${assistantNodesContent ? `## Additional features:\n      ---\n      ${assistantNodesContent}\n      ---` : ""}\n      \n      ## PROMPT:\n      ---start of prompt---\n      ${task.data.prompt}\n      ---end of prompt---\n      \n      ## RESPONSE:\n      ---start of response---\n      ${task.data.response}\n      ---end of response---\n      \n      Provide critical feedback focusing ONLY on problems with this response.\n      Focus exclusively on what could be improved, not what went well.\n      Identify specific issues with quality, relevance, coherence, or accuracy.`;
       
       if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
-      const feedback = await getMoxusFeedbackImpl(feedbackPrompt); // FIRST LLM CALL for this task type
+      const feedback = await getMoxusFeedbackImpl(feedbackPrompt, originalCallTypeForFeedback);
       const truncatedFeedback = feedback.length > 2000 ? feedback.substring(0, 2000) + "... [truncated]" : feedback;
       
       if (moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
@@ -695,8 +700,8 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       if (task.type === 'chatTextFeedback') {
         console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating chatText memory document.`);
         const chatTextMemoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
-        const chatTextUpdatePrompt = getMemoryUpdatePrompt(task, chatTextMemoryToUpdate); // task here is chatTextFeedback task
-        const updatedChatTextMemory = await getMoxusFeedbackImpl(chatTextUpdatePrompt); // SECOND LLM CALL, but only for chatTextFeedback tasks
+        const chatTextUpdatePrompt = getMemoryUpdatePrompt(task, chatTextMemoryToUpdate);
+        const updatedChatTextMemory = await getMoxusFeedbackImpl(chatTextUpdatePrompt, task.type);
         moxusStructuredMemory.featureSpecificMemory.chatText = updatedChatTextMemory;
         console.log(`[MoxusService] Updated chatText memory document via task ${task.id}.`);
         saveMemory();
@@ -709,6 +714,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
   // Handle other task types not covered above
   let memoryToUpdate = '';
   let memoryKey: keyof MoxusMemoryStructure['featureSpecificMemory'] | 'GeneralMemory' = 'GeneralMemory';
+  let originalCallTypeForGenericUpdate: string = task.type; // Default to the current task's type, now explicitly string
 
   switch (task.type) {
     case 'nodeEditFeedback':
@@ -716,11 +722,11 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdit;
       break;
     case 'storyFeedback':
-      memoryKey = 'nodeEdition'; // Assuming this is the target memory for storyFeedback
+      memoryKey = 'nodeEdition';
       memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
       break;
     case 'nodeUpdateFeedback':
-      memoryKey = 'nodeEdition'; // Assuming this is the target memory for nodeUpdateFeedback
+      memoryKey = 'nodeEdition';
       memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
       if (task.data && task.data.nodes) {
         task.data.nodes = sanitizeNodesForMoxus(task.data.nodes);
@@ -730,25 +736,22 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       memoryKey = 'assistantFeedback';
       memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.assistantFeedback;
       break;
-    case 'updateGeneralMemory': // This is the dedicated task for updating GeneralMemory
+    case 'updateGeneralMemory':
       console.log(`[MoxusService] Task ${task.id} (${task.type}) is calling updateGeneralMemoryFromAllSources.`);
-      await updateGeneralMemoryFromAllSources(); // This makes its own LLM call to update GeneralMemory
-      return; // Task is complete
+      await updateGeneralMemoryFromAllSources(task.type);
+      return;
     default:
-      // For any other unhandled task types, default to updating GeneralMemory
-      // This might be noisy if there are unexpected task types. Consider logging a warning.
       console.warn(`[MoxusService] Task ${task.id} of unhandled type '${task.type}' falling through to update GeneralMemory.`);
       memoryKey = 'GeneralMemory';
       memoryToUpdate = moxusStructuredMemory.GeneralMemory;
+      originalCallTypeForGenericUpdate = 'general_memory_default_update'; // Be specific for this case
   }
   
-  // This block is now for tasks handled by the switch statement above (that didn't return)
-  // e.g., nodeEditFeedback, storyFeedback, assistantFeedback, or the default GeneralMemory update for unhandled types.
   if (memoryToUpdate !== undefined && memoryToUpdate !== '') { 
     console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating ${memoryKey} memory document.`);
     const updatePrompt = getMemoryUpdatePrompt(task, memoryToUpdate); 
     if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set for general update path.');
-    const updatedMemory = await getMoxusFeedbackImpl(updatePrompt); // LLM CALL for these specific tasks
+    const updatedMemory = await getMoxusFeedbackImpl(updatePrompt, originalCallTypeForGenericUpdate); 
     
     if (memoryKey === 'GeneralMemory') {
       moxusStructuredMemory.GeneralMemory = updatedMemory;
@@ -763,9 +766,8 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
 };
 
 // New function to update GeneralMemory from all memory sources
-const updateGeneralMemoryFromAllSources = async () => {
-  // Enhanced logging for when this function is called
-  console.log('[MoxusService] Attempting to update GeneralMemory from all available memory sources...');
+const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: string = 'scheduled_general_memory_update') => {
+  console.log(`[MoxusService] Attempting to update GeneralMemory from all available memory sources. Trigger reason/type: ${originalCallTypeForThisUpdate}`);
   
   // Get assistant node content for context
   const assistantNodesContent = getAssistantNodesContent();
@@ -841,7 +843,7 @@ const updateGeneralMemoryFromAllSources = async () => {
   }
   
   // Get the updated GeneralMemory
-  const updatedGeneralMemory = await getMoxusFeedbackImpl(updatePrompt);
+  const updatedGeneralMemory = await getMoxusFeedbackImpl(updatePrompt, originalCallTypeForThisUpdate);
   
   // Truncate the result to prevent memory growth
   const truncatedGeneralMemory = truncateText(updatedGeneralMemory, 5000);

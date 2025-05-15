@@ -10,7 +10,7 @@ common:
     ---end of feedback data---
     Use this feedback to inform your future responses, avoiding repetition of mistakes and prioritizing user notes. Failure to adhere to this guidance will lead to suboptimal outcomes.
     When ready to provide feedback based on this (and other information like chat history with user notes), you will formulate it clearly.
-  moxus_get_feedback_user_message: "Provide feedback based on available information. Focus on user notes in chat history, as they contain important suggestions."
+  moxus_get_feedback_user_message: "Provide feedback based on available information. Focus on user notes in chat history, as they contain important suggestions. Your feedback should be a single, concise paragraph."
 
 twine_import:
   data_extraction: |

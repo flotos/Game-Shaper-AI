@@ -275,38 +275,45 @@ function useNodeGraph() {
 
     // Sort nodes only if this update is from user interaction and chat history exists
     if (isFromUserInteraction && currentChatHistory && currentChatHistory.length > 0) {
-      try {
-        console.log('Sorting nodes by relevance based on chat history');
-        
-        // Use a timeout to prevent UI blocking during sorting process
-        setTimeout(async () => {
-          try {
-            const sortedIds = await sortNodesByRelevance(newNodes, currentChatHistory);
-            const sortedNodes = [...newNodes].sort((a, b) => {
-              const aIndex = sortedIds.indexOf(a.id);
-              const bIndex = sortedIds.indexOf(b.id);
-              if (aIndex === -1) return 1;
-              if (bIndex === -1) return -1;
-              return aIndex - bIndex;
-            });
-            
-            setNodes(sortedNodes); // Update state with sorted nodes
-            finalNodesState = sortedNodes; // Update final state reference
-            
-            // Trigger Moxus feedback after sorting is complete
-            triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
-          } catch (error) {
-            console.error('Error in delayed sorting:', error);
-          }
-        }, 50);
-      } catch (error) {
-        console.error('Error sorting nodes:', error);
-        
-        // Still trigger Moxus feedback even if sorting fails
+      // Check the feature flag before proceeding with sorting
+      if (import.meta.env.VITE_FEATURE_SORT_NODES !== "false") {
+        try {
+          console.log('Sorting nodes by relevance based on chat history (feature flag enabled)');
+          
+          // Use a timeout to prevent UI blocking during sorting process
+          setTimeout(async () => {
+            try {
+              const sortedIds = await sortNodesByRelevance(newNodes, currentChatHistory);
+              const sortedNodes = [...newNodes].sort((a, b) => {
+                const aIndex = sortedIds.indexOf(a.id);
+                const bIndex = sortedIds.indexOf(b.id);
+                if (aIndex === -1) return 1;
+                if (bIndex === -1) return -1;
+                return aIndex - bIndex;
+              });
+              
+              setNodes(sortedNodes); // Update state with sorted nodes
+              finalNodesState = sortedNodes; // Update final state reference
+              
+              // Trigger Moxus feedback after sorting is complete
+              triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
+            } catch (error) {
+              console.error('Error in delayed sorting:', error);
+            }
+          }, 50);
+        } catch (error) {
+          console.error('Error sorting nodes:', error);
+          
+          // Still trigger Moxus feedback even if sorting fails
+          triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
+        }
+      } else {
+        console.log('Skipping nodes sorting by relevance based on VITE_FEATURE_SORT_NODES flag.');
+        // If sorting is skipped, trigger Moxus feedback directly with the current state
         triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
       }
     } else {
-      // If no chat history or not from user interaction, trigger Moxus feedback directly
+      // If no chat history or not from user interaction, or sorting disabled, trigger Moxus feedback directly
       triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
     }
 

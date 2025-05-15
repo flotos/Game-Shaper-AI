@@ -150,7 +150,7 @@ export const getResponse = async (
   const callId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const originalPromptString = JSON.stringify(messages);
 
-  moxusService.initiateLLMCallRecord(callId, callType, model, originalPromptString, stream && false);
+  moxusService.initiateLLMCallRecord(callId, callType, model, originalPromptString);
 
   if (!options?.skipMoxusFeedback && !stream) {
     const moxusFeedbackContent = formatPrompt(loadedPrompts.common.moxus_feedback_system_message, {
@@ -253,7 +253,7 @@ export const getResponse = async (
           stream: stream
         };
 
-        response = await fetch(`${import.meta.env.VITE_LLM_HOST}/api/v1/generate`, {
+        response = await fetch(import.meta.env.VITE_KOBOLDCPP_API_URL + '/api/v1/generate', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -266,62 +266,81 @@ export const getResponse = async (
       }
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error Response:', errorText);
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        const errorBody = await response.text();
+        const errorMessage = `API request failed with status ${response.status}: ${response.statusText}. Body: ${errorBody}`;
+        console.error(`[LLMCore] getResponse attempt ${attempt}/${maxRetries} failed: ${errorMessage}`);
+        moxusService.failLLMCallRecord(callId, `API Error after ${maxRetries} attempts: ${response.status} ${response.statusText}. Prompt: ${originalPromptString}. Body: ${errorBody}`);
+        lastError = new Error(errorMessage);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+          continue;
+        }
+        throw lastError;
       }
 
       if (stream) {
-        return response;
-      }
-
-      const data = await response.json();
-      let llmResult;
-
-      if (apiType === 'openai') {
-        if (!data.choices?.[0]?.message?.content) {
-          throw new Error('Invalid OpenAI response structure');
-        }
-        llmResult = data.choices[0].message.content;
-      } else if (apiType === 'openrouter') {
-        if (!data.choices?.[0]?.message?.content) {
-          throw new Error('Invalid OpenRouter response structure');
-        }
-        const content = data.choices[0].message.content;
-        if (responseFormat?.type === 'json_object') {
-          const cleanContent = content.replace(/```json\n|\n```/g, '').trim();
-          return cleanContent; // Return directly as it's expected to be a JSON string
-        }
-        try {
-          const parsedContent = JSON.parse(content);
-          if (!includeReasoning && parsedContent.reasoning !== undefined) {
-            delete parsedContent.reasoning;
-            llmResult = JSON.stringify(parsedContent);
-          } else {
-            llmResult = content;
-          }
-        } catch (e) {
-          llmResult = content;
-        }
-      } else if (apiType === 'koboldcpp') {
-        if (!data.results?.[0]?.text) {
-          throw new Error('Invalid KoboldCPP response structure');
-        }
-        llmResult = data.results[0].text;
-      }
-
-      if (llmResult === undefined || llmResult === null) {
-        throw new Error('No valid response received from LLM API');
-      }
-
-      if (!stream) {
-        moxusService.finalizeLLMCallRecord(callId, llmResult as string);
+        // moxusService.finalizeLLMCallRecord(callId, "Stream initiated successfully"); // Removed to prevent premature feedback
+        return { 
+          streamResponse: response, 
+          callId: callId 
+        };
       } else {
-        // For streaming responses, the call remains 'running'. 
-        // The consumer of the stream will be responsible for calling finalizeLLMCallRecord or failLLMCallRecord.
-        // console.log(`[llmCore] Streaming call ${callId} initiated. Consumer must finalize.`);
+        const data = await response.json();
+        let extractedContent;
+
+        if (apiType === 'openai') {
+          if (!data.choices?.[0]?.message?.content) {
+            throw new Error('Invalid OpenAI response structure');
+          }
+          extractedContent = data.choices[0].message.content;
+        } else if (apiType === 'openrouter') {
+          if (!data.choices?.[0]?.message?.content) {
+            throw new Error('Invalid OpenRouter response structure');
+          }
+          const content = data.choices[0].message.content;
+          if (responseFormat?.type === 'json_object') {
+            const cleanContent = content.replace(/```json\n|\n```/g, '').trim();
+            extractedContent = cleanContent;
+          } else {
+            // Only process for reasoning if not a json_object type, as per original logic structure
+            try {
+              const parsedContent = JSON.parse(content);
+              if (!includeReasoning && parsedContent.reasoning !== undefined) {
+                delete parsedContent.reasoning;
+                extractedContent = JSON.stringify(parsedContent);
+              } else {
+                extractedContent = content;
+              }
+            } catch (e) {
+              extractedContent = content;
+            }
+          }
+        } else if (apiType === 'koboldcpp') {
+          if (data && data.results && data.results.length > 0 && typeof data.results[0].text === 'string') {
+            extractedContent = data.results[0].text;
+          } else {
+            throw new Error(`Invalid KoboldCPP response structure or empty content. Full response: ${JSON.stringify(data)}`);
+          }
+        }
+
+        if (extractedContent === undefined) {
+          const safeguardError = new Error(`LLM content extraction failed unexpectedly for ${apiType} after API-specific parsing. Raw Data: ${JSON.stringify(data)}`);
+          console.error(`[LLMCore] getResponse safeguard attempt ${attempt}/${maxRetries}: ${safeguardError.message}`);
+          lastError = safeguardError;
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
+            continue;
+          }
+          moxusService.failLLMCallRecord(callId, `Safeguard triggered after ${maxRetries} attempts for ${apiType}. Prompt: ${originalPromptString}. Data: ${JSON.stringify(data)}`);
+          throw lastError;
+        }
+
+        moxusService.finalizeLLMCallRecord(callId, extractedContent);
+        return { 
+          llmResult: extractedContent, 
+          callId: callId 
+        };
       }
-      return llmResult;
     } catch (error) {
       lastError = error;
       console.warn(`Attempt ${attempt} failed:`, error);
@@ -377,12 +396,30 @@ export const getMoxusFeedback = async (promptContent: string, originalCallType?:
     ? `moxus_feedback_on_${originalCallType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}` 
     : 'moxus_feedback_generation';
 
+  let feedbackCallId: string | null = null; 
   try {
-    const response = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true }, moxusCallType);
-    console.log(`[LLMCore] Moxus feedback generated for type: ${moxusCallType}`);
-    return response;
+    const responsePayload = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true }, moxusCallType);
+    feedbackCallId = responsePayload.callId; // callId should always be present in responsePayload
+    
+    // Ensure feedbackCallId is treated as string before passing
+    if (feedbackCallId) { 
+      moxusService.finalizeLLMCallRecord(feedbackCallId, responsePayload.llmResult as string);
+      console.log(`[LLMCore] Moxus feedback generated for type: ${moxusCallType} (Call ID: ${feedbackCallId})`);
+      return responsePayload.llmResult as string;
+    } else {
+      // This case should ideally not happen if getResponse always returns a callId
+      console.error('[LLMCore] Failed to get callId from getResponse for Moxus feedback.');
+      throw new Error('Failed to obtain callId for Moxus feedback logging.');
+    }
   } catch (error) {
+    if (feedbackCallId) { // This check is good
+      moxusService.failLLMCallRecord(feedbackCallId, error instanceof Error ? error.message : String(error));
+    }
     console.error('[LLMCore] Error getting Moxus feedback:', error);
-    throw new Error('Failed to get Moxus feedback from LLM.');
+    // Re-throw the original error or a new specific one
+    if (error instanceof Error && error.message === 'Failed to obtain callId for Moxus feedback logging.') {
+        throw error;
+    }
+    throw new Error(`Failed to get Moxus feedback from LLM. Original error: ${error instanceof Error ? error.message : String(error)}`);
   }
 }; 

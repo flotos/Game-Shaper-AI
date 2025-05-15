@@ -1,5 +1,6 @@
 import prompts from '../../prompts.json';
 import JSZip from 'jszip';
+import { moxusService } from '../services/MoxusService';
 
 const apiType = import.meta.env.VITE_IMG_API;
 
@@ -22,6 +23,10 @@ export const generateImage = async (prompt: string, seed?: number, nodeType?: st
 };
 
 const generateImageFromOpenAI = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
+  const callId = `img_openai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const modelName = import.meta.env.VITE_OAI_IMAGE_MODEL || 'dall-e-unknown';
+  moxusService.initiateLLMCallRecord(callId, 'image_generation_openai', modelName, prompt);
+
   try {
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
@@ -30,7 +35,7 @@ const generateImageFromOpenAI = async (prompt: string, seed?: number, storagePro
         'Authorization': `Bearer ${import.meta.env.VITE_OAI_KEY}`
       },
       body: JSON.stringify({
-        model: import.meta.env.VITE_OAI_IMAGE_MODEL,
+        model: modelName,
         prompt,
         n: 1,
         size: '512x512',
@@ -39,18 +44,23 @@ const generateImageFromOpenAI = async (prompt: string, seed?: number, storagePro
     });
 
     if (!response.ok) {
-      if (response.status === 400) {
-        console.error('400 error: Bad request for image generation.');
-        return '';
-      }
+      const errorText = await response.text();
+      const errorMessage = `OpenAI API Error: ${response.status} ${response.statusText} - ${errorText}`;
+      console.error(errorMessage);
+      moxusService.failLLMCallRecord(callId, errorMessage);
+      if (response.status === 400) return ''; 
       throw new Error(`Unexpected error: ${response.statusText}`);
     }
 
     const data = await response.json();
     const rawImageUrl = data.data[0].url;
-    return await compressImage(rawImageUrl, { qualityProfile: storageProfile || 'storage_other' });
+    const finalImage = await compressImage(rawImageUrl, { qualityProfile: storageProfile || 'storage_other' });
+    moxusService.finalizeLLMCallRecord(callId, "OpenAI image generated and compressed successfully.");
+    return finalImage;
   } catch (error) {
-    console.error('Error generating image from OpenAI:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error generating image from OpenAI:', errorMessage);
+    moxusService.failLLMCallRecord(callId, errorMessage);
     return '';
   }
 };
@@ -68,8 +78,12 @@ const generateImageFromOpenAI = async (prompt: string, seed?: number, storagePro
  */
 
 const generateImageFromOpenRouter = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
+  const callId = `img_openrouter-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const modelName = import.meta.env.VITE_OPENROUTER_IMAGE_MODEL || 'openrouter_unknown_image_model';
+  moxusService.initiateLLMCallRecord(callId, 'image_generation_openrouter', modelName, prompt);
+  
   try {
-    const model = import.meta.env.VITE_OPENROUTER_IMAGE_MODEL || 'stability-ai/sdxl';
+    const model = modelName;
     const size = import.meta.env.VITE_OPENROUTER_IMAGE_SIZE || '1024x1024';
     const quality = import.meta.env.VITE_OPENROUTER_IMAGE_QUALITY || 'standard';
 
@@ -94,10 +108,11 @@ const generateImageFromOpenRouter = async (prompt: string, seed?: number, storag
     });
 
     if (!response.ok) {
-      if (response.status === 400) {
-        console.error('400 error: Bad request for image generation.');
-        return '';
-      }
+      const errorText = await response.text();
+      const errorMessage = `OpenRouter API Error: ${response.status} ${response.statusText} - ${errorText}`;
+      console.error(errorMessage);
+      moxusService.failLLMCallRecord(callId, errorMessage);
+      if (response.status === 400) return '';
       throw new Error(`Unexpected error: ${response.statusText}`);
     }
 
@@ -105,11 +120,9 @@ const generateImageFromOpenRouter = async (prompt: string, seed?: number, storag
     const rawImageUrl = data.data[0].url;
 
     let finalImageUrl = '';
-
     let retries = 0;
     const maxRetries = 10;
-    const retryDelay = 2000; // 2 seconds
-
+    const retryDelay = 2000;
     while (retries < maxRetries) {
       try {
         const imageResponse = await fetch(rawImageUrl);
@@ -119,24 +132,35 @@ const generateImageFromOpenRouter = async (prompt: string, seed?: number, storag
           break;
         }
       } catch (error) {
-        console.log(`OpenRouter Image not ready yet, retrying in ${retryDelay}ms (attempt ${retries + 1}/${maxRetries})`);
+        console.log(`OpenRouter Image not ready yet, retrying...`);
       }
-      
       await new Promise(resolve => setTimeout(resolve, retryDelay));
       retries++;
     }
-
     if (!finalImageUrl) {
-      throw new Error('OpenRouter Image generation timed out or failed to fetch');
+      const timeoutError = 'OpenRouter Image generation timed out or failed to fetch';
+      moxusService.failLLMCallRecord(callId, timeoutError);
+      throw new Error(timeoutError);
     }
-    return await compressImage(finalImageUrl, { qualityProfile: storageProfile || 'storage_other' });
+
+    const compressedFinalImage = await compressImage(finalImageUrl, { qualityProfile: storageProfile || 'storage_other' });
+    moxusService.finalizeLLMCallRecord(callId, "OpenRouter image generated and compressed successfully.");
+    return compressedFinalImage;
   } catch (error) {
-    console.error('Error generating image from OpenRouter:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error generating image from OpenRouter:', errorMessage);
+    if (!moxusService.getLLMLogEntries().find(log => log.id === callId && log.status === 'failed')) {
+        moxusService.failLLMCallRecord(callId, errorMessage);
+    }
     return '';
   }
 };
 
 const generateImageFromAutomatic = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
+  const callId = `img_auto1111-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const modelName = 'Automatic1111_txt2img'; // Or extract from config if available
+  moxusService.initiateLLMCallRecord(callId, 'image_generation_auto1111', modelName, prompt);
+
   const webuiServerUrl = import.meta.env.VITE_IMG_HOST || 'http://127.0.0.1:7860';
 
   const payload = {
@@ -162,24 +186,33 @@ const generateImageFromAutomatic = async (prompt: string, seed?: number, storage
     });
 
     if (!response.ok) {
-      if (response.status === 400) {
-        console.error('400 error: Bad request for image generation.');
-        return '';
-      }
+      const errorText = await response.text();
+      const errorMessage = `Automatic1111 API Error: ${response.status} ${response.statusText} - ${errorText}`;
+      console.error(errorMessage);
+      moxusService.failLLMCallRecord(callId, errorMessage);
+      if (response.status === 400) return '';
       throw new Error(`Unexpected error: ${response.statusText}`);
     }
 
     const data = await response.json();
     const base64Image = data.images[0];
     const rawImageUrl = `data:image/png;base64,${base64Image}`;
-    return await compressImage(rawImageUrl, { qualityProfile: storageProfile || 'storage_other' });
+    const finalImage = await compressImage(rawImageUrl, { qualityProfile: storageProfile || 'storage_other' });
+    moxusService.finalizeLLMCallRecord(callId, "Automatic1111 image generated and compressed successfully.");
+    return finalImage;
   } catch (error) {
-    console.error('Error generating image from Automatic1111:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error generating image from Automatic1111:', errorMessage);
+    moxusService.failLLMCallRecord(callId, errorMessage);
     return '';
   }
 };
 
 const generateImageFromNovelAIV4 = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
+  const callId = `img_novelai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const modelName = 'nai-diffusion-4-full'; // From payload
+  moxusService.initiateLLMCallRecord(callId, 'image_generation_novelai', modelName, prompt);
+
   console.log('Starting NovelAI v4 image generation...');
   const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art, bad anatomy";
   const now = new Date().toISOString();
@@ -233,7 +266,7 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number, storage
   };
 
   let zipUrl = '';
-  let rawImageUrl = '';
+  let rawImageUrlFromZip = ''; // Renamed to avoid conflict with the outer scope variable if any
 
   try {
     console.log('Sending request to NovelAI v4 API...');
@@ -261,55 +294,54 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number, storage
       },
       body: JSON.stringify(payload)
     });
-
     console.log('Received response from NovelAI v4 API:', response.status);
     
     if (!response.ok) {
-      if (response.status === 400) {
-        console.error('400 error: Bad request for image generation.');
-        return '';
-      }
-      if (response.status === 429) {
-        console.log('Rate limited by NovelAI API. Waiting before retry...');
-        throw new Error('RATE_LIMITED');
-      }
+      const errorText = await response.text(); // Attempt to get error text
+      const errorMessage = `NovelAI API Error: ${response.status} ${response.statusText} - ${errorText}`;
+      console.error(errorMessage);
+      moxusService.failLLMCallRecord(callId, errorMessage);
+      if (response.status === 400) return '';
+      if (response.status === 429) throw new Error('RATE_LIMITED'); // Let specific error propagate if needed
       throw new Error(`Unexpected error: ${response.statusText}`);
     }
 
     const zipBlob = await response.blob();
     if (zipBlob.size === 0) {
-      console.error('Received empty ZIP blob from API');
+      const emptyBlobError = 'Received empty ZIP blob from NovelAI API';
+      console.error(emptyBlobError);
+      moxusService.failLLMCallRecord(callId, emptyBlobError);
       return '';
     }
 
     zipUrl = URL.createObjectURL(zipBlob);
     const zip = await JSZip.loadAsync(zipBlob);
-    const imageFile = Object.values(zip.files).find(file => 
-      file.name.toLowerCase().endsWith('.png') || 
-      file.name.toLowerCase().endsWith('.jpg') || 
-      file.name.toLowerCase().endsWith('.jpeg')
-    ) as JSZip.JSZipObject | undefined;
+    const imageFile = Object.values(zip.files).find(file => file.name.toLowerCase().endsWith('.png') || file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg')) as JSZip.JSZipObject | undefined;
 
     if (!imageFile) {
-      console.error('No image file found in ZIP');
+      const noImageError = 'No image file found in NovelAI ZIP';
+      console.error(noImageError);
+      moxusService.failLLMCallRecord(callId, noImageError);
       return '';
     }
 
     const imageBlob = await imageFile.async('blob');
-    rawImageUrl = URL.createObjectURL(imageBlob);
+    rawImageUrlFromZip = URL.createObjectURL(imageBlob);
 
-    const highQualityBaseImage = await compressImage(rawImageUrl, { qualityProfile: storageProfile || 'storage_other' });
+    const highQualityBaseImage = await compressImage(rawImageUrlFromZip, { qualityProfile: storageProfile || 'storage_other' });
+    moxusService.finalizeLLMCallRecord(callId, "NovelAI image generated and processed successfully.");
     return highQualityBaseImage;
   } catch (error) {
-    console.error('Error in NovelAI v4 image generation:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error in NovelAI v4 image generation:', errorMessage);
+    // Ensure fail is called if not already by more specific error handling paths above
+    if (!moxusService.getLLMLogEntries().find(log => log.id === callId && log.status === 'failed')) {
+        moxusService.failLLMCallRecord(callId, errorMessage);
+    }
     return '';
   } finally {
-    if (rawImageUrl) {
-      URL.revokeObjectURL(rawImageUrl);
-    }
-    if (zipUrl) {
-      URL.revokeObjectURL(zipUrl);
-    }
+    if (rawImageUrlFromZip) URL.revokeObjectURL(rawImageUrlFromZip);
+    if (zipUrl) URL.revokeObjectURL(zipUrl);
   }
 };
 

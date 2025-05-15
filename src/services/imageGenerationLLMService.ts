@@ -1,6 +1,7 @@
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
 import { getResponse, formatPrompt, loadedPrompts } from './llmCore';
+import { moxusService } from '../services/MoxusService';
 
 // This function was originally in LLMService.ts
 function getTypeSpecificPromptAddition(nodeType: string | undefined): string {
@@ -13,7 +14,7 @@ function getTypeSpecificPromptAddition(nodeType: string | undefined): string {
   return ''; // Fallback if prompts aren't loaded or structured as expected
 }
 
-export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], chatHistory: Message[] = []) => {
+export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], chatHistory: Message[] = []): Promise<string> => {
   console.log('LLM Call (ImageGenerationService): Generating image prompt for node:', node.id);
   const imageGenerationNodes = allNodes.filter(n => n.type === "image_generation");
   
@@ -62,6 +63,37 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
     { role: 'system', content: contentPrompt },
   ];
 
-  // Skip Moxus feedback for image prompt generation, as per original logic
-  return getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true });
+  const callType = 'image_prompt_generation';
+  let responsePayload: { llmResult: string, callId: string } | null = null;
+
+  try {
+    // Pass the specific callType to getResponse
+    responsePayload = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true }, callType);
+    
+    if (!responsePayload || typeof responsePayload.llmResult !== 'string') {
+      const errMsg = 'generateImagePrompt did not receive a valid llmResult string.';
+      if(responsePayload && responsePayload.callId) {
+        moxusService.failLLMCallRecord(responsePayload.callId, errMsg);
+      }
+      throw new Error(errMsg);
+    }
+    
+    // Finalize as successful since we expect a string and no further parsing is done here.
+    moxusService.finalizeLLMCallRecord(responsePayload.callId, responsePayload.llmResult);
+    return responsePayload.llmResult;
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[ImageGenerationService] Error in ${callType} (callId: ${responsePayload?.callId}):`, errorMessage);
+    // If responsePayload and callId exist, and it hasn't been failed by getResponse itself,
+    // ensure it's marked as failed here. getResponse should handle its own fetch/API errors.
+    // This catch is more for issues after getResponse returns or if it throws unexpectedly before returning a payload.
+    if (responsePayload && responsePayload.callId && 
+        !moxusService.getLLMLogEntries().find(log => log.id === responsePayload!.callId && log.status === 'failed')) {
+      moxusService.failLLMCallRecord(responsePayload.callId, `Error in ${callType}: ${errorMessage}`);
+    }
+    // Fallback or rethrow as appropriate for the service's contract
+    // For now, returning an empty string similar to other image service error paths.
+    return ''; 
+  }
 }; 
