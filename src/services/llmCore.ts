@@ -1,5 +1,4 @@
 import * as yaml from 'js-yaml';
-import rawPrompts from '../prompts.yaml?raw';
 import { Message } from '../context/ChatContext';
 import { moxusService } from './MoxusService'; // MoxusService will use setMoxusFeedbackImpl with getMoxusFeedback from this file
 import { Node } from '../models/Node'; // Needed for types in helper functions if they remain here
@@ -29,6 +28,19 @@ export interface PromptsConfig {
     generate_nodes_from_prompt: string;
     sort_nodes_by_relevance: string;
   };
+}
+
+let rawPrompts: string;
+const llmMode = import.meta.env.VITE_LLM_MODE?.toUpperCase();
+
+if (llmMode === 'BASE') {
+  // @ts-ignore
+  const module = await import('../prompts-base.yaml?raw');
+  rawPrompts = module.default;
+} else { // Default to INSTRUCT
+  // @ts-ignore
+  const module = await import('../prompts-instruct.yaml?raw');
+  rawPrompts = module.default;
 }
 
 export const loadedPrompts = yaml.load(rawPrompts) as PromptsConfig;
