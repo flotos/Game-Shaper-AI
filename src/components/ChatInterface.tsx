@@ -1,22 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition, generateImagePrompt } from '../services/llm';
+import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition } from '../services/llm';
 import { Node } from '../models/Node';
 import { useChat, Message } from '../context/ChatContext';
 import ChatHistory from './ChatHistory';
 import ChatInput from './ChatInput';
 import DetailsOverlay from './DetailsOverlay';
 import { moxusService } from '../services/MoxusService';
+import { LLMNodeEditionResponse } from '../models/nodeOperations';
 
 interface ChatInterfaceProps {
   nodes: Node[];
-  updateGraph: (nodeEdition: { 
-    merge?: Partial<Node>[]; 
-    delete?: string[];
-    newNodes?: string[];
-  }, 
-  imagePrompts?: { nodeId: string; prompt: string }[],
-  chatHistory?: Message[],
-  isFromUserInteraction?: boolean
+  updateGraph: (
+    nodeEdition: LLMNodeEditionResponse, 
+    imagePrompts?: { nodeId: string; prompt: string }[],
+    chatHistory?: Message[],
+    isFromUserInteraction?: boolean
   ) => Promise<void>;
   addMessage: (message: Message) => void;
 }
@@ -30,7 +28,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
   const [showDebug, setShowDebug] = useState(true);
   const [inspectMode, setInspectMode] = useState(false);
   const [disableImageGeneration, setDisableImageGeneration] = useState(false);
-  const [lastNodeEdition, setLastNodeEdition] = useState(null);
+  const [lastNodeEdition, setLastNodeEdition] = useState<LLMNodeEditionResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionTriggered, setActionTriggered] = useState(false);
   const [lastFailedRequest, setLastFailedRequest] = useState<{
@@ -39,11 +37,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
     nodes: Node[];
     detailedNodeIds: string[];
   } | null>(null);
-  const [generationTimes, setGenerationTimes] = useState<{
-    story: number;
-    imagePrompts: number[];
-    imageGeneration: number[];
-  }>({ story: 0, imagePrompts: [], imageGeneration: [] });
   const [isLoading, setIsLoading] = useState(false);
   let chatTextCallId_to_finalize: string | null = null;
 
@@ -57,7 +50,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
   useEffect(() => {
     if (chatHistory.length === 0) {
-      // Handle any necessary UI updates when chat history is cleared
       setInput('');
       setLastNodeEdition(null);
       setLoadingMessage('');
@@ -69,6 +61,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
     chatTextCallId_to_finalize = null;
     if (!input.trim() || isLoading) return;
 
+    const currentInput = input;
     setIsLoading(true);
     setErrorMessage('');
     setLoadingMessage('Processing your request...');
@@ -78,16 +71,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
     try {
       console.log('Starting new interaction at:', timestamp);
 
-      // Add user message
       const userMessage: Message = {
         role: "user",
-        content: input,
+        content: currentInput,
         timestamp: timestamp.toString()
       };
       addMessage(userMessage);
-      setInput(''); // Clear input immediately after sending
+      setInput(''); 
 
-      // Add a streaming message placeholder
       const streamingMessage: Message = {
         role: "assistant",
         content: "",
@@ -97,14 +88,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
       addMessage(streamingMessage);
 
       let detailedNodeIds;
-      const tempUserMessage: Message = {
-        role: "user",
-        content: input,
-        timestamp: timestamp.toString()
-      };
-
-      // Use the current chat history including the new message
-      const contextHistory = [...chatHistory, tempUserMessage];
+      const contextHistory = [...chatHistory];
 
       const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
 
@@ -115,21 +99,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
       } else {
         console.log('Starting relevant nodes determination');
         const relevantNodesStartTime = Date.now();
-        detailedNodeIds = await getRelevantNodes(input, contextHistory.slice(-4), nodes);
+        detailedNodeIds = await getRelevantNodes(currentInput, contextHistory.slice(-4), nodes);
         console.log('Relevant nodes determination completed in:', Date.now() - relevantNodesStartTime, 'ms');
       }
 
-      // First, generate and display the chat text
       console.log('Starting chat text generation');
-      const chatTextResult = await generateChatText(input, contextHistory.slice(-20), nodes, detailedNodeIds);
+      const chatTextResult = await generateChatText(currentInput, contextHistory.slice(-20), nodes, detailedNodeIds);
       const chatTextResponse = chatTextResult.streamResponse;
       chatTextCallId_to_finalize = chatTextResult.callId;
       
+      let accumulatedContent = '';
       if (chatTextResponse instanceof Response) {
         const reader = chatTextResponse.body?.getReader();
         if (!reader) throw new Error('No reader available for chat text stream');
-
-        let accumulatedContent = '';
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -152,60 +134,53 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
             }
             if (lines.some(line => line.startsWith('data: [DONE]'))) break;
           }
-          endStreaming();
-          if (chatTextCallId_to_finalize) {
-            moxusService.finalizeLLMCallRecord(chatTextCallId_to_finalize, accumulatedContent);
-          }
-          const storyEndTime = Date.now();
-          const storyDuration = storyEndTime - storyStartTime;
-          console.log('Story generation completed in:', storyDuration, 'ms');
-          moxusService.recordInternalSystemEvent(
+        } finally {
+            endStreaming();
+            if (chatTextCallId_to_finalize) {
+                if (accumulatedContent) {
+                    moxusService.finalizeLLMCallRecord(chatTextCallId_to_finalize, accumulatedContent);
+                } else if (!moxusService.getLLMLogEntries().find(log => log.id === chatTextCallId_to_finalize && log.status === 'failed')){
+                    moxusService.failLLMCallRecord(chatTextCallId_to_finalize, "Stream ended with no content accumulated and not previously marked as failed.");
+                }
+            }
+        }
+        const storyEndTime = Date.now();
+        const storyDuration = storyEndTime - storyStartTime;
+        console.log('Story generation completed in:', storyDuration, 'ms');
+        moxusService.recordInternalSystemEvent(
             `chatText-${Date.now()}`,
-            `Streamed Chat Text Fully Received: User input: "${input}"`,
+            `Streamed Chat Text Fully Received: User input: "${currentInput}"`,
             accumulatedContent,
             "streamed_chat_text_completed"
-          );
+        );
 
-        } catch (streamError) {
-          console.error('Error processing chat text stream:', streamError);
-          endStreaming();
-          if (chatTextCallId_to_finalize) {
-            moxusService.failLLMCallRecord(chatTextCallId_to_finalize, streamError instanceof Error ? streamError.message : String(streamError));
-          }
-          throw streamError;
-        }
-
-        // Update loading message for the next steps
         setLoadingMessage('Generating actions and updating game state...');
 
-        // Start the other operations in parallel
-        const [actions, nodeEdition] = await Promise.all([
-          generateActions(accumulatedContent, nodes, input),
-          generateNodeEdition(accumulatedContent, [], nodes, input, true)
+        const [actions, nodeEditionResponse] = await Promise.all([
+          generateActions(accumulatedContent, nodes, currentInput),
+          generateNodeEdition(accumulatedContent, [], nodes, currentInput, true)
         ]);
         
         console.log('Parallel operations completed in:', Date.now() - storyStartTime, 'ms');
 
-        // If image generation is disabled, remove updateImage flags
+        const finalNodeEdition: LLMNodeEditionResponse = JSON.parse(JSON.stringify(nodeEditionResponse));
+
         if (disableImageGeneration) {
-          if (nodeEdition.newNodes) {
-            nodeEdition.newNodes = nodeEdition.newNodes.map((node: Partial<Node>) => ({
-              ...node,
-              updateImage: false
-            }));
+          if (finalNodeEdition.n_nodes) {
+            finalNodeEdition.n_nodes.forEach(node => node.updateImage = false);
           }
-          if (nodeEdition.update) {
-            nodeEdition.update = nodeEdition.update.map((update: { id: string; longDescription?: string; rules?: string; updateImage?: boolean; name?: string; type?: string }) => ({
-              ...update,
-              updateImage: false
-            }));
+          if (finalNodeEdition.u_nodes) {
+            for (const nodeId in finalNodeEdition.u_nodes) {
+              if (finalNodeEdition.u_nodes[nodeId]) {
+                finalNodeEdition.u_nodes[nodeId].img_upd = false;
+              }
+            }
           }
         }
 
-        setLastNodeEdition(nodeEdition);
+        setLastNodeEdition(finalNodeEdition);
         setLastFailedRequest(null);
 
-        // Add the remaining messages
         const messagesToAdd: Message[] = [
           {
             role: "selectedNodes",
@@ -221,34 +196,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
             timestamp: timestamp.toString()
           }, {
             role: "nodeEdition",
-            content: JSON.stringify(nodeEdition, null, 2),
+            content: JSON.stringify(finalNodeEdition, null, 2),
             timestamp: timestamp.toString()
           }
         ];
 
-        // Filter out messages that should be hidden
         const filteredMessages = messagesToAdd.filter(message => {
           if (!message || !message.content) return false;
-          
-          if (message.role === "selectedNodes" && nodes.length < maxIncludedNodes) {
-            return false; // Hide selectedNodes when all nodes are selected
-          }
-          if (message.role === "reasoning" && !message.content.trim()) {
-            return false; // Hide reasoning when empty
-          }
+          if (message.role === "selectedNodes" && nodes.length < maxIncludedNodes) return false;
+          if (message.role === "reasoning" && !message.content.trim()) return false;
           return true;
         });
 
         filteredMessages.forEach(addMessage);
         setActionTriggered(false);
-
-        // Keep waitingForAnswer true until all operations are complete
         setLoadingMessage(disableImageGeneration ? '' : 'Generating images in the background...');
         setIsLoading(false);
 
-        // Apply the node edition to update the graph in the background
         console.log('Applying node edition to graph...');
-        await updateGraph(nodeEdition, [], contextHistory, true);
+        await updateGraph(finalNodeEdition, [], contextHistory, true);
       } else {
         console.warn('generateChatText did not return a Response object for streaming as expected.');
         if (chatTextCallId_to_finalize) {
@@ -263,14 +229,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
         moxusService.failLLMCallRecord(chatTextCallId_to_finalize, error instanceof Error ? error.message : String(error));
       }
       setLastFailedRequest({
-        input,
+        input: currentInput,
         chatHistory: [...chatHistory],
         nodes,
         detailedNodeIds: nodes
           .filter(node => node.type !== "image_generation")
           .map(node => node.id)
       });
-      setWaitingForAnswer(false);
       setLoadingMessage('');
       setIsLoading(false);
     }
@@ -285,7 +250,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
   const handleActionClick = (action: string) => {
     setInput(action);
-    handleSend();
+    setActionTriggered(true); 
   };
 
   const toggleCollapse = () => {
@@ -293,9 +258,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
   };
 
   const handleRegenerate = async () => {
-    if (waitingForAnswer || chatHistory.length === 0) return;
+    if (isLoading || chatHistory.length === 0) return;
 
-    // Find the last user message and its index
     let lastUserMessageIndex = -1;
     let lastUserMessage: Message | null = null;
     for (let i = chatHistory.length - 1; i >= 0; i--) {
@@ -308,10 +272,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
     if (lastUserMessageIndex === -1 || !lastUserMessage) return;
 
-    // Identify assistant messages that will be removed/regenerated
     const discardedAssistantMessages = chatHistory.slice(lastUserMessageIndex + 1);
-
-    // Log the regeneration event to Moxus
     if (discardedAssistantMessages.length > 0) {
       moxusService.recordInternalSystemEvent(
         `chatRegenerate-${Date.now()}`,
@@ -320,7 +281,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
         "chat_regenerate_event"
       );
     } else {
-      // Log even if no assistant messages were present after the last user message
       moxusService.recordInternalSystemEvent(
         `chatRegenerate-${Date.now()}`,
         "System Event: User requested input regeneration (before assistant reply).",
@@ -329,12 +289,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
       );
     }
 
-    // Remove all messages after and including the last user message
-    const newChatHistory = chatHistory.slice(0, lastUserMessageIndex);
+    const newChatHistory = chatHistory.slice(0, lastUserMessageIndex + 1);
     setChatHistory(newChatHistory);
-
-    // Set the input to the last user message but don't trigger send
     setInput(lastUserMessage.content);
+    setActionTriggered(true); 
   };
 
   const handleGenerateSuggestions = async () => {
@@ -344,6 +302,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
     setErrorMessage('');
     setLoadingMessage('Generating suggestions...');
     const timestamp = new Date().toLocaleTimeString();
+    const currentInputForSuggestions = input;
 
     try {
       const contextHistory = [...chatHistory];
@@ -355,13 +314,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
           .filter(node => node.type !== "image_generation")
           .map(node => node.id);
       } else {
-        detailedNodeIds = await getRelevantNodes(input, contextHistory.slice(-4), nodes);
+        detailedNodeIds = await getRelevantNodes(currentInputForSuggestions || "general suggestions", contextHistory.slice(-4), nodes);
       }
 
-      const [actions, nodeEdition] = await Promise.all([
-        generateActions("", nodes, ""),
-        generateNodeEdition("", [], nodes, "", true)
+      const [actions, nodeEditionResponse] = await Promise.all([
+        generateActions("", nodes, currentInputForSuggestions || "suggest actions"),
+        generateNodeEdition("", [], nodes, currentInputForSuggestions || "suggest node changes", true)
       ]);
+      
+      const finalNodeEdition: LLMNodeEditionResponse = JSON.parse(JSON.stringify(nodeEditionResponse));
+
+      if (disableImageGeneration) {
+        if (finalNodeEdition.n_nodes) {
+          finalNodeEdition.n_nodes.forEach(node => node.updateImage = false);
+        }
+        if (finalNodeEdition.u_nodes) {
+          for (const nodeId in finalNodeEdition.u_nodes) {
+            if (finalNodeEdition.u_nodes[nodeId]) {
+              finalNodeEdition.u_nodes[nodeId].img_upd = false;
+            }
+          }
+        }
+      }
 
       const messagesToAdd: Message[] = [
         {
@@ -370,29 +344,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
           timestamp: timestamp.toString()
         }, {
           role: "nodeEdition",
-          content: JSON.stringify(nodeEdition, null, 2),
+          content: JSON.stringify(finalNodeEdition, null, 2),
           timestamp: timestamp.toString()
         }
       ];
 
       messagesToAdd.forEach(addMessage);
-      setLastNodeEdition(nodeEdition);
+      setLastNodeEdition(finalNodeEdition);
 
-      updateGraph(nodeEdition, [], contextHistory, true).then(() => {
-        setWaitingForAnswer(false);
-        setLoadingMessage('');
-        setIsLoading(false);
-      }).catch((error: Error) => {
-        console.error('Error updating graph:', error);
-        setErrorMessage('Error updating game state. Please try again.');
-        setWaitingForAnswer(false);
+      updateGraph(finalNodeEdition, [], contextHistory, true).finally(() => {
         setLoadingMessage('');
         setIsLoading(false);
       });
     } catch (error) {
       console.error('Error generating suggestions:', error);
       setErrorMessage('An error occurred. Please try again.');
-      setWaitingForAnswer(false);
       setLoadingMessage('');
       setIsLoading(false);
     }
@@ -414,7 +380,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
   return (
     <div className="w-1/2 h-full p-4 flex flex-col relative">
       <ChatHistory 
-        waitingForAnswer={waitingForAnswer} 
+        waitingForAnswer={isLoading}
         loadingMessage={loadingMessage} 
         errorMessage={errorMessage}
         onRetry={handleRetry}
@@ -435,11 +401,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
         <ChatInput 
           input={input} 
           setInput={setInput} 
-          handleSend={handleSend}
+          handleSend={() => setActionTriggered(true)}
           handleSendAsNote={handleSendAsNote}
-          waitingForAnswer={waitingForAnswer}
+          waitingForAnswer={isLoading}
           onRegenerate={handleRegenerate}
-          showRegenerate={chatHistory.length > 0}
+          showRegenerate={chatHistory.length > 0 && !isLoading}
         />
       )}
       <div className="flex space-x-4">
@@ -465,7 +431,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
           {disableImageGeneration ? 'Enable Image Generation' : 'Disable Image Generation'}
         </button>
       </div>
-      <DetailsOverlay isCollapsed={isCollapsed} toggleCollapse={toggleCollapse} lastNodeEdition={lastNodeEdition || []} nodes={nodes} />
+      <DetailsOverlay isCollapsed={isCollapsed} toggleCollapse={toggleCollapse} lastNodeEdition={[]} nodes={nodes} />
     </div>
   );
 };

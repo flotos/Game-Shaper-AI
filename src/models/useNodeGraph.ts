@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Node } from './Node';
 import { generateImage } from '../services/ImageService';
-import { generateImagePrompt } from '../services/llm';
 import LZString from 'lz-string';
 import { imageQueueService } from '../services/ImageQueueService';
 import { sortNodesByRelevance } from '../services/llm';
 import { useChat, Message } from '../context/ChatContext';
 import { moxusService } from '../services/MoxusService';
+import { LLMNodeEditionResponse, TextDiffInstruction, FieldUpdateOperation, NodeSpecificUpdates } from './nodeOperations';
 
 const initNodes: Node[] = [
   {
@@ -122,283 +122,257 @@ function useNodeGraph() {
     });
   }, []);
 
-  const updateGraph = useCallback(async (nodeEdition: { 
-    merge?: Partial<Node>[];
-    delete?: string[];
-    newNodes?: string[];
-  }, 
-  imagePrompts: { nodeId: string; prompt: string }[] = [], 
-  providedChatHistory?: Message[],
-  isFromUserInteraction: boolean = false
+  const applyTextDiffInstructions = (currentText: string, edits: TextDiffInstruction[]): string => {
+    let newText = currentText;
+    for (const edit of edits) {
+      let { prev_txt, next_txt, occ = 1 } = edit;
+      next_txt = next_txt ?? ""; 
+
+      if (!prev_txt) { 
+        newText += next_txt; 
+        console.log(`applyTextDiff: Appended content. New length: ${newText.length}`);
+        continue;
+      }
+
+      let startIndex = -1;
+      let currentOccurrence = 0;
+      let searchFromIndex = 0;
+      while(currentOccurrence < occ && searchFromIndex < newText.length) {
+        startIndex = newText.indexOf(prev_txt, searchFromIndex);
+        if (startIndex === -1) break; 
+        currentOccurrence++;
+        if(currentOccurrence === occ) break; 
+        searchFromIndex = startIndex + prev_txt.length; 
+      }
+
+      if (startIndex !== -1 && currentOccurrence === occ) {
+        newText = 
+          newText.substring(0, startIndex) + 
+          next_txt + 
+          newText.substring(startIndex + prev_txt.length);
+        console.log(`applyTextDiff: Applied edit: replaced '${prev_txt}' with '${next_txt}' (occurrence ${occ})`);
+      } else {
+        console.warn(`applyTextDiff: Could not find occurrence ${occ} of '${prev_txt}'. Edit skipped:`, edit);
+      }
+    }
+    return newText;
+  };
+
+  const updateGraph = useCallback(async (
+    nodeEdition: LLMNodeEditionResponse,
+    imagePrompts: { nodeId: string; prompt: string }[] = [], 
+    providedChatHistory?: Message[],
+    isFromUserInteraction: boolean = false
   ): Promise<void> => {
-    if (!nodeEdition) return;
+    if (!nodeEdition || (!nodeEdition.n_nodes && !nodeEdition.u_nodes && !nodeEdition.d_nodes)) {
+      console.log('No node operations to perform (YAML structure).');
+      triggerMoxusFeedback(nodes, providedChatHistory || chatHistory, true); 
+      return;
+    }
 
-    console.log('Starting graph update with node edition:', nodeEdition);
-    console.log('Image prompts to process:', imagePrompts);
-    console.log('Is from user interaction:', isFromUserInteraction);
-    
-    // Check if this is a delete-only operation
-    const isDeleteOnly = 
-      nodeEdition.delete && 
-      nodeEdition.delete.length > 0 && 
-      !nodeEdition.merge && 
-      !nodeEdition.newNodes;
-    
-    // Use providedChatHistory if available, otherwise fallback to context
+    console.log('Starting graph update (YAML structure):', nodeEdition, 'Call ID:', nodeEdition.callId);
     const currentChatHistory = providedChatHistory || chatHistory;
+    let workingNodes = [...nodes]; 
+    let nodesToProcessForImageUpdate: Partial<Node>[] = []; 
+    const processedNodeIdsForImage = new Set<string>();
+    const imageUrlsToRevoke = new Map<string, string>();
+    let hasContentChanges = false; 
 
-    // Create a new array to hold all updates
-    const newNodes = [...nodes];
-    let nodesToProcess: Partial<Node>[] = [];
-    const processedNodeIds = new Set<string>();
-    const imageUrls = new Map<string, string>();
-
-    // Initialize the image queue service with the update callback
     imageQueueService.setUpdateNodeCallback((updatedNode: Node) => {
       setNodes(currentNodes => {
         const index = currentNodes.findIndex(n => n.id === updatedNode.id);
         if (index !== -1) {
-          const updatedNodes = [...currentNodes];
-          
-          // Clean up old image if it's a blob URL to prevent memory leaks
-          if (updatedNodes[index].image?.startsWith('blob:')) {
-            URL.revokeObjectURL(updatedNodes[index].image);
+          const updatedNodesState = [...currentNodes];
+          if (updatedNodesState[index].image?.startsWith('blob:')) {
+            URL.revokeObjectURL(updatedNodesState[index].image!);
           }
-          
-          // Preserve all existing node properties and only update image and updateImage flag
-          updatedNodes[index] = {
-            ...updatedNodes[index],
+          updatedNodesState[index] = {
+            ...updatedNodesState[index],
             image: updatedNode.image,
-            updateImage: false // Reset the flag after image is generated
+            updateImage: false
           };
-          return updatedNodes;
+          return updatedNodesState;
         }
         return currentNodes;
       });
     });
 
-    // Process deletions first
-    if (nodeEdition.delete && nodeEdition.delete.length > 0) {
-      console.log('Processing deletions:', nodeEdition.delete);
-      
-      // Collect image URLs that need to be revoked
-      nodeEdition.delete.forEach(id => {
-        const nodeToDelete = newNodes.find(node => node.id === id);
-        if (nodeToDelete?.image?.startsWith('blob:')) {
-          imageUrls.set(id, nodeToDelete.image);
+    // 1. Process Deletions (d_nodes)
+    if (nodeEdition.d_nodes && nodeEdition.d_nodes.length > 0) {
+      console.log('Processing deletions:', nodeEdition.d_nodes);
+      const deleteIds = new Set(nodeEdition.d_nodes);
+      workingNodes.forEach(node => {
+        if (deleteIds.has(node.id) && node.image?.startsWith('blob:')) {
+          imageUrlsToRevoke.set(node.id, node.image);
         }
       });
-      
-      // Remove deleted nodes from array
-      const filteredNodes = newNodes.filter(node => !nodeEdition.delete?.includes(node.id));
-      newNodes.length = 0; // Clear the array without creating a new one
-      newNodes.push(...filteredNodes); // Add the filtered nodes back
-      
-      // Revoke blob URLs after the state update
-      setTimeout(() => {
-        imageUrls.forEach(url => {
-          URL.revokeObjectURL(url);
-        });
-      }, 100);
-      
-      // If this is a delete-only operation, clear nodesToProcess to prevent any image regeneration
-      if (isDeleteOnly) {
-        nodesToProcess = [];
+      workingNodes = workingNodes.filter(node => !deleteIds.has(node.id));
+      hasContentChanges = true;
+    }
+
+    // 2. Process Updates (u_nodes)
+    if (nodeEdition.u_nodes) {
+      console.log('Processing updates:', nodeEdition.u_nodes);
+      for (const nodeId in nodeEdition.u_nodes) {
+        const updatesForNode = nodeEdition.u_nodes[nodeId];
+        const nodeIndex = workingNodes.findIndex(n => n.id === nodeId);
+
+        if (nodeIndex === -1) {
+          console.warn(`updateGraph: Node with ID ${nodeId} not found for update.`);
+          continue;
+        }
+
+        const originalNode = workingNodes[nodeIndex];
+        let modifiedNode = { ...originalNode }; 
+        let nodeSpecificContentChanged = false;
+
+        for (const fieldName in updatesForNode) {
+          if (fieldName === 'img_upd') continue; 
+
+          const fieldUpdate = updatesForNode[fieldName] as FieldUpdateOperation;
+
+          if (fieldUpdate.rpl !== undefined) {
+            (modifiedNode as any)[fieldName] = fieldUpdate.rpl;
+            console.log(`updateGraph: Node ${nodeId}, field ${fieldName} replaced.`);
+            nodeSpecificContentChanged = true;
+          } else if (fieldUpdate.df && (fieldName === 'longDescription' || fieldName === 'rules')) {
+            const currentText = (originalNode as any)[fieldName] as string;
+            if (typeof currentText === 'string') {
+              try {
+                const newText = applyTextDiffInstructions(currentText, fieldUpdate.df);
+                if (newText !== currentText) {
+                  (modifiedNode as any)[fieldName] = newText;
+                  nodeSpecificContentChanged = true;
+                }
+              } catch (e) {
+                const errorMsg = `Error applying text diff to node ${nodeId}, field ${fieldName}: ${e instanceof Error ? e.message : String(e)}`;
+                console.error(errorMsg, fieldUpdate.df);
+                if (nodeEdition.callId) {
+                  moxusService.failLLMCallRecord(nodeEdition.callId, errorMsg);
+                }
+              }
+            } else {
+              console.warn(`updateGraph: Field ${fieldName} on node ${nodeId} is not a string, cannot apply diff.`);
+            }
+          } else if (fieldUpdate.df) {
+            console.warn(`updateGraph: 'diff' operation attempted on non-string or unsupported field '${fieldName}' for node ${nodeId}.`);
+          }
+        }
+        
+        if (updatesForNode.img_upd === true) {
+            modifiedNode.updateImage = true;
+            nodeSpecificContentChanged = true; 
+        }
+
+        if (nodeSpecificContentChanged) {
+            hasContentChanges = true;
+        }
+        
+        workingNodes[nodeIndex] = modifiedNode; 
+
+        if (modifiedNode.updateImage && !processedNodeIdsForImage.has(nodeId)) {
+            nodesToProcessForImageUpdate.push(modifiedNode);
+            processedNodeIdsForImage.add(nodeId);
+            if (originalNode.image?.startsWith('blob:') && originalNode.image !== modifiedNode.image) { 
+                imageUrlsToRevoke.set(nodeId, originalNode.image);
+            }
+        }
       }
     }
 
-    // Process updates and new nodes
-    if (nodeEdition.merge && nodeEdition.merge.length > 0) {
-      console.log('Processing merges:', nodeEdition.merge);
-      
-      // Batch update processing to improve performance
-      for (const updatedNode of nodeEdition.merge) {
-        if (!updatedNode.id) continue; // Skip if no ID
-
-        const index = newNodes.findIndex(node => node.id === updatedNode.id);
-        
-        if (index !== -1) {
-          // Update existing node
-          const existingNode = newNodes[index];
-          
-          // Check if image is changing and needs cleanup
-          if (updatedNode.updateImage && existingNode.image?.startsWith('blob:')) {
-            imageUrls.set(existingNode.id, existingNode.image);
-          }
-          
-          newNodes[index] = { ...existingNode, ...updatedNode };
-          
-          // Only add to processing queue if updateImage is true and not already processed
-          if (updatedNode.updateImage && !processedNodeIds.has(updatedNode.id) && 
-              !nodeEdition.newNodes?.includes(updatedNode.id)) {
-            nodesToProcess.push(newNodes[index]);
-            processedNodeIds.add(updatedNode.id);
+    // 3. Process New Nodes (n_nodes)
+    if (nodeEdition.n_nodes && nodeEdition.n_nodes.length > 0) {
+      console.log('Processing new nodes:', nodeEdition.n_nodes);
+      nodeEdition.n_nodes.forEach(newNode => {
+        if (!workingNodes.find(n => n.id === newNode.id)) {
+          workingNodes.push(newNode);
+          if (newNode.updateImage && !processedNodeIdsForImage.has(newNode.id)) {
+            nodesToProcessForImageUpdate.push(newNode);
+            processedNodeIdsForImage.add(newNode.id);
           }
         } else {
-          // Add new node
-          newNodes.push(updatedNode as Node);
-          
-          // Only add to processing queue if updateImage is true and not already processed
-          if (updatedNode.updateImage && !processedNodeIds.has(updatedNode.id) && 
-              !nodeEdition.newNodes?.includes(updatedNode.id)) {
-            nodesToProcess.push(updatedNode);
-            processedNodeIds.add(updatedNode.id);
-          }
+          console.warn(`updateGraph: New node with ID ${newNode.id} already exists. Skipping addition.`);
         }
-      }
-      
-      // Revoke image URLs after processing
+      });
+      hasContentChanges = true;
+    }
+    
+    if (imageUrlsToRevoke.size > 0) {
       setTimeout(() => {
-        imageUrls.forEach(url => {
-          URL.revokeObjectURL(url);
-        });
+        imageUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
       }, 100);
     }
 
-    // Process new nodes
-    if (nodeEdition.newNodes && nodeEdition.newNodes.length > 0) {
-      console.log('Adding new nodes:', nodeEdition.newNodes);
-      
-      for (const nodeId of nodeEdition.newNodes) {
-        const node = newNodes.find(n => n.id === nodeId);
-        if (node && !processedNodeIds.has(nodeId) && node.updateImage) {
-          nodesToProcess.push(node);
-          processedNodeIds.add(nodeId);
-        }
-      }
-    }
+    let finalNodesState = workingNodes; 
+    setNodes(finalNodesState);
 
-    let finalNodesState = [...newNodes]; // Keep track of the final state
-    
-    // Update nodes state before sorting to provide immediate UI feedback
-    setNodes(newNodes);
-
-    // Sort nodes only if this update is from user interaction and chat history exists
+    // Sorting and Moxus feedback logic (can remain largely the same, using hasContentChanges)
     if (isFromUserInteraction && currentChatHistory && currentChatHistory.length > 0) {
-      // Check the feature flag before proceeding with sorting
       if (import.meta.env.VITE_FEATURE_SORT_NODES !== "false") {
         try {
-          console.log('Sorting nodes by relevance based on chat history (feature flag enabled)');
-          
-          // Use a timeout to prevent UI blocking during sorting process
+          console.log('Sorting nodes by relevance (YAML structure)');
           setTimeout(async () => {
             try {
-              const sortedIds = await sortNodesByRelevance(newNodes, currentChatHistory);
-              const sortedNodes = [...newNodes].sort((a, b) => {
+              const sortedIds = await sortNodesByRelevance(finalNodesState, currentChatHistory);
+              const sortedNodes = [...finalNodesState].sort((a, b) => {
                 const aIndex = sortedIds.indexOf(a.id);
                 const bIndex = sortedIds.indexOf(b.id);
+                if (aIndex === -1 && bIndex === -1) return 0;
                 if (aIndex === -1) return 1;
                 if (bIndex === -1) return -1;
                 return aIndex - bIndex;
               });
-              
-              setNodes(sortedNodes); // Update state with sorted nodes
-              finalNodesState = sortedNodes; // Update final state reference
-              
-              // Trigger Moxus feedback after sorting is complete
-              triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
+              setNodes(sortedNodes);
+              finalNodesState = sortedNodes; 
+              triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges);
             } catch (error) {
               console.error('Error in delayed sorting:', error);
+              triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges); 
             }
           }, 50);
         } catch (error) {
           console.error('Error sorting nodes:', error);
-          
-          // Still trigger Moxus feedback even if sorting fails
-          triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
+          triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges); 
         }
       } else {
-        console.log('Skipping nodes sorting by relevance based on VITE_FEATURE_SORT_NODES flag.');
-        // If sorting is skipped, trigger Moxus feedback directly with the current state
-        triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
+        triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges);
       }
     } else {
-      // If no chat history or not from user interaction, or sorting disabled, trigger Moxus feedback directly
-      triggerMoxusFeedback(finalNodesState, currentChatHistory, isOnlyImageUpdate(nodeEdition));
+      triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges);
     }
 
-    // Skip image generation for delete-only operations
-    if (isDeleteOnly) {
-      console.log('Skipping image generation for delete-only operation');
-      return;
-    }
-
-    // Queue image generation for nodes that need it (using imagePrompts argument)
-    // Use the imagePrompts argument passed to the function
-    const nodesToProcessForImages = nodesToProcess.length > 0 ? nodesToProcess : 
-                                   finalNodesState.filter(node => node.updateImage);
-                                   
-    if (nodesToProcessForImages.length > 0) {
-      console.log('Processing images for nodes:', nodesToProcessForImages.map(n => n.id));
-      
-      // Process images in batches to improve performance
+    // Image Generation Queuing
+    if (nodesToProcessForImageUpdate.length > 0) {
+      console.log('Queueing images for nodes:', nodesToProcessForImageUpdate.map(n => n.id));
       const batchSize = 3;
-      
-      for (let i = 0; i < nodesToProcessForImages.length; i += batchSize) {
-        const batch = nodesToProcessForImages.slice(i, i + batchSize);
-        
-        // Process each batch with a slight delay to prevent UI freezing
+      for (let i = 0; i < nodesToProcessForImageUpdate.length; i += batchSize) {
+        const batch = nodesToProcessForImageUpdate.slice(i, i + batchSize);
         setTimeout(() => {
           batch.forEach(node => {
-            // Find matching prompt from imagePrompts if available
             const matchingPrompt = imagePrompts.find(p => p.nodeId === node.id);
-            
             if (matchingPrompt) {
-              console.log('Using provided prompt for node:', node.id);
               imageQueueService.addToQueueWithExistingPrompt(node as Node, matchingPrompt.prompt);
             } else {
-              console.log('Generating new prompt for node:', node.id);
               imageQueueService.addToQueue(node as Node, finalNodesState, currentChatHistory);
             }
           });
-        }, i * 50); // Stagger image processing
+        }, i * 50); 
       }
     }
-  }, [nodes, chatHistory, addMessage]);
+  }, [nodes, chatHistory, addMessage]); 
   
-  // Helper function to check if the update only affects images
-  const isOnlyImageUpdate = useCallback((nodeEdition: { 
-    merge?: Partial<Node>[]; 
-    delete?: string[];
-    newNodes?: string[];
-  }) => {
-    // Check if this is a delete-only operation
-    if (nodeEdition.delete?.length && !nodeEdition.merge && !nodeEdition.newNodes) {
-      return false; // Delete operations are significant content changes, not just image updates
-    }
-    
-    // Check if the update only includes image updates
-    return (nodeEdition.merge?.every(node => 
-      Object.keys(node).length <= 2 && // Only id and updateImage properties
-      'id' in node && 
-      ('updateImage' in node || !Object.keys(node).some(key => key !== 'id'))
-    ) ?? true) && 
-    !nodeEdition.delete?.length && 
-    !nodeEdition.newNodes?.length;
-  }, []);
-  
-  // Helper function to trigger Moxus feedback
   const triggerMoxusFeedback = useCallback((
-    finalNodesState: Node[], 
-    currentChatHistory?: Message[],
-    isOnlyImageUpdates: boolean = false
+    finalNodesStateParam: Node[], 
+    currentChatHistoryParam?: Message[],
+    isOnlyImgUpdate: boolean = false // This flag now correctly reflects if only image related flags changed OR no changes happened.
   ) => {
-    // Only trigger Moxus if:
-    // 1. There are actual content changes (not just image updates)
-    // 2. OR if it's an update triggered by chat interaction (with chat history)
-    // 3. AND we have chat history available (required for proper analysis)
-    if (currentChatHistory && currentChatHistory.length > 0 && !isOnlyImageUpdates) {
-      console.log('[useNodeGraph] Queueing Moxus post-sorting feedback tasks.');
-      moxusService.addTask('storyFeedback', {
-        chatHistory: currentChatHistory
-      });
-      moxusService.addTask('nodeUpdateFeedback', {
-        nodes: finalNodesState, // Use the final state after sorting/update
-        chatHistory: currentChatHistory
-      });
-      moxusService.addTask('finalReport', {}, currentChatHistory); // Pass chat history for context
+    if (currentChatHistoryParam && currentChatHistoryParam.length > 0 && !isOnlyImgUpdate) {
+      console.log('[useNodeGraph] Queueing Moxus post-update feedback tasks for content changes.');
+      moxusService.addTask('storyFeedback', { chatHistory: currentChatHistoryParam });
+      moxusService.addTask('nodeUpdateFeedback', { nodes: finalNodesStateParam, chatHistory: currentChatHistoryParam });
+      moxusService.addTask('finalReport', {}, currentChatHistoryParam); 
     } else {
-      console.log('[useNodeGraph] Skipping Moxus feedback for image-only update or no history');
+      console.log('[useNodeGraph] Skipping Moxus feedback: image-only update, no content changes, or no history.');
     }
   }, []);
 

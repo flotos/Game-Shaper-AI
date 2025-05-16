@@ -7,26 +7,33 @@ import {
   getLastFiveInteractions 
 } from './llmCore';
 import { moxusService } from '../services/MoxusService';
+import { LLMNodeEditionResponse } from '../models/nodeOperations';
+import yaml from 'js-yaml';
 
 // Helper function to manage try/catch for JSON parsing and logging
 async function processJsonResponse<T>(
   serviceName: string, 
   operationName: string, 
   responsePayload: { llmResult: string, callId: string },
-  parseFn: (jsonString: string) => T
+  parseFn: (dataString: string) => T,
+  isNodeEdition: boolean = false // Flag to indicate if we are parsing node edition for more specific error handling
 ): Promise<T> {
   try {
     const parsedResult = parseFn(responsePayload.llmResult);
     // Successfully parsed, finalize the LLM call as completed
-    moxusService.finalizeLLMCallRecord(responsePayload.callId, "JSON content successfully parsed"); // Don't log actual content
+    moxusService.finalizeLLMCallRecord(responsePayload.callId, "LLM output successfully parsed"); 
     console.log(`[${serviceName}] ${operationName} successful for callId: ${responsePayload.callId}`);
     return parsedResult;
   } catch (error) {
     const parseErrorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`[${serviceName}] ${operationName} failed JSON parsing for callId: ${responsePayload.callId}. Error: ${parseErrorMessage}. Raw response: ${responsePayload.llmResult}`);
-    // Mark the LLM call as failed due to parsing error
-    moxusService.failLLMCallRecord(responsePayload.callId, `JSON parsing error: ${parseErrorMessage}`);
-    throw new Error(`Failed to parse JSON response for ${operationName}: ${parseErrorMessage}`);
+    console.error(`[${serviceName}] ${operationName} failed parsing LLM output for callId: ${responsePayload.callId}. Error: ${parseErrorMessage}. Raw response: ${responsePayload.llmResult}`);
+    moxusService.failLLMCallRecord(responsePayload.callId, `LLM output parsing error: ${parseErrorMessage}. Raw LLM Output: ${responsePayload.llmResult}`);
+    
+    let userFriendlyMessage = `Failed to parse LLM output for ${operationName}: ${parseErrorMessage}`;
+    if (isNodeEdition) {
+        userFriendlyMessage += ". The LLM may have returned an invalid YAML structure or incorrect field names for node updates. Please check the console for the raw LLM output and consider simplifying your request or asking the AI to be more careful with the YAML format.";
+    }
+    throw new Error(userFriendlyMessage);
   }
 }
 
@@ -51,12 +58,10 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   const messages: Message[] = [{ role: 'system', content: prompt }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(messages, "gpt-3.5-turbo", undefined, false, { type: 'json_object' }, undefined, 'node_relevance_check');
+    responsePayload = await getResponse(messages, "gpt-3.5-turbo", undefined, false, { type: 'json_object' }, undefined, 'node_relevance_check') as { llmResult: string, callId: string };
   } catch (error) {
-    // getResponse already calls failLLMCallRecord if the fetch itself fails or returns an API error.
-    // So, if an error is caught here, it implies the call was already marked as failed by getResponse.
     console.error('[NodeInteractionService] getRelevantNodes: getResponse failed.', error);
-    throw error; // Re-throw the original error which should have failure details
+    throw error; 
   }
   return processJsonResponse('NodeInteractionService', 'getRelevantNodes', responsePayload, (jsonString) => JSON.parse(jsonString).relevantNodes);
 };
@@ -75,7 +80,6 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "image_generation") return acc;
-    // Simplified logic, assuming full details for now if under max, otherwise also full (TODO was mentioned in original)
     return acc + `\n        id: ${node.id}\n        name: ${node.name}\n        longDescription: ${node.longDescription}\n        rules: ${node.rules}\n        type: ${node.type}\n        `;
   }, "");
 
@@ -112,7 +116,7 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
   
   if (Array.isArray(chatText)) {
     lastMoxusReportContent = [...chatText].reverse().find(message => message.role === "moxus");
-    const lastFive = getLastFiveInteractions(chatText as Message[]); // Type assertion
+    const lastFive = getLastFiveInteractions(chatText as Message[]); 
     formattedChatText = lastFive.reduce((acc: string, message: Message) => acc + `${message.role}: ${message.content}\n`, "");
   } else {
     formattedChatText = chatText;
@@ -137,7 +141,8 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
   const actionsMessages: Message[] = [{ role: 'system', content: actionsPrompt }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(actionsMessages, 'gpt-4o', undefined, false, { type: 'json_object' }, undefined, 'action_generation');
+    // Assuming generateActions still expects JSON from LLM
+    responsePayload = await getResponse(actionsMessages, 'gpt-4o', undefined, false, { type: 'json_object' }, undefined, 'action_generation') as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] generateActions: getResponse failed.', error);
     throw error;
@@ -145,8 +150,8 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
   return processJsonResponse('NodeInteractionService', 'generateActions', responsePayload, (jsonString) => JSON.parse(jsonString).actions);
 };
 
-export const generateNodeEdition = async(chatText: string | Message[], actions: string[], nodes: Node[], userInput: string, isUserInteraction: boolean = false): Promise<any> => {
-  console.log('LLM Call (NodeInteractionService): Generating node edition');
+export const generateNodeEdition = async(chatText: string | Message[], actions: string[], nodes: Node[], userInput: string, isUserInteraction: boolean = false): Promise<LLMNodeEditionResponse> => {
+  console.log('LLM Call (NodeInteractionService): Generating node edition (YAML structure)');
   
   const sortedNodes = [...nodes].sort((a, b) => {
     if (a.type === "system" && b.type !== "system") return -1;
@@ -155,7 +160,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   });
 
   const nodesDescription = sortedNodes.reduce((acc, node) => {
-    if (node.type === "image_generation" || node.type === "system") return acc;
+    if (node.type === "image_generation" || node.type === "system" || node.type === "Game Rule" || node.type === "Game Rules" ) return acc; 
     return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      rules: ${node.rules}\n      type: ${node.type}\n      `;
   }, "");
 
@@ -164,7 +169,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   
   if (Array.isArray(chatText)) {
     lastMoxusReportContent = [...chatText].reverse().find(message => message.role === "moxus");
-    const lastFive = getLastFiveInteractions(chatText as Message[]); // Type assertion
+    const lastFive = getLastFiveInteractions(chatText as Message[]); 
     formattedChatHistory = lastFive.reduce((acc: string, message: Message) => acc + `${message.role}: ${message.content}\n`, "");
   } else {
     formattedChatHistory = chatText;
@@ -193,12 +198,41 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   const messages: Message[] = [{ role: 'system', content: nodeEditionPrompt }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'node_edition_generation');
+    // For YAML, we don't specify response_format: { type: 'json_object' }
+    responsePayload = await getResponse(messages, "gpt-4o", undefined, false, undefined, undefined, 'node_edition_yaml') as { llmResult: string, callId: string };
   } catch (error) {
-    console.error('[NodeInteractionService] generateNodeEdition: getResponse failed.', error);
+    console.error('[NodeInteractionService] generateNodeEdition (YAML): getResponse failed.', error);
     throw error;
   }
-  return processJsonResponse('NodeInteractionService', 'generateNodeEdition', responsePayload, JSON.parse);
+  
+  return processJsonResponse(
+    'NodeInteractionService', 
+    'generateNodeEdition (YAML)', 
+    responsePayload, 
+    (yamlString) => {
+      // Remove potential YAML code block fences before parsing
+      const cleanedYamlString = yamlString.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
+      const parsedFromYaml = yaml.load(cleanedYamlString) as any; // Parse as any initially
+
+      // Validate and map to LLMNodeEditionResponse, ensuring shortened keys are used
+      if (parsedFromYaml && typeof parsedFromYaml === 'object') {
+        const response: LLMNodeEditionResponse = {
+            callId: responsePayload.callId,
+            n_nodes: parsedFromYaml.n_nodes || undefined,
+            u_nodes: parsedFromYaml.u_nodes || undefined,
+            d_nodes: parsedFromYaml.d_nodes || undefined,
+        };
+        // Basic validation of sub-structures (can be expanded)
+        if (response.n_nodes !== undefined && !Array.isArray(response.n_nodes)) throw new Error("Invalid 'n_nodes' field: not an array.");
+        if (response.u_nodes !== undefined && typeof response.u_nodes !== 'object') throw new Error("Invalid 'u_nodes' field: not an object.");
+        if (response.d_nodes !== undefined && !Array.isArray(response.d_nodes)) throw new Error("Invalid 'd_nodes' field: not an array.");
+        return response;
+      } else {
+        throw new Error('Parsed YAML is not a valid object for node edition.');
+      }
+    },
+    true // isNodeEdition = true for more detailed error message to user
+  );
 };
 
 export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[], moxusMemoryInput?: { general?: string; chatText?: string; nodeEdition?: string; }, moxusPersonality?: string): Promise<any> => {
@@ -228,11 +262,14 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   const messages: Message[] = [{ role: 'system', content: promptMessageContent }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_creation_from_prompt');
+    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_creation_from_prompt') as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] generateNodesFromPrompt: getResponse failed.', error);
     throw error;
   }
+  // This function still returns the old format from its prompt, which is { merge: [], delete: [] }
+  // This will need to be updated if generate_nodes_from_prompt also adopts the new new/update/delete structure.
+  // For now, assuming its prompt and return type are unchanged by this specific refactor.
   return processJsonResponse('NodeInteractionService', 'generateNodesFromPrompt', responsePayload, JSON.parse);
 };
 
@@ -269,7 +306,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   const messages: Message[] = [{ role: 'system', content: prompt }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_sort_by_relevance');
+    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_sort_by_relevance') as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] sortNodesByRelevance: getResponse failed.', error);
     throw error;
@@ -305,7 +342,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   return {
     chatText: accumulatedChatText,
     actions,
-    nodeEdition,
+    nodeEdition, // This is LLMNodeEditionResponse (YAML structure with shortened keys)
     chatTextCallId
   };
 } 
