@@ -6,7 +6,8 @@ import { imageQueueService } from '../services/ImageQueueService';
 import { sortNodesByRelevance } from '../services/llm';
 import { useChat, Message } from '../context/ChatContext';
 import { moxusService } from '../services/MoxusService';
-import { LLMNodeEditionResponse, TextDiffInstruction, FieldUpdateOperation, NodeSpecificUpdates } from './nodeOperations';
+import { LLMNodeEditionResponse, FieldUpdateOperation } from './nodeOperations';
+import { applyTextDiffInstructions } from '../utils/textUtils';
 
 const initNodes: Node[] = [
   {
@@ -121,42 +122,6 @@ function useNodeGraph() {
       return prevNodes.filter(node => node.id !== nodeId);
     });
   }, []);
-
-  const applyTextDiffInstructions = (currentText: string, edits: TextDiffInstruction[]): string => {
-    let newText = currentText;
-    for (const edit of edits) {
-      let { prev_txt, next_txt, occ = 1 } = edit;
-      next_txt = next_txt ?? ""; 
-
-      if (!prev_txt) { 
-        newText += next_txt; 
-        console.log(`applyTextDiff: Appended content. New length: ${newText.length}`);
-        continue;
-      }
-
-      let startIndex = -1;
-      let currentOccurrence = 0;
-      let searchFromIndex = 0;
-      while(currentOccurrence < occ && searchFromIndex < newText.length) {
-        startIndex = newText.indexOf(prev_txt, searchFromIndex);
-        if (startIndex === -1) break; 
-        currentOccurrence++;
-        if(currentOccurrence === occ) break; 
-        searchFromIndex = startIndex + prev_txt.length; 
-      }
-
-      if (startIndex !== -1 && currentOccurrence === occ) {
-        newText = 
-          newText.substring(0, startIndex) + 
-          next_txt + 
-          newText.substring(startIndex + prev_txt.length);
-        console.log(`applyTextDiff: Applied edit: replaced '${prev_txt}' with '${next_txt}' (occurrence ${occ})`);
-      } else {
-        console.warn(`applyTextDiff: Could not find occurrence ${occ} of '${prev_txt}'. Edit skipped:`, edit);
-      }
-    }
-    return newText;
-  };
 
   const updateGraph = useCallback(async (
     nodeEdition: LLMNodeEditionResponse,
