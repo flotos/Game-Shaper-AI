@@ -392,9 +392,18 @@ export const getMoxusFeedback = async (promptContent: string, originalCallType?:
   ];
 
   // Determine the specific callType for this moxus feedback generation
-  const moxusCallType = originalCallType 
-    ? `moxus_feedback_on_${originalCallType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}` 
-    : 'moxus_feedback_generation';
+  let moxusCallType: string;
+  if (originalCallType === 'INTERNAL_FINAL_REPORT_GENERATION_STEP') {
+    moxusCallType = 'finalreport'; // Log the LLM call that *generates the report content* as 'finalreport'
+  } else if (originalCallType && originalCallType.startsWith('INTERNAL_MEMORY_UPDATE_FOR_')) {
+    const baseType = originalCallType.substring('INTERNAL_MEMORY_UPDATE_FOR_'.length);
+    moxusCallType = `moxus_update_${baseType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}_memory`;
+  } else if (originalCallType) {
+    // For all other cases, including when Moxus is asked to give feedback ON a 'finalreport' call (originalCallType would be 'finalreport')
+    moxusCallType = `moxus_feedback_on_${originalCallType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}`;
+  } else {
+    moxusCallType = 'moxus_feedback_generation'; // Default if no originalCallType
+  }
 
   let feedbackCallId: string | null = null; 
   try {

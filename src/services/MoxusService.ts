@@ -260,8 +260,11 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
   console.log(`[MoxusService] Finalized LLM call: ${id} (type: ${call.callType}, status: completed, duration: ${call.duration}ms)`);
   
   // Prevent feedback loop: Do not generate feedback tasks for Moxus's own feedback/internal calls.
-  const isMoxusInternalProcessingCall = call.callType === 'moxus_feedback_generation' || 
-                                      (call.callType && call.callType.startsWith('moxus_feedback_on_'));
+  const isMoxusInternalProcessingCall = 
+    call.callType === 'moxus_feedback_generation' ||
+    call.callType === 'moxus_finalreport' || // Reflects user's manual change to handle finalreport correctly for feedback ON it
+    (call.callType && call.callType.startsWith('moxus_feedback_on_')) ||
+    (call.callType && call.callType.startsWith('moxus_update_') && call.callType.endsWith('_memory'));
 
   if (!isMoxusInternalProcessingCall) {
     addFeedbackTasksForCall(call);
@@ -629,7 +632,7 @@ const handleFinalReport = async (task: MoxusTask) => {
     throw new Error('getMoxusFeedback implementation not set. Make sure to call setMoxusFeedbackImpl first.');
   }
   
-  const report = await getMoxusFeedbackImpl(promptContent, 'final_report_generation');
+  const report = await getMoxusFeedbackImpl(promptContent, 'INTERNAL_FINAL_REPORT_GENERATION_STEP');
   console.log(`[MoxusService] Final report generated. Sending to chat.`);
   
   // Send the report to chat interface
@@ -654,6 +657,19 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     if (task.data && task.data.id) {
       const callId = task.data.id;
       const originalCallTypeForFeedback = task.data.callType;
+
+      // Skip Moxus feedback for certain call types
+      const typesToSkipMoxusFeedback = [
+        'image_prompt_generation',
+        'action_generation',
+        'chat_text_generation',
+        'image_generation_novelai'
+      ];
+
+      if (typesToSkipMoxusFeedback.includes(originalCallTypeForFeedback)) {
+        console.log(`[MoxusService] Skipping Moxus feedback generation for call type '${originalCallTypeForFeedback}' (ID: ${callId}).`);
+        return; 
+      }
 
       // Ensure call exists for feedback processing (reconstruction if necessary)
       if (!moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
@@ -701,7 +717,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating chatText memory document.`);
         const chatTextMemoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
         const chatTextUpdatePrompt = getMemoryUpdatePrompt(task, chatTextMemoryToUpdate);
-        const updatedChatTextMemory = await getMoxusFeedbackImpl(chatTextUpdatePrompt, task.type);
+        const updatedChatTextMemory = await getMoxusFeedbackImpl(chatTextUpdatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${task.type}`);
         moxusStructuredMemory.featureSpecificMemory.chatText = updatedChatTextMemory;
         console.log(`[MoxusService] Updated chatText memory document via task ${task.id}.`);
         saveMemory();
@@ -751,7 +767,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating ${memoryKey} memory document.`);
     const updatePrompt = getMemoryUpdatePrompt(task, memoryToUpdate); 
     if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set for general update path.');
-    const updatedMemory = await getMoxusFeedbackImpl(updatePrompt, originalCallTypeForGenericUpdate); 
+    const updatedMemory = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForGenericUpdate}`); 
     
     if (memoryKey === 'GeneralMemory') {
       moxusStructuredMemory.GeneralMemory = updatedMemory;
@@ -843,7 +859,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   }
   
   // Get the updated GeneralMemory
-  const updatedGeneralMemory = await getMoxusFeedbackImpl(updatePrompt, originalCallTypeForThisUpdate);
+  const updatedGeneralMemory = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForThisUpdate}`);
   
   // Truncate the result to prevent memory growth
   const truncatedGeneralMemory = truncateText(updatedGeneralMemory, 5000);

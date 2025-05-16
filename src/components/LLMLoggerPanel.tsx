@@ -72,7 +72,7 @@ const LogCard: React.FC<LogCardProps> = ({ call, onSelect, isSelected }) => {
 };
 
 // Updated definition for Moxus internal call types
-const moxusInternalCallSystemEvents = ['chat_reset_event', 'assistant_message_edit_event', 'streamed_chat_text_completed'];
+const moxusInternalCallSystemEvents = ['streamed_chat_text_completed']; // Keep only LLM-related events
 const isMoxusCall = (callType: string): boolean => {
   if (!callType) return false;
   return callType.startsWith('moxus_feedback_') || moxusInternalCallSystemEvents.includes(callType);
@@ -137,13 +137,6 @@ export const LLMLoggerPanel: React.FC<LLMLoggerPanelProps> = ({ isOpen, togglePa
         ) : (
           calls.map((call, index) => (
             <React.Fragment key={call.id}>
-              {columnInitialLogCount !== undefined && index === columnInitialLogCount && columnInitialLogCount > 0 && (
-                <div className="my-3 pt-2 border-t border-dashed border-gray-600 relative">
-                  <span className="absolute left-1/2 -translate-x-1/2 -top-3 bg-gray-800 px-2 text-xs text-gray-500">
-                    Current Session
-                  </span>
-                </div>
-              )}
               <LogCard call={call} onSelect={handleSelectCall} isSelected={selectedCall?.id === call.id} />
             </React.Fragment>
           ))
@@ -198,7 +191,7 @@ export const LLMLoggerPanel: React.FC<LLMLoggerPanelProps> = ({ isOpen, togglePa
             </button>
           </div>
         </div>
-        <div className="flex flex-grow space-x-4 overflow-hidden">
+        <div className="flex flex-grow space-x-4 overflow-x-auto">
           {selectedCall && (
             <div className="w-2/3 flex-shrink-0 flex flex-col border-r border-gray-700 pr-4">
               <div className="flex justify-between items-center mb-3">
@@ -305,7 +298,7 @@ export const LLMLoggerPanel: React.FC<LLMLoggerPanelProps> = ({ isOpen, togglePa
               </div>
             </div>
           )}
-          <div className={`flex flex-grow space-x-4 ${selectedCall ? 'w-1/3' : 'w-full'}`}>
+          <div className="flex space-x-4 w-full flex-shrink-0">
             {renderLogColumn(appCalls, "Application Calls", <Puzzle size={18} className="mr-2 text-sky-400" />, initialAppLogCount)}
             {renderLogColumn(moxusCalls, "Moxus Internal", <Brain size={18} className="mr-2 text-emerald-400" />, initialMoxusLogCount)}
           </div>
