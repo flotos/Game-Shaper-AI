@@ -99,7 +99,12 @@ let addMessageCallback: (message: Message) => void = () => {}; // Callback to ad
 // State for active feedback tasks
 let activeStoryFeedback: Promise<void> | null = null;
 let activeNodeUpdateFeedback: Promise<void> | null = null;
+let activeChatTextFeedback: Promise<void> | null = null; // NEW: to handle chatTextFeedback more explicitly
 let processingTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+// Flags for final report trigger
+let hasNodeEditionFeedbackCompletedForReport = false;
+let hasChatTextFeedbackCompletedForReport = false;
 
 // --- Listener Pattern for UI Updates (Restored) ---
 type LLMLogListener = (logEntries: LLMCall[]) => void;
@@ -262,7 +267,8 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
   // Prevent feedback loop: Do not generate feedback tasks for Moxus's own feedback/internal calls.
   const isMoxusInternalProcessingCall = 
     call.callType === 'moxus_feedback_generation' ||
-    call.callType === 'moxus_finalreport' || // Reflects user's manual change to handle finalreport correctly for feedback ON it
+    call.callType === 'moxus_finalreport' || // Kept for legacy or if llmCore transforms to this exact type
+    call.callType === 'INTERNAL_FINAL_REPORT_GENERATION_STEP' || // Prevent feedback on the final report generation step itself
     (call.callType && call.callType.startsWith('moxus_feedback_on_')) ||
     (call.callType && call.callType.startsWith('moxus_update_') && call.callType.endsWith('_memory'));
 
@@ -406,6 +412,24 @@ const triggerProcessing = () => {
   }, 50); // Small delay to batch up quick additions or allow current event loop to clear
 };
 
+// NEW function to check for final report conditions and trigger it
+const checkAndTriggerFinalReport = () => {
+  console.log(`[MoxusService] Checking final report conditions: NodeEditionDone=${hasNodeEditionFeedbackCompletedForReport}, ChatTextDone=${hasChatTextFeedbackCompletedForReport}`);
+  if (hasNodeEditionFeedbackCompletedForReport && hasChatTextFeedbackCompletedForReport) {
+    // Check if a finalReport is already queued to avoid duplicates
+    if (!taskQueue.some(task => task.type === 'finalReport')) {
+      console.log('[MoxusService] Both node edition and chat text feedbacks completed. Adding finalReport task.');
+      addTask('finalReport', { reason: "Automatic report after node and chat feedback" });
+    } else {
+      console.log('[MoxusService] Final report conditions met, but a finalReport task is already in the queue.');
+    }
+    // Reset flags regardless of whether a new task was added,
+    // to ensure they need to be set again for the *next* pair of completions.
+    hasNodeEditionFeedbackCompletedForReport = false;
+    hasChatTextFeedbackCompletedForReport = false;
+  }
+};
+
 // Modified prompt template for memory updating tasks
 const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string => {
   const assistantNodesContent = getAssistantNodesContent();
@@ -505,7 +529,7 @@ const processQueue = async () => {
   // console.log(`[MoxusService] processQueue. Queue: ${taskQueue.map(t=>t.type)}. ActiveSF: ${!!activeStoryFeedback}, ActiveNUF: ${!!activeNodeUpdateFeedback}`);
 
   // Highest priority: Final Report if its conditions are met
-  if (!activeStoryFeedback && !activeNodeUpdateFeedback && taskQueue[0]?.type === 'finalReport') {
+  if (!activeStoryFeedback && !activeNodeUpdateFeedback && !activeChatTextFeedback && taskQueue[0]?.type === 'finalReport') {
     const task = taskQueue.shift()!;
     console.log(`[MoxusService] Processing task: ${task.type} (ID: ${task.id})`);
     try {
@@ -536,6 +560,10 @@ const processQueue = async () => {
       .finally(() => {
         console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
         activeStoryFeedback = null;
+        // Note: storyFeedback might also be considered for node edition.
+        // If specific 'nodeUpdateFeedback' is the sole trigger, this remains commented.
+        // hasNodeEditionFeedbackCompletedForReport = true; 
+        // checkAndTriggerFinalReport();
         triggerProcessing(); // Check queue again for follow-ups or other tasks
       });
   }
@@ -551,24 +579,49 @@ const processQueue = async () => {
       .finally(() => {
         console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
         activeNodeUpdateFeedback = null;
+        hasNodeEditionFeedbackCompletedForReport = true;
+        console.log('[MoxusService] NodeUpdateFeedback completed, flag set for final report.');
+        checkAndTriggerFinalReport();
+        triggerProcessing(); // Check queue again
+      });
+  }
+
+  // NEW: Attempt to launch chatTextFeedback
+  if (!activeChatTextFeedback && taskQueue[0]?.type === 'chatTextFeedback') {
+    const task = taskQueue.shift()!;
+    console.log(`[MoxusService] Launching task: ${task.type} (ID: ${task.id})`);
+    didLaunchOrProcessTaskThisCycle = true;
+    activeChatTextFeedback = handleMemoryUpdate(task) // Assuming handleMemoryUpdate is suitable
+      .catch(err => console.error(`[MoxusService] Error in ${task.type} (ID: ${task.id}):`, err))
+      .finally(() => {
+        console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
+        activeChatTextFeedback = null;
+        hasChatTextFeedbackCompletedForReport = true;
+        console.log('[MoxusService] ChatTextFeedback completed, flag set for final report.');
+        checkAndTriggerFinalReport();
         triggerProcessing(); // Check queue again
       });
   }
 
   // If no feedback tasks are active, and none were launched this cycle, and the queue has other items:
-  // This handles tasks that are not 'storyFeedback', 'nodeUpdateFeedback', or 'finalReport'.
-  if (!activeStoryFeedback && !activeNodeUpdateFeedback && !didLaunchOrProcessTaskThisCycle && taskQueue.length > 0) {
-    const otherTask = taskQueue.shift()!; // Should not be feedback/finalReport due to checks above
+  // This handles tasks that are not 'storyFeedback', 'nodeUpdateFeedback', 'chatTextFeedback', or 'finalReport'.
+  if (!activeStoryFeedback && !activeNodeUpdateFeedback && !activeChatTextFeedback && !didLaunchOrProcessTaskThisCycle && taskQueue.length > 0) {
+    const otherTask = taskQueue.shift()!; 
     console.log(`[MoxusService] Processing other task: ${otherTask.type} (ID: ${otherTask.id}) sequentially`);
     didLaunchOrProcessTaskThisCycle = true;
     try {
-      // Assuming 'other' tasks are also handled by handleMemoryUpdate or a similar async function.
-      // If 'other' tasks need different handlers, a switch/case would be needed here.
       await handleMemoryUpdate(otherTask); 
       console.log(`[MoxusService] Completed other task: ${otherTask.type} (ID: ${otherTask.id})`);
     } catch (error) {
       console.error(`[MoxusService] Error processing other task ${otherTask.id} (${otherTask.type}):`, error);
     } finally {
+      // NEW: Check if this completed 'otherTask' was for node_edition_yaml feedback
+      if (otherTask.type === 'llmCallFeedback' && otherTask.data?.callType === 'node_edition_yaml') {
+        hasNodeEditionFeedbackCompletedForReport = true;
+        console.log('[MoxusService] LLMCallFeedback for node_edition_yaml completed, flag set for final report.');
+        checkAndTriggerFinalReport();
+      }
+
       if (taskQueue.length > 0) {
         triggerProcessing();
       } else {
@@ -580,7 +633,7 @@ const processQueue = async () => {
     // ensure processing is triggered to check them.
     // The .finally() blocks of async tasks also call triggerProcessing, this is an additional safeguard/optimization.
     triggerProcessing();
-  } else if (!activeStoryFeedback && !activeNodeUpdateFeedback && taskQueue.length === 0 && !didLaunchOrProcessTaskThisCycle) {
+  } else if (!activeStoryFeedback && !activeNodeUpdateFeedback && !activeChatTextFeedback && taskQueue.length === 0 && !didLaunchOrProcessTaskThisCycle) {
      // This condition means: no feedback tasks are running, queue is empty, and nothing was processed/launched in this cycle.
      console.log('[MoxusService] Queue empty and no active tasks. Processor idle.');
   }
@@ -662,7 +715,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       const typesToSkipMoxusFeedback = [
         'image_prompt_generation',
         'action_generation',
-        'chat_text_generation',
         'image_generation_novelai'
       ];
 

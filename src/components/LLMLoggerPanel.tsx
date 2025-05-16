@@ -72,10 +72,11 @@ const LogCard: React.FC<LogCardProps> = ({ call, onSelect, isSelected }) => {
 };
 
 // Updated definition for Moxus internal call types
-const moxusInternalCallSystemEvents = ['streamed_chat_text_completed']; // Keep only LLM-related events
+// const moxusInternalCallSystemEvents = ['streamed_chat_text_completed']; // No longer needed with the simpler check
 const isMoxusCall = (callType: string): boolean => {
   if (!callType) return false;
-  return callType.startsWith('moxus_feedback_') || moxusInternalCallSystemEvents.includes(callType);
+  // return callType.startsWith('moxus_feedback_') || moxusInternalCallSystemEvents.includes(callType);
+  return callType.startsWith('moxus_'); // Simpler check for any call type prefixed with 'moxus_'
 };
 
 export const LLMLoggerPanel: React.FC<LLMLoggerPanelProps> = ({ isOpen, togglePanel }) => {
