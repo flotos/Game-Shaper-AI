@@ -398,8 +398,12 @@ export const getMoxusFeedback = async (promptContent: string, originalCallType?:
   } else if (originalCallType && originalCallType.startsWith('INTERNAL_MEMORY_UPDATE_FOR_')) {
     const baseType = originalCallType.substring('INTERNAL_MEMORY_UPDATE_FOR_'.length);
     moxusCallType = `moxus_update_${baseType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}_memory`;
+  } else if (originalCallType === 'finalreport' || originalCallType === 'moxus_finalreport') {
+    // If originalCallType is finalreport or moxus_finalreport, log feedback generation as generic
+    // This prevents 'moxus_feedback_on_finalreport' or 'moxus_feedback_on_moxus_finalreport' from being created.
+    moxusCallType = 'moxus_feedback_generation';
   } else if (originalCallType) {
-    // For all other cases, including when Moxus is asked to give feedback ON a 'finalreport' call (originalCallType would be 'finalreport')
+    // For all other cases where feedback is generated on a specific call type
     moxusCallType = `moxus_feedback_on_${originalCallType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}`;
   } else {
     moxusCallType = 'moxus_feedback_generation'; // Default if no originalCallType
