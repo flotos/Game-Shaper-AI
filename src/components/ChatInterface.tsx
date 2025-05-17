@@ -147,12 +147,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
         const storyEndTime = Date.now();
         const storyDuration = storyEndTime - storyStartTime;
         console.log('Story generation completed in:', storyDuration, 'ms');
-        moxusService.recordInternalSystemEvent(
-            `chatText-${Date.now()}`,
-            `Streamed Chat Text Fully Received: User input: "${currentInput}"`,
-            accumulatedContent,
-            "streamed_chat_text_completed"
-        );
 
         setLoadingMessage('Generating actions and updating game state...');
 
