@@ -12,7 +12,11 @@ common:
     You MUST use this critical feedback to avoid making the same mistakes in your response.
     ABSOLUTELY prioritize any user notes in the feedback, as they often contain important suggestions and corrections that MUST be followed.
     Failure to adhere to Moxus feedback will result in suboptimal outcomes.
-  moxus_get_feedback_user_message: "Please provide your feedback based on the available information, with special attention to any user notes in the chat history. User notes often contain important feedback and suggestions that should be prioritized in your analysis. Your feedback should be a single, concise paragraph."
+  moxus_get_feedback_user_message: |
+    Please provide your feedback based on the available information, with special attention to any user notes in the chat history.
+    User notes often contain important feedback and suggestions that should be prioritized in your analysis.
+    Your feedback should be a single, concise paragraph.
+    It should outline one thing that is done well, and two things to improve, with a slight suggestion.
 
 twine_import:
   data_extraction: |
