@@ -2,6 +2,7 @@ import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
 import yaml from 'js-yaml';
 import { getChatHistoryForMoxus } from './llmCore';
+import AllPrompts from '../prompts-instruct.yaml'; // Assuming YAML can be imported like this
 
 // Avoid circular dependency by forward declaring the function type
 type GetMoxusFeedbackFn = (promptContent: string, originalCallType?: string) => Promise<string>;
@@ -92,8 +93,9 @@ const MOXUS_STRUCTURED_MEMORY_KEY = 'moxusStructuredMemory';
 let moxusStructuredMemory = createDefaultMemoryStructure();
 let taskQueue: MoxusTask[] = [];
 let nextTaskId = 1;
-let getNodesCallback: () => Node[] = () => []; 
+let getNodesCallback: () => Node[] = () => [];
 let addMessageCallback: (message: Message) => void = () => {};
+let getChatHistoryCallback: () => Message[] = () => [];
 
 // State for active feedback tasks
 let activeStoryFeedback: Promise<void> | null = null;
@@ -274,16 +276,33 @@ export const failLLMCallRecord = (id: string, errorMessage: string) => {
   console.log(`[MoxusService] Failed LLM call: ${id} (status: failed, error: ${call.error})`);
 };
 
-export const recordInternalSystemEvent = (eventId: string, eventPrompt: string, eventResponse: string, eventType: string = 'system_event') => {
+export const recordInternalSystemEvent = (eventId: string, eventPrompt: string, eventResponse: string, eventType: string = 'system_event', eventContextData?: { previousChatHistory?: Message[] }) => {
   const now = new Date();
   const truncatedPrompt = eventPrompt.length > 5000 ? eventPrompt.substring(0, 5000) + "..." : eventPrompt;
   const truncatedResponse = eventResponse.length > 5000 ? eventResponse.substring(0, 5000) + "..." : eventResponse;
-  const eventCall: LLMCall = { id: eventId, prompt: truncatedPrompt, response: truncatedResponse, timestamp: now, status: 'completed', startTime: now, endTime: now, callType: eventType, modelUsed: 'N/A', duration: 0 };
-  moxusStructuredMemory.featureSpecificMemory.llmCalls[eventId] = eventCall;
+  
+  const eventCallForLog: LLMCall = { id: eventId, prompt: truncatedPrompt, response: truncatedResponse, timestamp: now, status: 'completed', startTime: now, endTime: now, callType: eventType, modelUsed: 'N/A', duration: 0 };
+  moxusStructuredMemory.featureSpecificMemory.llmCalls[eventId] = eventCallForLog;
   saveMemory();
   emitLLMLogUpdate(); 
   console.log(`[MoxusService] Recorded internal system event: ${eventId} (${eventType})`);
-  addFeedbackTasksForCall(eventCall);
+
+  if (eventType === "chat_reset_event" && eventContextData?.previousChatHistory) {
+    console.log(`[MoxusService] Chat reset event detected. Queueing updateGeneralMemory task with previous chat history.`);
+    const previousChatHistoryString = getFormattedChatHistoryStringForMoxus(eventContextData.previousChatHistory, 20); // Use more turns for this analysis
+    addTask('updateGeneralMemory', { 
+      reason: "chat_reset_event", 
+      eventDetails: { 
+        id: eventId, 
+        prompt: truncatedPrompt, // The system event prompt
+        response: truncatedResponse // The system event response ("Chat history has been cleared.")
+      }, 
+      previousChatHistoryString 
+    });
+  } else {
+    // Default behavior for other system events (or if history is missing for chat_reset_event for some reason)
+    addFeedbackTasksForCall(eventCallForLog);
+  }
 };
 
 export const getLLMLogEntries = (): LLMCall[] => {
@@ -296,25 +315,32 @@ export const getLLMCallFeedback = (id: string): string | undefined => {
 };
 
 // --- Initialization ---
-const initialize = (getNodes: () => Node[], addMessage: (message: Message) => void) => {
+const initialize = (getNodes: () => Node[], addMessage: (message: Message) => void, getChatHistory: () => Message[]) => {
   console.log('[MoxusService] Initializing...');
   getNodesCallback = getNodes;
   addMessageCallback = addMessage;
+  getChatHistoryCallback = getChatHistory;
   loadMemory();
   triggerProcessing();
+  console.log('[MoxusService] Initialized with callbacks including getChatHistory.');
 };
 
 // Function to add a task to the queue
 const addTask = (type: MoxusTaskType, data: any, chatHistoryContext?: Message[]) => {
   const taskData = { ...data };
   if (chatHistoryContext) {
-    taskData.chatHistoryContext = getFormattedChatHistoryStringForMoxus(chatHistoryContext, 10);
+    if (type === 'finalReport') {
+      taskData.chatHistoryContext = getFormattedChatHistoryStringForMoxus(chatHistoryContext, 5); // Use 5 turns for finalReport
+    } else {
+      taskData.chatHistoryContext = getFormattedChatHistoryStringForMoxus(chatHistoryContext, 10); // Default to 10 for other tasks if context is provided
+    }
   } else if (type === 'finalReport' || type === 'updateGeneralMemory') {
-    taskData.chatHistoryContext = "(Chat history context not explicitly provided for this report task)";
+    // This fallback for finalReport should ideally not be hit if currentChatHistory is always provided by checkAndTriggerFinalReport
+    taskData.chatHistoryContext = "(Chat history context not explicitly provided for this specific task)";
   }
   const newTask: MoxusTask = { id: nextTaskId++, type, data: taskData, timestamp: new Date() };
   taskQueue.push(newTask);
-  console.log(`[MoxusService] Task added: ${type} (ID: ${newTask.id}). Queue size: ${taskQueue.length}`);
+  console.log(`[MoxusService] Task added: ${type} (ID: ${newTask.id}, CHContext used: ${!!chatHistoryContext}). Queue size: ${taskQueue.length}`);
   triggerProcessing();
 };
 
@@ -334,7 +360,8 @@ const checkAndTriggerFinalReport = () => {
   if (hasNodeEditionFeedbackCompletedForReport && hasChatTextFeedbackCompletedForReport) {
     if (!taskQueue.some(task => task.type === 'finalReport')) {
       console.log('[MoxusService] Both node edition and chat text feedbacks completed. Adding finalReport task.');
-      addTask('finalReport', { reason: "Automatic report after node and chat feedback" });
+      const currentChatHistory = getChatHistoryCallback();
+      addTask('finalReport', { reason: "Automatic report after node and chat feedback" }, currentChatHistory);
     } else {
       console.log('[MoxusService] Final report conditions met, but a finalReport task is already in the queue.');
     }
@@ -580,14 +607,27 @@ const formatMoxusReport = (text: string): string => {
 const handleFinalReport = async (task: MoxusTask) => {
   const assistantNodesContent = getAssistantNodesContent();
   const chatHistoryContextString = task.data?.chatHistoryContext || "(Chat history context not available for this report)";
+
+  // STEP 1: Update General Memory first.
+  // The originalCallType indicates this is part of the final report sequence,
+  // specifically the GM update that should happen *before* the chat message.
+  console.log('[MoxusService] Updating GeneralMemory before generating final report (Task ID: ' + task.id + ')...');
+  // Using 'finalReport_GM_update' as originalCallType to distinguish from the report generation LLM call.
+  // task.data is passed along in case updateGeneralMemoryFromAllSources has specific logic for it,
+  // though for 'finalReport' task type, it's not expected to alter the standard synthesis.
+  await updateGeneralMemoryFromAllSources('finalReport_GM_update', task.data);
+  console.log('[MoxusService] GeneralMemory updated prior to final report generation (Task ID: ' + task.id + ').');
+
+  // STEP 2: Generate the final report using the NOW UPDATED General Memory
   const promptContent = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
   Generate a brief, concise, and straight-to-the-point critical analysis based on your accumulated memory documents and the recent chat context below.
-  ${assistantNodesContent ? `Additional features:\n  ---\n  ${assistantNodesContent}\n  ---` : ""}
+  ${assistantNodesContent ? `Additional features:\n  ---
+  ${assistantNodesContent}\n  ---` : ""}
   # CHAT HISTORY CONTEXT (Last 10 turns, if available)
   ${chatHistoryContextString}
   # GENERAL MEMORY
-  ${moxusStructuredMemory.GeneralMemory || '(No general memory available)'}
+  ${moxusStructuredMemory.GeneralMemory || '(No general memory available)'} // This will now use the updated GM
   # CHAT TEXT ANALYSIS
   ${moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)'}
   # NODE EDITIONS ANALYSIS
@@ -604,17 +644,18 @@ const handleFinalReport = async (task: MoxusTask) => {
   Be direct, concise, and straight to the point. Focus only on problems requiring attention, not what works well.
   This will be displayed to the user as a Moxus critical analysis report.`;
 
-  console.log(`[MoxusService] Generating final report using all memory sources...`);
+  console.log(`[MoxusService] Generating final report (Task ID: ${task.id}) using updated memory sources...`);
   if (!getMoxusFeedbackImpl) {
     throw new Error('getMoxusFeedback implementation not set. Make sure to call setMoxusFeedbackImpl first.');
   }
   const report = await getMoxusFeedbackImpl(promptContent, 'INTERNAL_FINAL_REPORT_GENERATION_STEP');
-  console.log(`[MoxusService] Final report generated. Sending to chat.`);
-  addMessageCallback({ role: 'moxus', content: `**Moxus Report:**\\n\\n${formatMoxusReport(report)}` });
-  console.log('[MoxusService] Automatically updating GeneralMemory after report generation');
-  setTimeout(() => {
-    updateGeneralMemoryFromAllSources(task.type);
-  }, 1000);
+  console.log(`[MoxusService] Final report generated for Task ID: ${task.id}. Sending to chat.`);
+
+  // STEP 3: Send the report to chat
+  addMessageCallback({ role: 'moxus', content: formatMoxusReport(report) });
+
+  // The previous setTimeout for a redundant/post-chat GM update is removed.
+  // The GM update now happens definitively before the report is generated.
 };
 
 const handleMemoryUpdate = async (task: MoxusTask) => {
@@ -689,7 +730,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       break;
     case 'updateGeneralMemory':
       console.log(`[MoxusService] Task ${task.id} (${task.type}) is calling updateGeneralMemoryFromAllSources.`);
-      await updateGeneralMemoryFromAllSources(task.type);
+      await updateGeneralMemoryFromAllSources(task.type, task.data);
       return;
     default:
       console.warn(`[MoxusService] Task ${task.id} of unhandled type '${task.type}' in memory update switch. It might have been handled if it was llmCallFeedback/chatTextFeedback.`);
@@ -715,39 +756,106 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
 };
 
 // Function to update GeneralMemory from all memory sources (Restored)
-const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: string = 'scheduled_general_memory_update') => {
-  console.log(`[MoxusService] Attempting to update GeneralMemory from all available memory sources. Trigger reason/type: ${originalCallTypeForThisUpdate}`);
+const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: string = 'scheduled_general_memory_update', taskData?: any) => {
+  console.log(`[MoxusService] Attempting to update GeneralMemory. Trigger reason/type: ${originalCallTypeForThisUpdate}`);
   const assistantNodesContent = getAssistantNodesContent();
-  const recentFeedbacks = Object.entries(moxusStructuredMemory.featureSpecificMemory.llmCalls)
-    .sort((a, b) => new Date(a[1].timestamp).getTime() - new Date(b[1].timestamp).getTime()).reverse().slice(0, 5)
-    .map(([id, call]) => ({ id, feedback: call.feedback || "No feedback available" }));
   
-  const truncateText = (text: string, maxLength: number = 2000) => text && text.length > maxLength ? text.substring(0, maxLength) + "... [truncated]" : text;
-  
-  const generalMemory = truncateText(moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL);
-  const chatTextMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.chatText);
-  const nodeEditionMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdition);
-  const assistantFeedbackMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.assistantFeedback);
-  const nodeEditMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdit);
-  
-  const updatePrompt = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
-  You are tasked with updating your GeneralMemory document by integrating insights from all memory sources.
-  Assistant Personality:\n  ---\n  ${truncateText(assistantNodesContent, 1000)}\n  ---\n  # CURRENT GENERAL MEMORY DOCUMENT\n  ${generalMemory}\n  # ALL MEMORY SOURCES TO INTEGRATE\n  ## CHAT TEXT ANALYSIS\n  ${chatTextMemory || '(No chat text analysis available)'}\n  ## NODE EDITIONS ANALYSIS\n  ${nodeEditionMemory || '(No node edition analysis available)'}\n  ## ASSISTANT FEEDBACK ANALYSIS\n  ${assistantFeedbackMemory || '(No assistant feedback analysis available)'}\n  ## NODE EDIT ANALYSIS\n  ${nodeEditMemory || '(No node edit analysis available)'}\n  ## RECENT LLM CALL FEEDBACKS\n  ${JSON.stringify(recentFeedbacks, null, 2)}\n  # INSTRUCTIONS
-  1. Create an updated GeneralMemory document that synthesizes the most critical issues from ALL memory sources
-  2. Keep each section short - use bullet points.
-  3. Focus exclusively on problems, issues, and areas for improvement - NOT what works well
-  4. Use bullet points for each critical observation
-  5. Only include observations that highlight problems or inconsistencies in the game world
-  6. Keep any section about your own personality brief
-  7. The entire document should be focused on critique
-  Return ONLY the complete updated GeneralMemory document.`;
+  let updatePrompt: string;
+  let updatePromptTemplate: string;
+  let promptData: Record<string, string>;
+
+  if (originalCallTypeForThisUpdate === 'updateGeneralMemory' && taskData?.reason === "chat_reset_event" && taskData?.previousChatHistoryString && taskData?.eventDetails) {
+    console.log('[MoxusService] Using dedicated prompt for chat_reset_event GeneralMemory update.');
+    // Assuming getChatResetMemoryUpdatePrompt also gets its template from AllPrompts or is refactored similarly.
+    // For now, leaving this part as is, but ideally it would also use a template from YAML.
+    updatePrompt = getChatResetMemoryUpdatePrompt(
+      moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL,
+      assistantNodesContent,
+      taskData.previousChatHistoryString,
+      taskData.eventDetails
+    );
+  } else {
+    console.log('[MoxusService] Using standard synthesis prompt for GeneralMemory update.');
+    const recentFeedbacks = Object.entries(moxusStructuredMemory.featureSpecificMemory.llmCalls)
+      .sort((a, b) => new Date(a[1].timestamp).getTime() - new Date(b[1].timestamp).getTime()).reverse().slice(0, 5)
+      .map(([id, call]) => ({ id, feedback: call.feedback || "No feedback available" }));
+    
+    const truncateText = (text: string, maxLength: number = 2000) => text && text.length > maxLength ? text.substring(0, maxLength) + "... [truncated]" : text;
+    
+    const generalMemory = truncateText(moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL);
+    const chatTextMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.chatText);
+    const nodeEditionMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdition);
+    const assistantFeedbackMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.assistantFeedback);
+    const nodeEditMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdit);
+
+    // Type assertion for safety, assuming structure of the imported YAML.
+    const prompts = AllPrompts as { moxus_prompts: { general_memory_update: string } };
+    updatePromptTemplate = prompts.moxus_prompts.general_memory_update;
+
+    promptData = {
+      assistant_nodes_content: truncateText(assistantNodesContent, 1000),
+      current_general_memory: generalMemory,
+      chat_text_analysis: chatTextMemory || '(No chat text analysis available)',
+      node_editions_analysis: nodeEditionMemory || '(No node edition analysis available)',
+      assistant_feedback_analysis: assistantFeedbackMemory || '(No assistant feedback analysis available)',
+      node_edit_analysis: nodeEditMemory || '(No node edit analysis available)',
+      recent_llm_feedbacks: JSON.stringify(recentFeedbacks, null, 2)
+    };
+
+    updatePrompt = updatePromptTemplate;
+    for (const key in promptData) {
+      updatePrompt = updatePrompt.replace(new RegExp(`\\{${key}\\}`, 'g'), promptData[key]);
+    }
+  }
   
   if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
   const updatedGeneralMemory = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForThisUpdate}`);
-  const truncatedGeneralMemory = truncateText(updatedGeneralMemory, 5000);
+  const truncatedGeneralMemory = updatedGeneralMemory.length > 15000 ? updatedGeneralMemory.substring(0, 15000) + "... [GeneralMemory truncated due to excessive length]" : updatedGeneralMemory; // Increased limit for GeneralMemory
   moxusStructuredMemory.GeneralMemory = truncatedGeneralMemory;
-  console.log('[MoxusService] Updated GeneralMemory from all memory sources');
+  console.log('[MoxusService] Updated GeneralMemory');
   saveMemory();
+};
+
+const getChatResetMemoryUpdatePrompt = (currentGeneralMemory: string, assistantNodesContent: string, previousChatHistoryString: string, eventDetails: {id: string, prompt: string, response: string}): string => {
+  return `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
+You are tasked with updating your GeneralMemory document because a "Chat Reset" event has just occurred.
+
+# ASSISTANT NODE DETAILS (Moxus's current understanding of the Narrative AI's core function/personality)
+${assistantNodesContent}
+---
+
+# PREVIOUS CHAT HISTORY (Content before the user initiated the reset)
+${previousChatHistoryString}
+---
+
+# CHAT RESET EVENT DETAILS
+Event ID: ${eventDetails.id}
+Trigger: ${eventDetails.prompt}
+Details: ${eventDetails.response}
+---
+
+# CURRENT GENERAL MEMORY DOCUMENT (Your existing knowledge and personality)
+${currentGeneralMemory}
+---
+
+# INSTRUCTIONS
+1.  **Acknowledge the Reset**: Note that the user has reset the chat interface.
+2.  **Analyze Context**: Review the "PREVIOUS CHAT HISTORY" and "ASSISTANT NODE DETAILS".
+3.  **Speculate on Cause**: Based on the analysis, hypothesize *why* the user might have reset the chat. Consider:
+    *   Was the story stuck, unclear, or unengaging?
+    *   Did the narrative AI (guided by ASSISTANT NODE DETAILS) lead the user to a point of frustration?
+    *   Were there unresolved issues or loops in the previous interactions?
+4.  **Formulate Prevention Strategies**: Reflect on how similar chat resets could be minimized. What can the narrative AI do differently to:
+    *   Maintain user engagement?
+    *   Ensure clarity and a sense of progress?
+    *   Adapt better to user desires or perceived dead-ends?
+5.  **Update GeneralMemory**: Integrate these insights into your "CURRENT GENERAL MEMORY DOCUMENT".
+    *   Focus on critical observations specifically related to this reset event and its implications.
+    *   The goal is to refine your understanding and guide the narrative AI to improve future user experiences, making resets less likely.
+    *   Maintain and enrich your established personality, ensuring it reflects a deeper understanding of user interaction patterns.
+6.  **Output**: Return ONLY the complete, updated GeneralMemory document. It should be a single block of text.
+
+Your updated GeneralMemory should be critical yet constructive, aiming to prevent future user desire to reset the chat. Focus on learning from this event.`;
 };
 
 export const getMoxusPersonalityContext = (): string => {

@@ -5,7 +5,7 @@ import { Node } from '../models/Node'; // Needed for types in helper functions i
 
 // Load and parse prompts
 export interface PromptsConfig {
-  common: {
+  moxus_prompts: {
     moxus_feedback_system_message: string;
     moxus_get_feedback_user_message: string;
   };
@@ -153,7 +153,7 @@ export const getResponse = async (
   moxusService.initiateLLMCallRecord(callId, callType, model, originalPromptString);
 
   if (!options?.skipMoxusFeedback && !stream) {
-    const moxusFeedbackContent = formatPrompt(loadedPrompts.common.moxus_feedback_system_message, {
+    const moxusFeedbackContent = formatPrompt(loadedPrompts.moxus_prompts.moxus_feedback_system_message, {
       moxus_llm_calls_memory_yaml: moxusService.getLLMCallsMemoryYAML()
     });
     const feedbackMessage: Message = {
@@ -388,7 +388,7 @@ export const getMoxusFeedback = async (promptContent: string, originalCallType?:
   
   const messages: Message[] = [
     { role: 'system', content: processedPrompt },
-    { role: 'user', content: loadedPrompts.common.moxus_get_feedback_user_message }
+    { role: 'user', content: loadedPrompts.moxus_prompts.moxus_get_feedback_user_message }
   ];
 
   // Determine the specific callType for this moxus feedback generation

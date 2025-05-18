@@ -94,17 +94,20 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
   }, []);
 
   const clearChatHistory = useCallback(() => {
+    const historyToPreserve = [...chatHistory]; // Capture chat history before clearing
+
     // Use the new function to record this system event for Moxus processing & UI logging
     moxusService.recordInternalSystemEvent(
       `chatReset-${Date.now()}`,
       "System Event: User initiated chat reset.",
       "Chat history has been cleared.",
-      "chat_reset_event" // Specific eventType
+      "chat_reset_event", // Specific eventType
+      { previousChatHistory: historyToPreserve } // Pass the preserved history
     );
 
     localStorage.removeItem('chatHistory');
     setChatHistoryState([]);
-  }, []);
+  }, [chatHistory]); // Add chatHistory to dependency array
 
   const editMessage = useCallback((index: number, newContent: string) => {
     setChatHistoryState((prevChatHistory) => {
