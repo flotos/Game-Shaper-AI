@@ -395,7 +395,20 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
       nodeNames: nodes ? nodes.slice(0, 5).map((n: any) => n.name).join(', ') + (nodes.length > 5 ? '...' : '') : '' 
     };
   } else {
-    safeTaskData = JSON.parse(JSON.stringify(task.data));
+    // Deep clone task.data to avoid modifying the original task object and to work on it
+    safeTaskData = JSON.parse(JSON.stringify(task.data)); 
+
+    if (task.type === 'nodeEditFeedback') {
+      // Sanitize 'before' node data if it exists and is an object
+      if (safeTaskData.before && typeof safeTaskData.before === 'object') {
+        delete safeTaskData.before.image;
+      }
+      // Sanitize 'after' node data if it exists and is an object
+      if (safeTaskData.after && typeof safeTaskData.after === 'object') {
+        delete safeTaskData.after.image;
+      }
+    }
+    
     const MAX_FIELD_LENGTH = 5000;
     const truncateField = (obj: any, fieldName: string) => {
       if (obj && typeof obj[fieldName] === 'string' && obj[fieldName].length > MAX_FIELD_LENGTH) {
