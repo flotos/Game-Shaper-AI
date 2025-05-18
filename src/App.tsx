@@ -2,15 +2,15 @@ import React, { useRef, useState, useEffect } from 'react';
 import ChatInterface from './components/ChatInterface';
 import NodeGraphInterface from './components/NodeGraphInterface';
 import useNodeGraph from './models/useNodeGraph';
-import { useChat, Message } from './context/ChatContext';
+import { useChat, Message, ChatProvider } from './context/ChatContext';
 import NodeEditorOverlay from './components/NodeEditorOverlay';
 import AssistantOverlay from './components/AssistantOverlay';
 import TwineImportOverlay from './components/TwineImportOverlay';
 import { moxusService } from './services/MoxusService';
 import './services/llm';
-import { ChatProvider } from './context/ChatContext';
 import { LLMLoggerBubble } from './components/LLMLoggerBubble';
 import { LLMLoggerPanel } from './components/LLMLoggerPanel';
+import { NodeSpecificUpdates, LLMNodeEditionResponse } from './models/nodeOperations';
 
 const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [memoryYaml, setMemoryYaml] = useState<string>("");
@@ -20,7 +20,6 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const refreshMemory = () => {
     setIsLoading(true);
     setPendingTasks(moxusService.getPendingTaskCount());
-    // Use setTimeout to allow the loading state to be rendered
     setTimeout(() => {
       try {
         setMemoryYaml(moxusService.getLLMCallsMemoryYAML());
@@ -51,13 +50,9 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   useEffect(() => {
     refreshMemory();
-    
-    // Set up interval to check pending tasks regularly
     const intervalId = setInterval(() => {
       setPendingTasks(moxusService.getPendingTaskCount());
     }, 1000);
-    
-    // Clean up
     return () => clearInterval(intervalId);
   }, []);
   
@@ -118,46 +113,60 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 };
 
 const AppContent: React.FC = () => {
-  const { nodes, addNode, updateNode, deleteNode, updateGraph, setNodes } = useNodeGraph();
-  const { chatHistory, setChatHistory, clearChatHistory, addMessage } = useChat();
+  const { getNodes, addNode, updateNode, deleteNode, updateGraph, setNodes } = useNodeGraph();
+  const { addMessage, getChatHistory, setChatHistory, clearChatHistory } = useChat();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [showAssistant, setShowAssistant] = useState(false);
   const [showTwineImport, setShowTwineImport] = useState(false);
   const [showMoxusMemory, setShowMoxusMemory] = useState(false);
   const [pendingMoxusTasks, setPendingMoxusTasks] = useState(0);
-  const [isLLMLoggerOpen, setIsLLMLoggerOpen] = useState(false);
+  const [showLLMLogger, setShowLLMLogger] = useState(false);
 
   useEffect(() => {
-    moxusService.initialize(() => nodes, addMessage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, [addMessage]);
+    if (typeof getNodes === 'function' && 
+        typeof addMessage === 'function' && 
+        typeof getChatHistory === 'function') {
+      moxusService.initialize(getNodes, addMessage, getChatHistory);
+      console.log('[App.tsx] MoxusService initialized successfully.');
+    } else {
+      console.warn(
+        '[App.tsx] Could not initialize MoxusService: One or more required callback functions are undefined or not functions. getNodes type:',
+        typeof getNodes,
+        'addMessage type:',
+        typeof addMessage,
+        'getChatHistory type:',
+        typeof getChatHistory
+      );
+    }
+  }, [getNodes, addMessage, getChatHistory]);
 
-  // Update the pending tasks counter
   useEffect(() => {
     const checkPendingTasks = () => {
       setPendingMoxusTasks(moxusService.getPendingTaskCount());
     };
-    
-    // Check initially
     checkPendingTasks();
-    
-    // Set up interval to check regularly
     const intervalId = setInterval(checkPendingTasks, 1000);
-    
-    // Clean up
     return () => clearInterval(intervalId);
   }, []);
 
   const handleRegenerateAllImages = () => {
-    if (nodes && nodes.length > 0) {
-      const nodeEdits = nodes.map(node => ({
-        id: node.id,
-        updateImage: true,
-      }));
-      updateGraph({ merge: nodeEdits }, [], [], true);
-      // Optionally, add a user feedback message here, e.g., using a toast notification library
-      console.log('All images queued for regeneration.');
+    if (getNodes && getNodes().length > 0) {
+      const nodesToUpdate = getNodes();
+      const u_nodes: { [nodeId: string]: NodeSpecificUpdates } = {};
+      nodesToUpdate.forEach(node => {
+        if (node.type !== 'Game Rule' && node.type !== 'Game Rules' && node.type !== 'system') {
+          u_nodes[node.id] = { img_upd: true };
+        }
+      });
+
+      if (Object.keys(u_nodes).length > 0) {
+        const syntheticCallId = `regenAllImages-${Date.now()}`;
+        updateGraph({ callId: syntheticCallId, u_nodes: u_nodes }, [], [], true);
+        console.log('Relevant images queued for regeneration.');
+      } else {
+        console.log('No nodes eligible for image regeneration.');
+      }
     } else {
       console.log('No nodes available to regenerate images.');
     }
@@ -166,15 +175,14 @@ const AppContent: React.FC = () => {
   const clearLocalStorage = () => {
     localStorage.removeItem('nodeGraph');
     localStorage.removeItem('chatHistory');
-    moxusService.resetMemory(); // Reset Moxus memory
+    moxusService.resetMemory();
     window.location.reload();
   };
 
   const exportToJson = () => {
-    // Include Moxus memory in the export
     const dataStr = JSON.stringify({
-      nodes,
-      chatHistory,
+      nodes: getNodes(),
+      chatHistory: getChatHistory(),
       moxusMemory: moxusService.getMoxusMemory()
     }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
@@ -196,8 +204,6 @@ const AppContent: React.FC = () => {
         const { nodes: importedNodes, chatHistory: importedChatHistory, moxusMemory } = JSON.parse(e.target?.result as string);
         setNodes(importedNodes);
         setChatHistory(importedChatHistory);
-        
-        // Import Moxus memory if it exists in the file
         if (moxusMemory) {
           moxusService.setMoxusMemory(moxusMemory);
         }
@@ -206,10 +212,6 @@ const AppContent: React.FC = () => {
       }
     };
     reader.readAsText(file);
-  };
-
-  const toggleLLMLoggerPanel = () => {
-    setIsLLMLoggerOpen(prev => !prev);
   };
 
   return (
@@ -267,7 +269,7 @@ const AppContent: React.FC = () => {
           </button>
           <button
             onClick={handleRegenerateAllImages}
-            className="px-1 bg-slate-800 text-white rounded hover:bg-teal-700" // Using teal for differentiation
+            className="px-1 bg-slate-800 text-white rounded hover:bg-teal-700"
             title="Regenerate All Images"
           >
             Regen All Images
@@ -282,13 +284,13 @@ const AppContent: React.FC = () => {
         </div>
       </header>
       <div className="flex flex-grow overflow-y-auto">
-        <ChatInterface nodes={nodes} updateGraph={updateGraph} addMessage={addMessage} />
-        <NodeGraphInterface nodes={nodes} updateGraph={updateGraph} onNodesSorted={setNodes} />
+        <ChatInterface nodes={getNodes()} updateGraph={updateGraph} addMessage={addMessage} />
+        <NodeGraphInterface nodes={getNodes()} updateGraph={updateGraph} onNodesSorted={setNodes} />
       </div>
       
       {showNodeEditor && (
         <NodeEditorOverlay
-          nodes={nodes}
+          nodes={getNodes()}
           addNode={addNode}
           updateNode={updateNode}
           deleteNode={deleteNode}
@@ -299,7 +301,7 @@ const AppContent: React.FC = () => {
 
       {showAssistant && (
         <AssistantOverlay
-          nodes={nodes}
+          nodes={getNodes()}
           updateGraph={updateGraph}
           closeOverlay={() => setShowAssistant(false)}
         />
@@ -307,7 +309,7 @@ const AppContent: React.FC = () => {
 
       {showTwineImport && (
         <TwineImportOverlay
-          nodes={nodes}
+          nodes={getNodes()}
           updateGraph={updateGraph}
           closeOverlay={() => setShowTwineImport(false)}
         />
@@ -320,8 +322,16 @@ const AppContent: React.FC = () => {
       )}
 
       {/* LLM Logger UI */}
-      <LLMLoggerBubble isOpen={isLLMLoggerOpen} togglePanel={toggleLLMLoggerPanel} />
-      <LLMLoggerPanel isOpen={isLLMLoggerOpen} togglePanel={toggleLLMLoggerPanel} />
+      <LLMLoggerBubble 
+        isOpen={showLLMLogger} 
+        togglePanel={() => setShowLLMLogger(prev => !prev)} 
+      />
+      {showLLMLogger && 
+        <LLMLoggerPanel 
+          isOpen={showLLMLogger} 
+          togglePanel={() => setShowLLMLogger(false)} 
+        />
+      }
     </div>
   );
 };

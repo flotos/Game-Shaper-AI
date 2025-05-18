@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
 import { moxusService } from '../services/MoxusService';
+import { LLMNodeEditionResponse } from '../models/nodeOperations';
 
 interface NodeEditorOverlayProps {
   nodes: Node[];
@@ -9,14 +10,11 @@ interface NodeEditorOverlayProps {
   updateNode: (node: Node) => void;
   deleteNode: (nodeId: string) => void;
   closeOverlay: () => void;
-  updateGraph: (nodeEdition: { 
-    merge?: Partial<Node>[]; 
-    delete?: string[];
-    newNodes?: string[];
-  }, 
-  imagePrompts?: { nodeId: string; prompt: string }[],
-  chatHistory?: Message[],
-  isFromUserInteraction?: boolean
+  updateGraph: (
+    nodeEdition: LLMNodeEditionResponse,
+    imagePrompts?: { nodeId: string; prompt: string }[],
+    chatHistory?: Message[],
+    isFromUserInteraction?: boolean
   ) => Promise<void>;
 }
 
@@ -49,7 +47,11 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
 
   const handleDelete = () => {
     if (selectedNode) {
-      updateGraph({ delete: [selectedNode.id] }, [], []);
+      const nodeEdition: LLMNodeEditionResponse = {
+        callId: `delNodeManual-${selectedNode.id}-${Date.now()}`,
+        d_nodes: [selectedNode.id]
+      };
+      updateGraph(nodeEdition, [], []);
       setSelectedNode(null);
       closeOverlay();
     }

@@ -60,6 +60,10 @@ function useNodeGraph() {
   // Memoize the nodes array to prevent unnecessary re-renders
   const memoizedNodes = useMemo(() => nodes, [nodes]);
 
+  const getNodes = useCallback(() => {
+    return nodes; // Provides access to the current nodes state
+  }, [nodes]);
+
   useEffect(() => {
     let isMounted = true;
     
@@ -131,7 +135,6 @@ function useNodeGraph() {
   ): Promise<void> => {
     if (!nodeEdition || (!nodeEdition.n_nodes && !nodeEdition.u_nodes && !nodeEdition.d_nodes)) {
       console.log('No node operations to perform (YAML structure).');
-      triggerMoxusFeedback(nodes, providedChatHistory || chatHistory, true); 
       return;
     }
 
@@ -140,7 +143,6 @@ function useNodeGraph() {
     let workingNodes = [...nodes]; 
     let nodesToProcessForImageUpdate: Partial<Node>[] = []; 
     const processedNodeIdsForImage = new Set<string>();
-    const imageUrlsToRevoke = new Map<string, string>();
     let hasContentChanges = false; 
 
     imageQueueService.setUpdateNodeCallback((updatedNode: Node) => {
@@ -168,7 +170,7 @@ function useNodeGraph() {
       const deleteIds = new Set(nodeEdition.d_nodes);
       workingNodes.forEach(node => {
         if (deleteIds.has(node.id) && node.image?.startsWith('blob:')) {
-          imageUrlsToRevoke.set(node.id, node.image);
+          processedNodeIdsForImage.add(node.id);
         }
       });
       workingNodes = workingNodes.filter(node => !deleteIds.has(node.id));
@@ -238,9 +240,6 @@ function useNodeGraph() {
         if (modifiedNode.updateImage && !processedNodeIdsForImage.has(nodeId)) {
             nodesToProcessForImageUpdate.push(modifiedNode);
             processedNodeIdsForImage.add(nodeId);
-            if (originalNode.image?.startsWith('blob:') && originalNode.image !== modifiedNode.image) { 
-                imageUrlsToRevoke.set(nodeId, originalNode.image);
-            }
         }
       }
     }
@@ -262,12 +261,6 @@ function useNodeGraph() {
       hasContentChanges = true;
     }
     
-    if (imageUrlsToRevoke.size > 0) {
-      setTimeout(() => {
-        imageUrlsToRevoke.forEach(url => URL.revokeObjectURL(url));
-      }, 100);
-    }
-
     let finalNodesState = workingNodes; 
     setNodes(finalNodesState);
 
@@ -289,21 +282,18 @@ function useNodeGraph() {
               });
               setNodes(sortedNodes);
               finalNodesState = sortedNodes; 
-              triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges);
             } catch (error) {
               console.error('Error in delayed sorting:', error);
-              triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges); 
             }
           }, 50);
         } catch (error) {
           console.error('Error sorting nodes:', error);
-          triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges); 
         }
       } else {
-        triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges);
+        console.log('[useNodeGraph] Node sorting disabled. Moxus feedback relies on LLM call finalization elsewhere.');
       }
     } else {
-      triggerMoxusFeedback(finalNodesState, currentChatHistory, !hasContentChanges);
+        console.log('[useNodeGraph] Not a user interaction or no chat history, Moxus trigger relies on LLM call finalization elsewhere.');
     }
 
     // Image Generation Queuing
@@ -325,21 +315,6 @@ function useNodeGraph() {
       }
     }
   }, [nodes, chatHistory, addMessage]); 
-  
-  const triggerMoxusFeedback = useCallback((
-    finalNodesStateParam: Node[], 
-    currentChatHistoryParam?: Message[],
-    isOnlyImgUpdate: boolean = false // This flag now correctly reflects if only image related flags changed OR no changes happened.
-  ) => {
-    if (currentChatHistoryParam && currentChatHistoryParam.length > 0 && !isOnlyImgUpdate) {
-      console.log('[useNodeGraph] Queueing Moxus post-update feedback tasks for content changes.');
-      moxusService.addTask('storyFeedback', { chatHistory: currentChatHistoryParam });
-      moxusService.addTask('nodeUpdateFeedback', { nodes: finalNodesStateParam, chatHistory: currentChatHistoryParam });
-      moxusService.addTask('finalReport', {}, currentChatHistoryParam); 
-    } else {
-      console.log('[useNodeGraph] Skipping Moxus feedback: image-only update, no content changes, or no history.');
-    }
-  }, []);
 
   return { 
     nodes: memoizedNodes, 
@@ -347,7 +322,8 @@ function useNodeGraph() {
     updateNode, 
     deleteNode, 
     updateGraph, 
-    setNodes 
+    setNodes, 
+    getNodes // Export getNodes
   };
 }
 

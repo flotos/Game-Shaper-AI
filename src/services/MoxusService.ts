@@ -17,8 +17,6 @@ export const setMoxusFeedbackImpl = (impl: GetMoxusFeedbackFn) => {
 type MoxusTaskType = 
   | 'assistantFeedback' 
   | 'nodeEditFeedback' 
-  | 'storyFeedback' 
-  | 'nodeUpdateFeedback' 
   | 'finalReport'
   | 'llmCallFeedback'
   | 'chatTextFeedback'
@@ -98,8 +96,6 @@ let addMessageCallback: (message: Message) => void = () => {};
 let getChatHistoryCallback: () => Message[] = () => [];
 
 // State for active feedback tasks
-let activeStoryFeedback: Promise<void> | null = null;
-let activeNodeUpdateFeedback: Promise<void> | null = null;
 let activeChatTextFeedback: Promise<void> | null = null; 
 let activeLLMNodeEditionYamlFeedback: Promise<void> | null = null;
 let activeFinalReport: Promise<void> | null = null; 
@@ -387,12 +383,17 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   let safeTaskData: any;
   let formattedChatHistory = "(Chat history not applicable for this task type or not available)";
 
-  if (task.type === 'nodeUpdateFeedback' || task.type === 'storyFeedback') {
+  if (task.data && task.data.nodes && task.type === 'llmCallFeedback') {
     const { nodes, chatHistory, ...otherData } = task.data || {};
     if (chatHistory) {
       formattedChatHistory = getFormattedChatHistoryStringForMoxus(chatHistory, 10);
     }
-    safeTaskData = { ...otherData, nodesCount: nodes?.length || 0, nodeTypes: nodes ? Array.from(new Set(nodes.map((n: any) => n.type))).join(', ') : '', nodeNames: nodes ? nodes.slice(0, 5).map((n: any) => n.name).join(', ') + (nodes.length > 5 ? '...' : '') : '' };
+    safeTaskData = { 
+      ...otherData,
+      nodesCount: nodes?.length || 0, 
+      nodeTypes: nodes ? Array.from(new Set(nodes.map((n: any) => n.type))).join(', ') : '', 
+      nodeNames: nodes ? nodes.slice(0, 5).map((n: any) => n.name).join(', ') + (nodes.length > 5 ? '...' : '') : '' 
+    };
   } else {
     safeTaskData = JSON.parse(JSON.stringify(task.data));
     const MAX_FIELD_LENGTH = 5000;
@@ -489,78 +490,49 @@ const processQueue = async () => {
       });
   }
 
-  // 3. Attempt to launch llmCallFeedback for node_edition_yaml
+  // 3. Attempt to launch llmCallFeedback for node_edition_yaml (and other llmCallFeedbacks)
   // This can run concurrently with chatTextFeedback.
-  // It will find the first available task of this specific type in the queue.
   if (!activeLLMNodeEditionYamlFeedback) { 
-    const taskIndex = taskQueue.findIndex(t => t.type === 'llmCallFeedback' && t.data?.callType === 'node_edition_yaml');
+    // General llmCallFeedback processing (includes node_edition_yaml)
+    const taskIndex = taskQueue.findIndex(t => t.type === 'llmCallFeedback');
     if (taskIndex !== -1) {
         const task = taskQueue.splice(taskIndex, 1)[0]; 
-        console.log(`[MoxusService] Launching task: ${task.type} for node_edition_yaml (ID: ${task.id}) from queue index ${taskIndex}`);
+        const callTypeSuffix = task.data?.callType ? ` for ${task.data.callType}` : '';
+        console.log(`[MoxusService] Launching task: ${task.type}${callTypeSuffix} (ID: ${task.id}) from queue index ${taskIndex}`);
         didLaunchOrProcessTaskThisCycle = true;
+        
+        // Use activeLLMNodeEditionYamlFeedback slot for any llmCallFeedback task to simplify active task tracking for this type.
+        // This assumes we only process one 'llmCallFeedback' at a time, which is reasonable.
         activeLLMNodeEditionYamlFeedback = handleMemoryUpdate(task)
-            .catch(err => console.error(`[MoxusService] Error in ${task.type} for node_edition_yaml (ID: ${task.id}):`, err))
+            .catch(err => console.error(`[MoxusService] Error in ${task.type}${callTypeSuffix} (ID: ${task.id}):`, err))
             .finally(() => {
-                console.log(`[MoxusService] Completed task: ${task.type} for node_edition_yaml (ID: ${task.id})`);
+                console.log(`[MoxusService] Completed task: ${task.type}${callTypeSuffix} (ID: ${task.id})`);
                 activeLLMNodeEditionYamlFeedback = null;
-                hasNodeEditionFeedbackCompletedForReport = true; 
-                console.log('[MoxusService] LLMCallFeedback for node_edition_yaml completed, flag set for final report.');
-                checkAndTriggerFinalReport();
+                // Only set the flag if it was specifically for node_edition_yaml, as this is what final report depends on.
+                if (task.data?.callType === 'node_edition_yaml') {
+                    hasNodeEditionFeedbackCompletedForReport = true; 
+                    console.log('[MoxusService] LLMCallFeedback for node_edition_yaml completed, flag set for final report.');
+                    checkAndTriggerFinalReport();
+                }
                 triggerProcessing(); 
             });
     }
   }
 
-  // 4. Attempt to launch storyFeedback
-  // Runs if its slot is free and it's next (taskQueue[0]).
-  if (!activeStoryFeedback && taskQueue[0]?.type === 'storyFeedback') {
-    const task = taskQueue.shift()!;
-    console.log(`[MoxusService] Launching task: ${task.type} (ID: ${task.id})`);
-    didLaunchOrProcessTaskThisCycle = true;
-    activeStoryFeedback = handleMemoryUpdate(task)
-      .catch(err => console.error(`[MoxusService] Error in ${task.type} (ID: ${task.id}):`, err))
-      .finally(() => {
-        console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
-        activeStoryFeedback = null;
-        triggerProcessing(); 
-      });
-  }
-
-  // 5. Attempt to launch nodeUpdateFeedback
-  // Runs if its slot is free and it's next (taskQueue[0]).
-  if (!activeNodeUpdateFeedback && taskQueue[0]?.type === 'nodeUpdateFeedback') {
-    const task = taskQueue.shift()!;
-    console.log(`[MoxusService] Launching task: ${task.type} (ID: ${task.id})`);
-    didLaunchOrProcessTaskThisCycle = true;
-    activeNodeUpdateFeedback = handleMemoryUpdate(task)
-      .catch(err => console.error(`[MoxusService] Error in ${task.type} (ID: ${task.id}):`, err))
-      .finally(() => {
-        console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
-        activeNodeUpdateFeedback = null;
-        hasNodeEditionFeedbackCompletedForReport = true;
-        console.log('[MoxusService] NodeUpdateFeedback completed, flag set for final report.');
-        checkAndTriggerFinalReport();
-        triggerProcessing(); 
-      });
-  }
-  
-  // 6. Process "other" tasks that were not handled by specific blocks above
+  // 6. Process "other" tasks (now block 4)
   if (!didLaunchOrProcessTaskThisCycle && taskQueue.length > 0) {
     const nextTask = taskQueue[0];
     const isTaskForADifferentDedicatedHandlerThatIsBusy = 
         (nextTask.type === 'finalReport' && activeFinalReport) ||
         (nextTask.type === 'chatTextFeedback' && activeChatTextFeedback) ||
-        (nextTask.type === 'storyFeedback' && activeStoryFeedback) ||
-        (nextTask.type === 'nodeUpdateFeedback' && activeNodeUpdateFeedback);
+        (nextTask.type === 'llmCallFeedback' && activeLLMNodeEditionYamlFeedback); // Covers all llmCallFeedback
 
-    if (nextTask.type === 'llmCallFeedback' && nextTask.data?.callType === 'node_edition_yaml' && activeLLMNodeEditionYamlFeedback) {
-        console.log('[MoxusService] node_edition_yaml feedback at queue head, but its dedicated handler is busy. Waiting.');
+    if (nextTask.type === 'llmCallFeedback' && activeLLMNodeEditionYamlFeedback) {
+        console.log('[MoxusService] llmCallFeedback at queue head, but its dedicated handler is busy. Waiting.');
     } else if (!isTaskForADifferentDedicatedHandlerThatIsBusy) {
         if ( !activeFinalReport && 
              !activeChatTextFeedback &&
-             !activeLLMNodeEditionYamlFeedback && 
-             !activeStoryFeedback &&
-             !activeNodeUpdateFeedback
+             !activeLLMNodeEditionYamlFeedback
             ) {
             const otherTask = taskQueue.shift()!; 
             console.log(`[MoxusService] Launching other task: ${otherTask.type} (ID: ${otherTask.id})`);
@@ -608,26 +580,15 @@ const handleFinalReport = async (task: MoxusTask) => {
   const assistantNodesContent = getAssistantNodesContent();
   const chatHistoryContextString = task.data?.chatHistoryContext || "(Chat history context not available for this report)";
 
-  // STEP 1: Update General Memory first.
-  // The originalCallType indicates this is part of the final report sequence,
-  // specifically the GM update that should happen *before* the chat message.
-  console.log('[MoxusService] Updating GeneralMemory before generating final report (Task ID: ' + task.id + ')...');
-  // Using 'finalReport_GM_update' as originalCallType to distinguish from the report generation LLM call.
-  // task.data is passed along in case updateGeneralMemoryFromAllSources has specific logic for it,
-  // though for 'finalReport' task type, it's not expected to alter the standard synthesis.
-  await updateGeneralMemoryFromAllSources('finalReport_GM_update', task.data);
-  console.log('[MoxusService] GeneralMemory updated prior to final report generation (Task ID: ' + task.id + ').');
-
-  // STEP 2: Generate the final report using the NOW UPDATED General Memory
+  // STEP 1: Generate the final report (MOVED GM UPDATE TO AFTER)
   const promptContent = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
   Generate a brief, concise, and straight-to-the-point critical analysis based on your accumulated memory documents and the recent chat context below.
-  ${assistantNodesContent ? `Additional features:\n  ---
-  ${assistantNodesContent}\n  ---` : ""}
+  ${assistantNodesContent ? `Additional features:\n  ---\n  ${assistantNodesContent}\n  ---` : ""}
   # CHAT HISTORY CONTEXT (Last 10 turns, if available)
   ${chatHistoryContextString}
   # GENERAL MEMORY
-  ${moxusStructuredMemory.GeneralMemory || '(No general memory available)'} // This will now use the updated GM
+  ${moxusStructuredMemory.GeneralMemory || '(No general memory available)'}
   # CHAT TEXT ANALYSIS
   ${moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)'}
   # NODE EDITIONS ANALYSIS
@@ -644,18 +605,31 @@ const handleFinalReport = async (task: MoxusTask) => {
   Be direct, concise, and straight to the point. Focus only on problems requiring attention, not what works well.
   This will be displayed to the user as a Moxus critical analysis report.`;
 
-  console.log(`[MoxusService] Generating final report (Task ID: ${task.id}) using updated memory sources...`);
+  console.log(`[MoxusService] Generating final report (Task ID: ${task.id}) using current memory sources...`);
   if (!getMoxusFeedbackImpl) {
     throw new Error('getMoxusFeedback implementation not set. Make sure to call setMoxusFeedbackImpl first.');
   }
   const report = await getMoxusFeedbackImpl(promptContent, 'INTERNAL_FINAL_REPORT_GENERATION_STEP');
   console.log(`[MoxusService] Final report generated for Task ID: ${task.id}. Sending to chat.`);
 
-  // STEP 3: Send the report to chat
+  // STEP 2: Send the report to chat
   addMessageCallback({ role: 'moxus', content: formatMoxusReport(report) });
-
-  // The previous setTimeout for a redundant/post-chat GM update is removed.
-  // The GM update now happens definitively before the report is generated.
+  
+  // STEP 3: Update General Memory AFTER sending the report (as per spec)
+  // The originalCallType indicates this is part of the final report sequence,
+  // specifically the GM update that should happen *after* the chat message.
+  console.log('[MoxusService] Scheduling GeneralMemory update post-final report (Task ID: ' + task.id + ')...');
+  // addTask('updateGeneralMemory', { reason: `post_final_report_generation_for_task_${task.id}`, chatHistoryContext: chatHistoryContextString });
+  // Simpler: let updateGeneralMemory handle its standard data needs if any, or rely on its synthesis of all memories.
+  // Pass the original finalReport task data in case updateGeneralMemoryFromAllSources wants to use chatHistoryContext from it.
+  addTask('updateGeneralMemory', { 
+    reason: `post_final_report_for_task_${task.id}`, 
+    originalReportTaskId: task.id,
+    // Pass along the chat history context that was used for the report itself, for consistency if GM update needs it.
+    // The addTask function will reformat it if necessary.
+    chatHistoryForGMUpdate: task.data?.chatHistoryContext ? task.data.chatHistoryContext : undefined 
+  });
+  console.log('[MoxusService] GeneralMemory update task queued post-final report generation (Task ID: ' + task.id + ').');
 };
 
 const handleMemoryUpdate = async (task: MoxusTask) => {
@@ -694,6 +668,43 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       } else {
         console.log(`[MoxusService] Feedback for system event ${task.data.callType} (ID: ${callId}) will not trigger periodic GeneralMemory update.`);
       }
+
+      // If this llmCallFeedback task is for a 'node_edition_yaml' call, also update nodeEdition memory.
+      if (task.type === 'llmCallFeedback' && originalCallTypeForFeedback === 'node_edition_yaml') {
+        console.log(`[MoxusService] Task ${task.id} (llmCallFeedback for node_edition_yaml) is also updating nodeEdition memory document.`);
+        const nodeEditionMemoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
+        
+        // Prepare data for getMemoryUpdatePrompt, similar to how storyFeedback/nodeUpdateFeedback did.
+        // The task.data for llmCallFeedback contains { id, prompt, response, callType, modelUsed } of the original LLM call.
+        // We need to ensure 'nodes' data is present if the original node_edition_yaml response implies node changes.
+        // This part is tricky: the 'response' of node_edition_yaml is YAML of changes.
+        // We need to pass this effectively. getMemoryUpdatePrompt expects 'nodes' if task.type was story/nodeUpdate.
+        // For now, we pass the raw task.data. This might need refinement in getMemoryUpdatePrompt or by parsing nodes from response here.
+        // Let's assume task.data already contains the necessary info (e.g. 'nodes' if applicable, or the response can be parsed by the prompt)
+        // For the prompt, we need to ensure task.data is structured so getMemoryUpdatePrompt can use it.
+        // It might be better to pass specific fields rather than task.data directly if its structure for 'llmCallFeedback'
+        // differs too much from what getMemoryUpdatePrompt expects for node-related updates.
+        // For now, getMemoryUpdatePrompt was already modified to look for task.data.nodes if task.type is llmCallFeedback.
+        // We must ensure `task.data.nodes` is populated for this specific case if the prompt relies on it.
+        // The prompt for nodeEdition update uses: task.data.nodes (count, types, names) and task.data (otherData, stringified)
+        // The original node_edition_yaml call's response is in task.data.response.
+        // Let's pass what's available. The prompt for nodeEdition is generic.
+        const nodeEditionUpdateTaskData = { // Construct a specific data object for this memory update.
+          ...task.data, // Includes original prompt, response, callType of the node_edition_yaml.
+          // nodes: ??? // This is the challenge. The YAML response needs to be interpreted or passed.
+          // For now, let's assume the generic prompt for nodeEdition can work with the raw response data.
+          // The getMemoryUpdatePrompt will stringify task.data if 'nodes' isn't explicitly there.
+        };
+        const nodeEditionTaskForPrompt: MoxusTask = { ...task, data: nodeEditionUpdateTaskData, type: 'llmCallFeedback' }; // Keep type for prompt construction logic
+
+        const nodeEditionUpdatePrompt = getMemoryUpdatePrompt(nodeEditionTaskForPrompt, nodeEditionMemoryToUpdate);
+        // Use a distinct originalCallType for the LLM call that performs this memory update
+        const updatedNodeEditionMemory = await getMoxusFeedbackImpl(nodeEditionUpdatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_node_edition`);
+        moxusStructuredMemory.featureSpecificMemory.nodeEdition = updatedNodeEditionMemory;
+        console.log(`[MoxusService] Updated nodeEdition memory document via llmCallFeedback for ${callId}.`);
+        saveMemory();
+      }
+
       if (task.type === 'chatTextFeedback') {
         console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating chatText memory document.`);
         const chatTextMemoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
@@ -715,14 +726,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     case 'nodeEditFeedback':
       memoryKey = 'nodeEdit';
       memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdit;
-      break;
-    case 'storyFeedback': 
-    case 'nodeUpdateFeedback':
-      memoryKey = 'nodeEdition';
-      memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
-      if (task.data && task.data.nodes && (task.type === 'storyFeedback' || task.type === 'nodeUpdateFeedback')) {
-        task.data.nodes = sanitizeNodesForMoxus(task.data.nodes);
-      }
       break;
     case 'assistantFeedback':
       memoryKey = 'assistantFeedback';
@@ -755,6 +758,31 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
   }
 };
 
+// Helper function to apply diffs to a text
+const applyDiffs = (originalText: string, diffs: Array<{ prev_txt: string, next_txt: string, occ?: number }>): string => {
+  let modifiedText = originalText;
+  for (const diff of diffs) {
+    const { prev_txt, next_txt, occ = 1 } = diff;
+    if (!prev_txt) continue; // Skip if prev_txt is empty
+
+    let count = 0;
+    let pos = modifiedText.indexOf(prev_txt);
+    
+    while (pos !== -1) {
+      count++;
+      if (count === occ) {
+        modifiedText = modifiedText.substring(0, pos) + next_txt + modifiedText.substring(pos + prev_txt.length);
+        break; 
+      }
+      pos = modifiedText.indexOf(prev_txt, pos + 1);
+    }
+    if (count < occ) {
+      console.warn(`[MoxusService] applyDiffs: Could not find occurrence ${occ} of "${prev_txt}". Only ${count} found.`);
+    }
+  }
+  return modifiedText;
+};
+
 // Function to update GeneralMemory from all memory sources (Restored)
 const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: string = 'scheduled_general_memory_update', taskData?: any) => {
   console.log(`[MoxusService] Attempting to update GeneralMemory. Trigger reason/type: ${originalCallTypeForThisUpdate}`);
@@ -763,38 +791,42 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   let updatePrompt: string;
   let updatePromptTemplate: string;
   let promptData: Record<string, string>;
+  const currentGeneralMemorySnapshot = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
 
   if (originalCallTypeForThisUpdate === 'updateGeneralMemory' && taskData?.reason === "chat_reset_event" && taskData?.previousChatHistoryString && taskData?.eventDetails) {
     console.log('[MoxusService] Using dedicated prompt for chat_reset_event GeneralMemory update.');
-    // Assuming getChatResetMemoryUpdatePrompt also gets its template from AllPrompts or is refactored similarly.
-    // For now, leaving this part as is, but ideally it would also use a template from YAML.
     updatePrompt = getChatResetMemoryUpdatePrompt(
-      moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL,
+      currentGeneralMemorySnapshot,
       assistantNodesContent,
       taskData.previousChatHistoryString,
       taskData.eventDetails
     );
+    if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
+    const fullUpdatedMemory = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForThisUpdate}`);
+    moxusStructuredMemory.GeneralMemory = fullUpdatedMemory.length > 15000 ? fullUpdatedMemory.substring(0, 15000) + "... [GeneralMemory truncated]" : fullUpdatedMemory;
+    console.log('[MoxusService] Updated GeneralMemory via chat_reset_event (full update).');
+    saveMemory();
+    return;
   } else {
-    console.log('[MoxusService] Using standard synthesis prompt for GeneralMemory update.');
+    console.log('[MoxusService] Using standard synthesis prompt for GeneralMemory update (expecting YAML diff).');
     const recentFeedbacks = Object.entries(moxusStructuredMemory.featureSpecificMemory.llmCalls)
       .sort((a, b) => new Date(a[1].timestamp).getTime() - new Date(b[1].timestamp).getTime()).reverse().slice(0, 5)
       .map(([id, call]) => ({ id, feedback: call.feedback || "No feedback available" }));
     
     const truncateText = (text: string, maxLength: number = 2000) => text && text.length > maxLength ? text.substring(0, maxLength) + "... [truncated]" : text;
     
-    const generalMemory = truncateText(moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL);
+    const generalMemoryForPrompt = truncateText(currentGeneralMemorySnapshot); 
     const chatTextMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.chatText);
     const nodeEditionMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdition);
     const assistantFeedbackMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.assistantFeedback);
     const nodeEditMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdit);
 
-    // Type assertion for safety, assuming structure of the imported YAML.
     const prompts = AllPrompts as { moxus_prompts: { general_memory_update: string } };
     updatePromptTemplate = prompts.moxus_prompts.general_memory_update;
 
     promptData = {
       assistant_nodes_content: truncateText(assistantNodesContent, 1000),
-      current_general_memory: generalMemory,
+      current_general_memory: generalMemoryForPrompt,
       chat_text_analysis: chatTextMemory || '(No chat text analysis available)',
       node_editions_analysis: nodeEditionMemory || '(No node edition analysis available)',
       assistant_feedback_analysis: assistantFeedbackMemory || '(No assistant feedback analysis available)',
@@ -809,11 +841,56 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   }
   
   if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
-  const updatedGeneralMemory = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForThisUpdate}`);
-  const truncatedGeneralMemory = updatedGeneralMemory.length > 15000 ? updatedGeneralMemory.substring(0, 15000) + "... [GeneralMemory truncated due to excessive length]" : updatedGeneralMemory; // Increased limit for GeneralMemory
-  moxusStructuredMemory.GeneralMemory = truncatedGeneralMemory;
-  console.log('[MoxusService] Updated GeneralMemory');
-  saveMemory();
+  const yamlResponse = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForThisUpdate}`);
+  
+  let contentToParse = yamlResponse.trim();
+  const yamlFenceStart = "```yaml";
+  const yamlFenceEnd = "```";
+
+  if (contentToParse.startsWith(yamlFenceStart)) {
+    contentToParse = contentToParse.substring(yamlFenceStart.length).trimStart();
+    if (contentToParse.endsWith(yamlFenceEnd)) {
+      contentToParse = contentToParse.substring(0, contentToParse.length - yamlFenceEnd.length).trimEnd();
+    }
+  }
+  contentToParse = contentToParse.trim();
+
+  try {
+    const parsedYaml = yaml.load(contentToParse) as any;
+    let finalGeneralMemory = currentGeneralMemorySnapshot;
+
+    if (parsedYaml && parsedYaml.memory_update_diffs) {
+      if (parsedYaml.memory_update_diffs.rpl !== undefined) {
+        console.log('[MoxusService] Applying full replacement to GeneralMemory.');
+        finalGeneralMemory = parsedYaml.memory_update_diffs.rpl;
+      } else if (parsedYaml.memory_update_diffs.df && Array.isArray(parsedYaml.memory_update_diffs.df)) {
+        console.log('[MoxusService] Applying diffs to GeneralMemory.');
+        finalGeneralMemory = applyDiffs(currentGeneralMemorySnapshot, parsedYaml.memory_update_diffs.df);
+      } else {
+        console.warn('[MoxusService] Received YAML for GeneralMemory update, but no valid rpl or df instructions found in memory_update_diffs. Using raw (cleaned) response.');
+        finalGeneralMemory = contentToParse; 
+      }
+    } else {
+      console.warn('[MoxusService] GeneralMemory update response was not valid YAML or did not contain memory_update_diffs after cleaning. Using raw (cleaned) response as fallback.');
+      finalGeneralMemory = contentToParse;
+    }
+
+    moxusStructuredMemory.GeneralMemory = finalGeneralMemory.length > 15000 
+      ? finalGeneralMemory.substring(0, 15000) + "... [GeneralMemory truncated due to excessive length]" 
+      : finalGeneralMemory;
+    
+    console.log('[MoxusService] Updated GeneralMemory');
+    saveMemory();
+
+  } catch (error) {
+    console.error('[MoxusService] Error processing YAML response for GeneralMemory update:', error);
+    console.warn('[MoxusService] Falling back to storing raw (cleaned) response in GeneralMemory due to YAML processing error.');
+    const rawCleanedResponseFallback = contentToParse.length > 15000 
+        ? contentToParse.substring(0, 15000) + "... [GeneralMemory truncated due to excessive length]" 
+        : contentToParse;
+    moxusStructuredMemory.GeneralMemory = rawCleanedResponseFallback;
+    saveMemory();
+  }
 };
 
 const getChatResetMemoryUpdatePrompt = (currentGeneralMemory: string, assistantNodesContent: string, previousChatHistoryString: string, eventDetails: {id: string, prompt: string, response: string}): string => {

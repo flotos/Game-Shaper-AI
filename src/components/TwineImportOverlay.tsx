@@ -9,6 +9,7 @@ import {
 import { PromptSelector } from './PromptSelector';
 import { Message } from '../context/ChatContext';
 import DiffViewer from './DiffViewer';
+import { LLMNodeEditionResponse, NodeSpecificUpdates } from '../models/nodeOperations';
 
 const MAX_CONTENT_LENGTH = 4000000; // 4 million characters
 
@@ -23,14 +24,11 @@ const calculateHeight = (text: string, isLongDescription: boolean = false, defau
 
 interface TwineImportOverlayProps {
   nodes: Node[];
-  updateGraph: (nodeEdition: { 
-    merge?: Partial<Node>[]; 
-    delete?: string[];
-    newNodes?: string[];
-  }, 
-  imagePrompts?: { nodeId: string; prompt: string }[],
-  chatHistory?: Message[],
-  isFromUserInteraction?: boolean
+  updateGraph: (
+    nodeEdition: LLMNodeEditionResponse,
+    imagePrompts?: { nodeId: string; prompt: string }[],
+    chatHistory?: Message[],
+    isFromUserInteraction?: boolean
   ) => Promise<void>;
   closeOverlay: () => void;
 }
@@ -88,20 +86,19 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   // Add this function after the createDiffSpans function
   const toggleImageUpdate = (nodeId: string) => {
     setPreview(prev => {
-      if (!prev.changes?.update) return prev;
+      if (!prev.changes?.update && !prev.changes?.new) return prev;
       
-      const updatedChanges = {
-        ...prev.changes,
-        update: prev.changes.update.map(update => 
-          update.id === nodeId 
-            ? { ...update, updateImage: !update.updateImage }
-            : update
-        )
-      };
+      const newEditedNodes = new Map(prev.editedNodes);
+      const existingEdit = newEditedNodes.get(nodeId) || {};
+      const currentUpdateFlag = existingEdit.updateImage ?? 
+                                (prev.changes.update?.find(u => u.id === nodeId)?.updateImage) ?? 
+                                (prev.changes.new?.find(n => n.id === nodeId)?.updateImage) ?? false;
+
+      newEditedNodes.set(nodeId, { ...existingEdit, updateImage: !currentUpdateFlag });
       
       return {
         ...prev,
-        changes: updatedChanges
+        editedNodes: newEditedNodes
       };
     });
   };
@@ -111,67 +108,49 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     setPreview(prev => {
       const newEditedNodes = new Map(prev.editedNodes || new Map());
       const existingEdit = newEditedNodes.get(nodeId) || {};
-      
-      newEditedNodes.set(nodeId, {
-        ...existingEdit,
-        [field]: value
-      });
-
-      return {
-        ...prev,
-        editedNodes: newEditedNodes
-      };
+      newEditedNodes.set(nodeId, { ...existingEdit, [field]: value });
+      return { ...prev, editedNodes: newEditedNodes };
     });
   };
 
   // Add new function to regenerate a single node
   const handleRegenerateNode = async (nodeId: string, isNewNode: boolean) => {
     if (!preview.extractedData) return;
-    
     setIsLoading(true);
     setError('');
-    
     try {
-      // Get the existing node data
-      const existingNode = isNewNode 
+      const baseNodeForRegen = isNewNode 
         ? preview.changes?.new?.find(n => n.id === nodeId)
-        : nodes.find(n => n.id === nodeId);
+        : preview.changes?.update?.find(n => n.id === nodeId) || nodes.find(n => n.id === nodeId);
 
-      if (!existingNode) {
-        throw new Error('Node not found');
-      }
+      if (!baseNodeForRegen) throw new Error('Node not found for regeneration');
 
-      const updatedNode = await regenerateSingleNode(
+      const regeneratedNodeData = await regenerateSingleNode(
         nodeId,
-        existingNode,
+        baseNodeForRegen,
         preview.extractedData,
-        nodes,
+        nodes, // Pass original nodes as context
         importMode,
-        secondPromptInstructions
+        secondPromptInstructions,
+        baseNodeForRegen // Pass itself as the recently generated version for this context
       );
 
-      if (updatedNode) {
+      if (regeneratedNodeData) {
         setPreview(prev => {
           if (!prev.changes) return prev;
-
           const newChanges = { ...prev.changes };
-          
-          if (isNewNode) {
-            // Update the new node
-            newChanges.new = prev.changes.new?.map((n: Partial<Node>) => 
-              n.id === nodeId ? { ...n, ...updatedNode } : n
-            );
-          } else {
-            // Update the existing node
-            newChanges.update = prev.changes.update?.map((n: { id: string; longDescription?: string; rules?: string; updateImage?: boolean; name?: string; type?: string }) => 
-              n.id === nodeId ? { ...n, ...updatedNode } : n
-            );
-          }
+          const userEdits = prev.editedNodes?.get(nodeId) || {};
+          const finalRegeneratedNode = {...regeneratedNodeData, ...userEdits };
 
-          return {
-            ...prev,
-            changes: newChanges
-          };
+          if (isNewNode && newChanges.new) {
+            newChanges.new = newChanges.new.map(n => n.id === nodeId ? { ...n, ...finalRegeneratedNode } : n);
+          } else if (!isNewNode && newChanges.update) {
+            newChanges.update = newChanges.update.map(u => u.id === nodeId ? { ...u, ...finalRegeneratedNode } : u);
+          } else if (!isNewNode && !newChanges.update && nodes.find(n => n.id === nodeId)) {
+            // If it was an original node not in .update, add it to .update
+            newChanges.update = [...(newChanges.update || []), {id: nodeId, ...finalRegeneratedNode}];
+          }
+          return { ...prev, changes: newChanges };
         });
       }
     } catch (err) {
@@ -360,33 +339,27 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   // Handle data extraction
   const handleExtractData = async () => {
     if (!cleanedContent) return;
-    
     setIsLoading(true);
     setError('');
     setExtractionProgress(0);
-    
     try {
       const extractedData = await extractDataFromTwine(
         cleanedContent,
         nextPromptInstructions,
         extractionCount,
-        (completed) => {
-          setExtractionProgress(completed);
-        }
+        (completed) => setExtractionProgress(completed)
       );
-
       if ((extractedData.failedChunks ?? 0) > 0) {
         setError(`Warning: ${extractedData.failedChunks} out of ${extractionCount} chunks failed to process.`);
       }
-
-      // Only update preview if we have valid data
       if (extractedData.chunks && extractedData.chunks.length > 0) {
         setPreview({
           showPreview: true,
           step: 'generation',
           originalNodes: nodes,
           content: cleanedContent,
-          extractedData: extractedData
+          extractedData: extractedData,
+          editedNodes: new Map() // Reset edits
         });
       } else {
         setError('No data was extracted. Please try again with different settings.');
@@ -406,10 +379,8 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
       setError('Please extract data first before generating nodes.');
       return;
     }
-    
     setIsLoading(true);
     setError('');
-    
     try {
       const nodeResponse = await generateNodesFromExtractedData(
         preview.extractedData,
@@ -417,91 +388,14 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
         importMode,
         secondPromptInstructions
       );
-
-      // Normalize rules to strings and ensure updateImage is set
-      if (nodeResponse) {
-        if (nodeResponse.new) {
-          nodeResponse.new = nodeResponse.new.map((node: Partial<Node>) => ({
-            ...node,
-            rules: Array.isArray(node.rules) ? node.rules.join(', ') : node.rules,
-            updateImage: node.updateImage ?? false
-          }));
-        }
-        if (nodeResponse.update) {
-          nodeResponse.update = nodeResponse.update.map((update: { id: string; longDescription?: string; rules?: string | string[]; updateImage?: boolean }) => ({
-            ...update,
-            rules: Array.isArray(update.rules) ? update.rules.join(', ') : update.rules,
-            updateImage: update.updateImage ?? false
-          }));
-        }
-      }
-
-      // Only update preview if we have valid data
-      if (nodeResponse && (nodeResponse.new?.length > 0 || nodeResponse.update?.length > 0)) {
+      if (nodeResponse && (nodeResponse.new?.length || nodeResponse.update?.length)) {
         setPreview(prev => ({
           ...prev,
           step: 'preview',
-          changes: nodeResponse
+          changes: nodeResponse, // Store the structure { new?: Partial<Node>[], update?: ..., delete?: ... }
+          editedNodes: new Map() // Reset edits
         }));
-
-        // Start parallel regeneration for all nodes
-        const allNodes = [...(nodeResponse.new || []), ...(nodeResponse.update || [])];
-        const regenerationPromises = allNodes.map(async (node) => {
-          try {
-            setRegenerationProgress(prev => ({ ...prev, [node.id]: 0 }));
-            // For new nodes, the node itself is the recently generated one
-            // For updated nodes, we need to find the original node to compare against
-            const recentlyGeneratedNode = nodeResponse.new?.find((n: Partial<Node>) => n.id === node.id) || 
-                                        nodeResponse.update?.find((n: { id: string; longDescription?: string; rules?: string; updateImage?: boolean }) => n.id === node.id);
-            
-            const regeneratedNode = await regenerateSingleNode(
-              node.id,
-              node,
-              preview.extractedData!,
-              nodes,
-              importMode,
-              secondPromptInstructions,
-              recentlyGeneratedNode // Pass the recently generated version for comparison
-            );
-            setRegenerationProgress(prev => ({ ...prev, [node.id]: 100 }));
-            return regeneratedNode;
-          } catch (err) {
-            console.error(`Failed to regenerate node ${node.id}:`, err);
-            setRegenerationProgress(prev => ({ ...prev, [node.id]: -1 }));
-            return node; // Return original node if regeneration fails
-          }
-        });
-
-        // Wait for all regenerations to complete
-        const regeneratedNodes = await Promise.all(regenerationPromises);
-
-        // Update the preview with regenerated nodes
-        setPreview(prev => {
-          if (!prev.changes) return prev;
-
-          const newChanges = { ...prev.changes };
-          
-          // Update new nodes
-          if (newChanges.new) {
-            newChanges.new = newChanges.new.map((n: Partial<Node>) => {
-              const regenerated = regeneratedNodes.find(r => r.id === n.id);
-              return regenerated || n;
-            });
-          }
-
-          // Update existing nodes
-          if (newChanges.update) {
-            newChanges.update = newChanges.update.map((n: { id: string; longDescription?: string; rules?: string; updateImage?: boolean }) => {
-              const regenerated = regeneratedNodes.find(r => r.id === n.id);
-              return regenerated || n;
-            });
-          }
-
-          return {
-            ...prev,
-            changes: newChanges
-          };
-        });
+        // Further regeneration logic after this, if any, would go here or be triggered by user
       } else {
         setError('No nodes were generated. Please try again with different settings.');
       }
@@ -516,485 +410,236 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
   // Handle confirmation
   const handleConfirm = () => {
     if (preview.changes) {
-      const changes = {
-        merge: [
-          ...(preview.changes.new?.map(node => {
-            const editedNode = preview.editedNodes?.get(node.id || '');
-            return {
-              id: node.id || '',
-              name: editedNode?.name || node.name || '',
-              longDescription: editedNode?.longDescription || node.longDescription || '',
-              rules: editedNode?.rules || (typeof node.rules === 'string' ? node.rules : (Array.isArray(node.rules) ? (node.rules as string[]).join(', ') : '')),
-              type: editedNode?.type || node.type || '',
-              image: node.image || '',
-              updateImage: editedNode?.updateImage ?? node.updateImage ?? false,
-              imageSeed: node.imageSeed || 0
-            } as Node;
-          }) || []),
-          ...(preview.changes.update?.map(update => {
-            const existingNode = nodes.find(n => n.id === update.id);
-            if (!existingNode) return null;
-            const editedNode = preview.editedNodes?.get(update.id);
-            return {
-              ...existingNode,
-              name: editedNode?.name ?? existingNode.name,
-              longDescription: editedNode?.longDescription ?? update.longDescription ?? existingNode.longDescription,
-              rules: editedNode?.rules ?? update.rules ?? existingNode.rules,
-              type: editedNode?.type ?? existingNode.type,
-              updateImage: editedNode?.updateImage ?? update.updateImage ?? existingNode.updateImage
-            };
-          }).filter(Boolean) as Node[]) || []
-        ],
-        delete: preview.changes.delete || [],
-        newNodes: (preview.changes.new?.map(node => node.id).filter((id): id is string => id !== undefined) || [])
+      const n_nodes: Node[] = [];
+      const u_nodes: { [nodeId: string]: NodeSpecificUpdates } = {};
+
+      // Process new nodes
+      preview.changes.new?.forEach(newNodePartial => {
+        if (!newNodePartial.id) newNodePartial.id = `twineNew-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const userEdits = preview.editedNodes?.get(newNodePartial.id) || {};
+        const finalNewNode: Node = {
+          id: newNodePartial.id!,
+          name: userEdits.name ?? newNodePartial.name ?? 'Untitled Twine Node',
+          longDescription: userEdits.longDescription ?? newNodePartial.longDescription ?? '',
+          rules: userEdits.rules ?? (typeof newNodePartial.rules === 'string' ? newNodePartial.rules : ''),
+          type: userEdits.type ?? newNodePartial.type ?? 'location',
+          image: userEdits.image ?? newNodePartial.image ?? '',
+          updateImage: userEdits.updateImage ?? newNodePartial.updateImage ?? true,
+          imageSeed: userEdits.imageSeed ?? newNodePartial.imageSeed ?? undefined,
+          // Ensure position is an object, even if empty or default
+          position: userEdits.position ?? newNodePartial.position ?? { x: Math.random() * 400, y: Math.random() * 300 }
+        };
+        n_nodes.push(finalNewNode);
+      });
+
+      // Process updated nodes
+      preview.changes.update?.forEach(updateInstruction => {
+        const existingNode = nodes.find(n => n.id === updateInstruction.id);
+        if (existingNode) {
+          const userEdits = preview.editedNodes?.get(updateInstruction.id) || {};
+          const updateOps: NodeSpecificUpdates = {};
+          let hasChanges = false;
+
+          // Iterate over fields in updateInstruction and userEdits
+          const allKeys = new Set([...Object.keys(updateInstruction), ...Object.keys(userEdits)]);
+          
+          allKeys.forEach(key => {
+            if (key === 'id') return;
+            const finalValue = (userEdits as any)[key] !== undefined ? (userEdits as any)[key] : (updateInstruction as any)[key];
+            
+            if (finalValue !== undefined) {
+              if (key === 'updateImage' || key === 'img_upd') {
+                if (finalValue) updateOps.img_upd = true;
+                // else if updateOps.img_upd was true and finalValue is false, it remains true unless explicitly set false in userEdits
+                // For simplicity, if updateImage is edited to false, we assume img_upd should not be set true from original suggestion.
+                // If userEdits.updateImage is explicitly false, then img_upd should be false.
+                if (userEdits.updateImage === false) updateOps.img_upd = false;
+                else if (finalValue) updateOps.img_upd = true; 
+
+                hasChanges = true;
+              } else if (key === 'imageSeed' || key === 'position') { // These are direct replacements
+                 updateOps[key] = { rpl: finalValue };
+                 hasChanges = true;
+              } else { // For name, longDescription, rules, type
+                updateOps[key] = { rpl: finalValue };
+                hasChanges = true;
+              }
+            }
+          });
+
+          if (hasChanges) {
+            u_nodes[updateInstruction.id] = updateOps;
+          }
+        }
+      });
+      
+      const nodeEditionPayload: LLMNodeEditionResponse = {
+        callId: `twineImport-${Date.now()}`,
+        n_nodes: n_nodes.length > 0 ? n_nodes : undefined,
+        u_nodes: Object.keys(u_nodes).length > 0 ? u_nodes : undefined,
+        d_nodes: preview.changes.delete?.length ? preview.changes.delete : undefined,
       };
-      // Explicitly pass false for isFromUserInteraction to prevent sorting
-      updateGraph(changes, undefined, undefined, false);
+
+      updateGraph(nodeEditionPayload, undefined, undefined, false);
       closeOverlay();
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-800 p-6 rounded-lg w-3/4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
+      <div className="bg-gray-800 p-6 rounded-lg w-5/6 max-h-[95vh] flex flex-col">
+        <div className="flex justify-between items-center mb-4 flex-shrink-0">
           <h2 className="text-xl font-bold">Import Twine Story</h2>
           <button onClick={closeOverlay} className="text-gray-400 hover:text-white">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
 
-        {/* File Upload Section */}
-        <div className="mb-6">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            accept=".html,.twee"
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-          >
-            Upload Twine File
-          </button>
-          {contentChunks.length > 0 && (
-            <div className="mt-4">
-              <label className="block text-sm font-medium mb-2">
-                Select Content Chunk ({contentChunks.length} chunks available)
-              </label>
-              <select
-                value={selectedChunkIndex}
-                onChange={(e) => setSelectedChunkIndex(Number(e.target.value))}
-                className="w-full p-2 bg-gray-700 text-white rounded"
-              >
-                {contentChunks.map((chunk, index) => (
-                  <option key={index} value={index}>
-                    Chunk {index + 1} ({chunk.length.toLocaleString()} characters)
-                  </option>
-                ))}
-              </select>
-              <div className="text-sm text-gray-400 mt-1">
-                File was split into {contentChunks.length} chunks due to size. Each chunk is approximately 4 million characters.
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Content Display Section */}
-        {cleanedContent && (
-          <div className="mb-6">
-            <div className="flex space-x-4 mb-4">
-              <button
-                onClick={() => setUseAggressiveClean(false)}
-                className={`px-4 py-2 rounded ${!useAggressiveClean ? 'bg-blue-600' : 'bg-gray-700'}`}
-              >
-                Basic Clean
-              </button>
-              <button
-                onClick={() => setUseAggressiveClean(true)}
-                className={`px-4 py-2 rounded ${useAggressiveClean ? 'bg-blue-600' : 'bg-gray-700'}`}
-              >
-                Aggressive Clean
-              </button>
-            </div>
-            <textarea
-              value={cleanedContent}
-              readOnly
-              className="w-full h-64 p-2 bg-gray-700 text-white rounded"
-              placeholder="Processed content will appear here..."
-            />
-          </div>
-        )}
-
-        {/* Import Mode Selection */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium mb-2">Import Mode</label>
-          <div className="flex space-x-4">
-            <button
-              onClick={() => setImportMode('new_game')}
-              className={`px-4 py-2 rounded ${importMode === 'new_game' ? 'bg-blue-600' : 'bg-gray-700'}`}
-            >
-              New Game
-            </button>
-            <button
-              onClick={() => setImportMode('merge_story')}
-              className={`px-4 py-2 rounded ${importMode === 'merge_story' ? 'bg-blue-600' : 'bg-gray-700'}`}
-            >
-              Merge with Existing
-            </button>
-          </div>
-        </div>
-
-        {/* Character Count and Chunk Splitting */}
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-2">
-            <label className="text-sm font-medium">
-              Number of Parallel Extractions: {extractionCount}
-            </label>
-            <span className="text-sm text-blue-400">
-              ({Math.ceil(Math.min(cleanedContent.length, MAX_CONTENT_LENGTH) / extractionCount)} characters per extraction)
-            </span>
-          </div>
-          <input
-            type="range"
-            min="1"
-            max="40"
-            value={extractionCount}
-            onChange={(e) => setExtractionCount(Number(e.target.value))}
-            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-          />
-        </div>
-
-        {/* Prompt Selector */}
-        <div className="mb-6">
-          <PromptSelector onPromptSelect={(dataExtraction, nodeGeneration) => {
-            setNextPromptInstructions(dataExtraction);
-            setSecondPromptInstructions(nodeGeneration);
-          }} />
-        </div>
-
-        {/* Prompt Instructions */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium mb-2">Instructions for Data Extraction (First Prompt)</label>
-          <textarea
-            value={nextPromptInstructions}
-            onChange={(e) => setNextPromptInstructions(e.target.value)}
-            className="w-full h-32 p-2 bg-gray-700 text-white rounded"
-            placeholder="Enter instructions for data extraction..."
-          />
-        </div>
-
-        <div className="mb-6">
-          <label className="block text-sm font-medium mb-2">Instructions for Node Generation (Second Prompt)</label>
-          <textarea
-            value={secondPromptInstructions}
-            onChange={(e) => setSecondPromptInstructions(e.target.value)}
-            className="w-full h-32 p-2 bg-gray-700 text-white rounded"
-            placeholder="Enter instructions for node generation..."
-          />
-        </div>
-
-        {/* Progress Indicators */}
-        {processingProgress > 0 && (
-          <div className="mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm">Processing content: {processingProgress}%</span>
-            </div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${processingProgress}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex justify-end space-x-4">
-          <button
-            onClick={closeOverlay}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
-          >
-            Cancel
-          </button>
-          {preview.step === 'extraction' && (
-            <button
-              onClick={handleExtractData}
-              disabled={isLoading || !cleanedContent}
-              className={`px-4 py-2 rounded ${isLoading || !cleanedContent ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-            >
-              {isLoading ? `Extracting... ${extractionProgress}/${extractionCount}` : 'Extract Data'}
-            </button>
-          )}
-          {preview.step === 'generation' && (
-            <button
-              onClick={handleGenerateNodes}
-              disabled={isLoading}
-              className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-            >
-              {isLoading ? 'Generating...' : 'Generate Nodes'}
-            </button>
-          )}
-          {preview.step === 'preview' && (
-            <button
-              onClick={handleConfirm}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded"
-            >
-              Confirm
-            </button>
-          )}
-        </div>
-
-        {/* Preview Section */}
-        {preview.showPreview && (
-          <div className="mt-6">
-            {preview.step === 'generation' && preview.extractedData && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold">Extracted Data Preview</h3>
-                  <button
-                    onClick={handleExtractData}
-                    disabled={isLoading}
-                    className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-                  >
-                    {isLoading ? `Extracting... ${extractionProgress}/${extractionCount}` : 'Re-extract Data'}
-                  </button>
-                </div>
-                <div className="bg-gray-700 p-4 rounded">
-                  <pre className="text-white whitespace-pre-wrap">
-                    {JSON.stringify(preview.extractedData, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            )}
-            {preview.step === 'preview' && preview.changes && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold">Generated Nodes Preview</h3>
-                  <button
-                    onClick={handleGenerateNodes}
-                    disabled={isLoading}
-                    className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}
-                  >
-                    {isLoading ? 'Regenerating...' : 'Regenerate Nodes'}
-                  </button>
-                </div>
-                {preview.changes.new?.map((node, index) => (
-                  <div key={index} className="p-4 bg-gray-800 rounded">
-                    <h4 className="text-lg font-bold mb-4">{node.name}</h4>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <h4 className="text-sm font-semibold mb-2">Current</h4>
-                        <div className="text-sm space-y-4">
-                          <div>
-                            <span className="font-semibold block mb-1">Long Description:</span>
-                            <DiffViewer
-                              original=""
-                              updated={node.longDescription || ''}
-                              isCurrent={true}
-                              className="w-full"
-                              style={{ 
-                                height: calculateHeight(node.longDescription || '', true),
-                                overflowY: 'auto'
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <span className="font-semibold block mb-1">Rules:</span>
-                            <DiffViewer
-                              original=""
-                              updated={node.rules || ''}
-                              isCurrent={true}
-                              className="w-full"
-                              style={{ height: '7.5rem', overflowY: 'auto' }}
-                            />
-                          </div>
-                          <div>
-                            <span className="font-semibold block mb-1">Type:</span>
-                            <DiffViewer
-                              original=""
-                              updated={node.type || ''}
-                              isCurrent={true}
-                              className="w-full"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-semibold mb-2">New</h4>
-                        <div className="text-sm space-y-4">
-                          <div>
-                            <span className="font-semibold block mb-1">Long Description:</span>
-                            <DiffViewer
-                              original=""
-                              updated={node.longDescription || ''}
-                              isCurrent={false}
-                              className="w-full"
-                              style={{ 
-                                height: calculateHeight(node.longDescription || '', true),
-                                overflowY: 'auto'
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <span className="font-semibold block mb-1">Rules:</span>
-                            <DiffViewer
-                              original=""
-                              updated={node.rules || ''}
-                              isCurrent={false}
-                              className="w-full"
-                              style={{ height: '7.5rem', overflowY: 'auto' }}
-                            />
-                          </div>
-                          <div>
-                            <span className="font-semibold block mb-1">Type:</span>
-                            <DiffViewer
-                              original=""
-                              updated={node.type || ''}
-                              isCurrent={false}
-                              className="w-full"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+        <div className="flex-grow overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+          {/* File Upload Section */}
+          {!preview.showPreview && (
+            <>
+              <div className="mb-6">
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".html,.twee" className="hidden"/>
+                <button onClick={() => fileInputRef.current?.click()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+                  Upload Twine File
+                </button>
+                {contentChunks.length > 0 && (
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium mb-2">Select Content Chunk ({contentChunks.length} chunks available)</label>
+                    <select value={selectedChunkIndex} onChange={(e) => setSelectedChunkIndex(Number(e.target.value))} className="w-full p-2 bg-gray-700 text-white rounded">
+                      {contentChunks.map((chunk, index) => (<option key={index} value={index}>Chunk {index + 1} ({chunk.length.toLocaleString()} chars)</option>))}
+                    </select>
+                    <div className="text-sm text-gray-400 mt-1">File split due to size. Max chunk: {MAX_CONTENT_LENGTH.toLocaleString()} chars.</div>
                   </div>
-                ))}
-                {preview.changes.update?.map((update, index) => {
-                  const existingNode = nodes.find(n => n.id === update.id);
-                  if (!existingNode) return null;
-                  const editedNode = preview.editedNodes?.get(update.id);
-                  
-                  return (
-                    <div key={index} className="p-4 bg-gray-800 rounded">
-                      <h4 className="text-lg font-bold mb-4">{existingNode.name}</h4>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <h4 className="text-sm font-semibold mb-2">Current</h4>
-                          <div className="text-sm space-y-4">
-                            <div>
-                              <span className="font-semibold block mb-1">Long Description:</span>
-                              <DiffViewer
-                                original={existingNode.longDescription}
-                                updated={update.longDescription || existingNode.longDescription}
-                                isCurrent={true}
-                                className="w-full"
-                                style={{ 
-                                  height: calculateHeight(existingNode.longDescription, true),
-                                  overflowY: 'auto'
-                                }}
-                              />
-                            </div>
-                            <div>
-                              <span className="font-semibold block mb-1">Rules:</span>
-                              <DiffViewer
-                                original={existingNode.rules}
-                                updated={update.rules || existingNode.rules}
-                                isCurrent={true}
-                                className="w-full"
-                                style={{ height: '7.5rem', overflowY: 'auto' }}
-                              />
-                            </div>
-                            <div>
-                              <span className="font-semibold block mb-1">Type:</span>
-                              <DiffViewer
-                                original={existingNode.type}
-                                updated={update.type || existingNode.type}
-                                isCurrent={true}
-                                className="w-full"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-semibold mb-2">New</h4>
-                          <div className="text-sm space-y-4">
-                            <div>
-                              <span className="font-semibold block mb-1">Long Description:</span>
-                              <DiffViewer
-                                original={existingNode.longDescription}
-                                updated={update.longDescription || existingNode.longDescription}
-                                isCurrent={false}
-                                className="w-full"
-                                style={{ 
-                                  height: calculateHeight(update.longDescription || existingNode.longDescription, true),
-                                  overflowY: 'auto'
-                                }}
-                              />
-                            </div>
-                            <div>
-                              <span className="font-semibold block mb-1">Rules:</span>
-                              <DiffViewer
-                                original={existingNode.rules}
-                                updated={update.rules || existingNode.rules}
-                                isCurrent={false}
-                                className="w-full"
-                                style={{ height: '7.5rem', overflowY: 'auto' }}
-                              />
-                            </div>
-                            <div>
-                              <span className="font-semibold block mb-1">Type:</span>
-                              <DiffViewer
-                                original={existingNode.type}
-                                updated={update.type || existingNode.type}
-                                isCurrent={false}
-                                className="w-full"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {preview.changes.delete?.map((nodeId, index) => (
-                  <div key={index} className="p-4 bg-red-900 rounded">
-                    <h4 className="text-lg font-bold">Node to Delete: {nodeId}</h4>
-                  </div>
-                ))}
+                )}
               </div>
-            )}
-            {Object.entries(regenerationProgress).length > 0 && (
-              <div className="mt-4 p-4 bg-gray-800 rounded">
-                <h4 className="text-lg font-bold mb-2">Regeneration Progress</h4>
-                <div className="space-y-2">
-                  {Object.entries(regenerationProgress).map(([nodeId, progress]) => {
-                    const node = preview.changes?.new?.find(n => n.id === nodeId) || 
-                                preview.changes?.update?.find(n => n.id === nodeId);
+              {cleanedContent && (
+                <div className="mb-6">
+                  <div className="flex space-x-4 mb-4">
+                    <button onClick={() => setUseAggressiveClean(false)} className={`px-4 py-2 rounded ${!useAggressiveClean ? 'bg-blue-600' : 'bg-gray-700'}`}>Basic Clean</button>
+                    <button onClick={() => setUseAggressiveClean(true)} className={`px-4 py-2 rounded ${useAggressiveClean ? 'bg-blue-600' : 'bg-gray-700'}`}>Aggressive Clean</button>
+                  </div>
+                  <textarea value={cleanedContent} readOnly className="w-full h-40 p-2 bg-gray-700 text-white rounded" placeholder="Processed content..."/>
+                </div>
+              )}
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-2">Import Mode</label>
+                <div className="flex space-x-4">
+                  <button onClick={() => setImportMode('new_game')} className={`px-4 py-2 rounded ${importMode === 'new_game' ? 'bg-blue-600' : 'bg-gray-700'}`}>New Game</button>
+                  <button onClick={() => setImportMode('merge_story')} className={`px-4 py-2 rounded ${importMode === 'merge_story' ? 'bg-blue-600' : 'bg-gray-700'}`}>Merge with Existing</button>
+                </div>
+              </div>
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-medium">Parallel Extractions: {extractionCount}</label>
+                  <span className="text-sm text-blue-400">({Math.ceil(Math.min(cleanedContent.length, MAX_CONTENT_LENGTH) / extractionCount)} chars/extraction)</span>
+                </div>
+                <input type="range" min="1" max="40" value={extractionCount} onChange={(e) => setExtractionCount(Number(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"/>
+              </div>
+              <div className="mb-6">
+                <PromptSelector onPromptSelect={(dataExtraction, nodeGeneration) => { setNextPromptInstructions(dataExtraction); setSecondPromptInstructions(nodeGeneration); }} />
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-2">Data Extraction Instructions (First Prompt)</label>
+                <textarea value={nextPromptInstructions} onChange={(e) => setNextPromptInstructions(e.target.value)} className="w-full h-20 p-2 bg-gray-700 text-white rounded" placeholder="Instructions for data extraction..."/>
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-2">Node Generation Instructions (Second Prompt)</label>
+                <textarea value={secondPromptInstructions} onChange={(e) => setSecondPromptInstructions(e.target.value)} className="w-full h-20 p-2 bg-gray-700 text-white rounded" placeholder="Instructions for node generation..."/>
+              </div>
+            </>
+          )}
+
+          {/* Preview Section Here */}
+          {preview.showPreview && (
+            <div className="mt-6">
+              {preview.step === 'generation' && preview.extractedData && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold">Extracted Data Preview</h3>
+                    <button onClick={handleExtractData} disabled={isLoading} className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+                      {isLoading ? `Extracting... ${extractionProgress}/${extractionCount}` : 'Re-extract Data'}
+                    </button>
+                  </div>
+                  <div className="bg-gray-700 p-4 rounded max-h-60 overflow-y-auto"><pre className="text-white whitespace-pre-wrap">{JSON.stringify(preview.extractedData, null, 2)}</pre></div>
+                </div>
+              )}
+              {preview.step === 'preview' && preview.changes && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold">Generated Nodes Preview</h3>
+                    <button onClick={handleGenerateNodes} disabled={isLoading} className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+                      {isLoading ? 'Regenerating...' : 'Regenerate Nodes'}
+                    </button>
+                  </div>
+                  {/* New Nodes Preview */}
+                  {preview.changes.new?.map((node) => {
+                    const edited = preview.editedNodes?.get(node.id!) || {};
+                    const displayNode = {...node, ...edited};
                     return (
-                      <div key={nodeId} className="flex items-center space-x-2">
-                        <span className="text-sm w-48 truncate">{node?.name || nodeId}</span>
-                        {progress === -1 ? (
-                          <span className="text-red-500">Failed</span>
-                        ) : progress === 100 ? (
-                          <span className="text-green-500">Completed</span>
-                        ) : (
-                          <div className="flex-1 h-2 bg-gray-700 rounded-full">
-                            <div
-                              className="h-2 bg-blue-600 rounded-full transition-all duration-300"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                        )}
+                      <div key={node.id} className="p-4 bg-gray-700/50 rounded mb-2">
+                        <h4 className="text-md font-semibold text-green-400">New: {displayNode.name} (ID: {node.id})</h4>
+                        {/* Add editable fields for new nodes similar to updated nodes */}
+                        {/* For brevity, just showing name and type here, expand as needed */}
+                        <label>Name: <input type="text" value={displayNode.name} onChange={e => handleNodeEdit(node.id!, 'name', e.target.value)} className="bg-gray-600 p-1 rounded" /></label>
+                        <label className="ml-2">Type: <input type="text" value={displayNode.type} onChange={e => handleNodeEdit(node.id!, 'type', e.target.value)} className="bg-gray-600 p-1 rounded" /></label>
+                        <label className="ml-2"><input type="checkbox" checked={!!displayNode.updateImage} onChange={e => handleNodeEdit(node.id!, 'updateImage', e.target.checked)} /> Update Image</label>
+                        <DiffViewer original="" updated={`Desc: ${displayNode.longDescription}\nRules: ${displayNode.rules}`} isCurrent={false} />
                       </div>
                     );
                   })}
+                  {/* Updated Nodes Preview */}
+                  {preview.changes.update?.map((update) => {
+                    const originalNode = nodes.find(n => n.id === update.id);
+                    if (!originalNode) return null;
+                    const edited = preview.editedNodes?.get(update.id) || {};
+                    const displayNode = {
+                        name: edited.name ?? update.name ?? originalNode.name,
+                        longDescription: edited.longDescription ?? update.longDescription ?? originalNode.longDescription,
+                        rules: edited.rules ?? update.rules ?? originalNode.rules,
+                        type: edited.type ?? update.type ?? originalNode.type,
+                        updateImage: edited.updateImage ?? update.updateImage ?? originalNode.updateImage
+                    };
+                    return (
+                      <div key={update.id} className="p-4 bg-gray-700/50 rounded mb-2">
+                        <h4 className="text-md font-semibold text-yellow-400">Update: {displayNode.name} (ID: {update.id})</h4>
+                        <label>Name: <input type="text" value={displayNode.name} onChange={e => handleNodeEdit(update.id, 'name', e.target.value)} className="bg-gray-600 p-1 rounded" /></label>
+                        <label className="ml-2">Type: <input type="text" value={displayNode.type} onChange={e => handleNodeEdit(update.id, 'type', e.target.value)} className="bg-gray-600 p-1 rounded" /></label>
+                        <label className="ml-2"><input type="checkbox" checked={!!displayNode.updateImage} onChange={e => handleNodeEdit(update.id, 'updateImage', e.target.checked)} /> Update Image</label>
+                        <p className="text-xs mt-1">Desc Diff:</p>
+                        <DiffViewer original={originalNode.longDescription} updated={displayNode.longDescription} isCurrent={false}/>
+                        <p className="text-xs mt-1">Rules Diff:</p>
+                        <DiffViewer original={originalNode.rules} updated={displayNode.rules} isCurrent={false}/>
+                      </div>
+                    );
+                  })}
+                  {/* Deleted Nodes Preview */}
+                  {preview.changes.delete?.map((nodeId) => (<div key={nodeId} className="p-2 bg-red-700/50 rounded mb-2 text-red-300">Delete: {nodes.find(n=>n.id === nodeId)?.name || nodeId}</div>))}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
 
-        {/* Error Display */}
-        {error && (
-          <div className="mt-4 p-4 bg-red-900 text-white rounded">
-            {error}
-          </div>
-        )}
+        {/* Footer Actions */}
+        <div className="mt-6 pt-4 border-t border-gray-700 flex justify-end space-x-4 flex-shrink-0">
+          <button onClick={closeOverlay} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded">Cancel</button>
+          {preview.step === 'extraction' && !preview.showPreview && (
+            <button onClick={handleExtractData} disabled={isLoading || !cleanedContent} className={`px-4 py-2 rounded ${isLoading || !cleanedContent ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+              {isLoading ? `Extracting... ${extractionProgress}/${extractionCount}` : 'Extract Data'}
+            </button>
+          )}
+          {preview.step === 'generation' && preview.showPreview && (
+            <button onClick={handleGenerateNodes} disabled={isLoading} className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+              {isLoading ? 'Generating...' : 'Generate Nodes'}
+            </button>
+          )}
+          {preview.step === 'preview' && preview.showPreview && (
+            <button onClick={handleConfirm} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded">Confirm Import</button>
+          )}
+        </div>
+        {error && (<div className="mt-4 p-4 bg-red-800 text-white rounded">{error}</div>)}
       </div>
     </div>
   );

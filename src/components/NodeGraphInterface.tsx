@@ -4,18 +4,17 @@ import ReactMarkdown from 'react-markdown';
 import { Message } from '../context/ChatContext';
 // import { compressImage } from '../services/ImageService'; // No longer needed here directly
 import NodeGridItem from './NodeGridItem'; // Import the new component
+import { LLMNodeEditionResponse } from '../models/nodeOperations';
 
 interface NodeGraphInterfaceProps {
   nodes: Node[];
   onNodesSorted?: (sortedNodes: Node[]) => void;
-  updateGraph?: (nodeEdition: { 
-    merge?: Partial<Node>[]; 
-    delete?: string[];
-    newNodes?: string[];
-  }, 
-  imagePrompts?: { nodeId: string; prompt: string }[], 
-  chatHistory?: Message[],
-  isFromUserInteraction?: boolean) => Promise<void>;
+  updateGraph?: (
+    nodeEdition: LLMNodeEditionResponse,
+    imagePrompts?: { nodeId: string; prompt: string }[],
+    chatHistory?: Message[],
+    isFromUserInteraction?: boolean
+  ) => Promise<void>;
 }
 
 const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ nodes, updateGraph, onNodesSorted }) => {
@@ -63,23 +62,18 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
     }
     console.log('Regenerating image for node:', node.id);
     
-    // compressedImages cache is removed, NodeGridItem will update via its own useEffect
-    // if (compressedImages.has(node.id)) { ... }
-    
-    const nodeEdition = {
-      merge: [{
-        id: node.id,
-        updateImage: true // This will flow down to NodeGridItem's isUpdated prop
-      }]
+    const nodeEdition: LLMNodeEditionResponse = {
+      callId: `regenImg-${node.id}-${Date.now()}`,
+      u_nodes: { [node.id]: { img_upd: true } }
     };
     console.log('Sending node edition:', nodeEdition);
     try {
       await updateGraph(nodeEdition, [], []);
-      console.log('Node edition processed successfully');
+      console.log('Node edition processed successfully for image regeneration');
     } catch (error) {
       console.error('Error regenerating image:', error);
     }
-  }, [updateGraph]); // Removed compressedImages from dependencies
+  }, [updateGraph]);
 
   const handleDeleteNode = useCallback(async (nodeId: string) => {
     if (!updateGraph) {
@@ -92,22 +86,14 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
       setSelectedNode(null);
       setDeletingNode(nodeId);
       
-      // const nodeToRemove = nodes.find(node => node.id === nodeId); // Still useful if needed for other logic
-      
-      const nodeEdition = {
-        delete: [nodeId]
+      const nodeEdition: LLMNodeEditionResponse = {
+        callId: `delNode-${nodeId}-${Date.now()}`,
+        d_nodes: [nodeId]
       };
       
       try {
         await updateGraph(nodeEdition, [], []);
         console.log('Node deleted successfully');
-        
-        // Blob URL revocation for node.image (if it was a direct blob) is now primarily handled
-        // within ImageService during its initial high-quality compression phase for services like NovelAI.
-        // The main node.image is now usually a dataURL or a standard remote URL.
-        
-        // compressedImages cache is removed.
-        // setCompressedImages(prevImages => { ... });
       } catch (error) {
         console.error('Error deleting node:', error);
       } finally {
@@ -117,7 +103,7 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
     } else {
       setNodeToDelete(nodeId);
     }
-  }, [updateGraph, nodeToDelete, nodes]); // Removed compressedImages from dependencies
+  }, [updateGraph, nodeToDelete]);
 
   // For NodeGridItem props
   const handleMouseEnter = useCallback((nodeId: string) => setHoveredNodeId(nodeId), []);

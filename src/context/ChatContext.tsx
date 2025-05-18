@@ -1,4 +1,4 @@
-import { createContext, FC, useCallback, useState, useContext, ReactNode } from 'react';
+import { createContext, FC, useCallback, useState, useContext, ReactNode, useEffect } from 'react';
 import { moxusService } from '../services/MoxusService';
 
 export interface Message {
@@ -16,6 +16,7 @@ interface ChatContextType {
   updateStreamingMessage: (content: string) => void;
   endStreaming: () => void;
   editMessage: (index: number, newContent: string) => void;
+  getChatHistory: () => Message[];
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -31,6 +32,12 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
       return [];
     }
   });
+
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  const getChatHistory = useCallback(() => {
+    return chatHistory;
+  }, [chatHistory]);
 
   const addMessage = useCallback((message: Message) => {
     setChatHistoryState((prevChatHistory) => {
@@ -133,6 +140,10 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
     });
   }, []);
 
+  useEffect(() => {
+    // ... (existing save logic)
+  }, [chatHistory]);
+
   return (
     <ChatContext.Provider value={{ 
       chatHistory, 
@@ -141,7 +152,8 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
       clearChatHistory,
       updateStreamingMessage,
       endStreaming,
-      editMessage
+      editMessage,
+      getChatHistory
     }}>
       {children}
     </ChatContext.Provider>

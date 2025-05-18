@@ -13,3 +13,4 @@ Then, Moxus can also update his "generalMemory" when the following things happen
 For most of these features, if not all, the prompts should already exist in prompts-instruct.yaml. The feature should also be somehow implemented, or remnant of it as it used to work properly before some refactoring.
 
 The moxus triggered LLM Calls should be viewable in the "log" panel feature.
+

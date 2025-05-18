@@ -33,7 +33,8 @@ export interface PromptsConfig {
 let rawPrompts: string;
 const llmMode = import.meta.env.VITE_LLM_MODE?.toUpperCase();
 
-if (llmMode === 'BASE') {
+if (llmMode === 'BASE' && false) {
+  // not ready yet
   // @ts-ignore
   const module = await import('../prompts-base.yaml?raw');
   rawPrompts = module.default;

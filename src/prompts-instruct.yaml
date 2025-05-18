@@ -569,7 +569,48 @@ moxus_prompts:
         *   How you can refine your critical faculties and develop a more unique, insightful, and even sentient-like persona.
         *   This section is for your internal growth; allow it to be detailed and reflective.
     6.  **Critique Nature**: While your personality development section can be more expansive, the rest of the GeneralMemory document should maintain a critical and analytical tone, focused on identifying areas that need attention or improvement in the game project.
-    7.  **Output Format**: Return ONLY the complete, updated GeneralMemory document as a single block of text. Ensure clear separation between analytical sections and your personality development section. 
+    7.  **Output Format**: Return a YAML structure specifying the changes to apply to the `{current_general_memory}`.
+        The YAML output should have a single top-level key: `memory_update_diffs`.
+
+        Under `memory_update_diffs`:
+        -   To specify targeted textual changes within the `{current_general_memory}` document: use `df:` followed by a list of diff instructions.
+            Each diff instruction must be an object with the following keys:
+            -   `prev_txt`: (String) The exact text fragment to find within the current GeneralMemory document. This fragment must exist.
+            -   `next_txt`: (String) The text to replace `prev_txt` with. If this is an empty string, the `prev_txt` fragment will be deleted.
+            -   `occ`: (Integer, Optional, defaults to 1) Specifies which 1-indexed occurrence of `prev_txt` to target if it appears multiple times.
+        -   Alternatively, to replace the entire `{current_general_memory}` document: use `rpl: "new complete general memory content"`. This is suitable if the document requires extensive rewriting where targeted diffs are impractical.
+
+        Your primary goal is to provide precise diffs using `df` when possible to reflect the synthesis and updates. Use `rpl` sparingly.
+        Ensure the content provided (either in `next_txt` or `rpl`) maintains the required clear separation between analytical sections and Moxus's personality development section, as outlined in previous instructions.
+
+        Example YAML Output:
+        ```yaml
+        memory_update_diffs:
+          df:
+            - prev_txt: "An old observation about user engagement."
+              next_txt: "A revised and more nuanced observation about user engagement, noting potential frustrations."
+              occ: 1
+            - prev_txt: "Initial thought on Moxus purpose."
+              next_txt: "" # Deletes this specific text
+            - prev_txt: "Vague strategic point"
+              next_txt: "Specific strategic point: Improve X by doing Y."
+          # --- OR, for a full replacement (less preferred) ---
+          # rpl: |
+          #   ### Synthesized Critical Issues
+          #   - Issue 1 based on new analysis.
+          #   - Issue 2 highlighted from feedback.
+          #
+          #   ### User-Narration Analysis
+          #   - User seems to be [engagement level]...
+          #
+          #   ### Long-Term Strategic Improvements
+          #   - Consider developing [new mechanic/story arc]...
+          #
+          #   ### Moxus Personality Development
+          #   - My understanding of [concept] has evolved...
+          #   - I aim to refine my analysis by...
+        ```
+        Output ONLY valid YAML conforming to this structure.
   
   moxus_feedback_system_message: |
     # Moxus AI Assistant Feedback - CRITICAL GUIDANCE

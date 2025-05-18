@@ -8,4 +8,5 @@ export interface Node {
   // Define specific types like 'Character' | 'Location' | 'Item' | 'Rule' | 'Game Rule' | 'assistant' etc.
   type: string;
   imageSeed?: number;
+  position?: { x: number; y: number };
 }
