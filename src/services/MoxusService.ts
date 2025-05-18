@@ -374,7 +374,7 @@ const getAssistantNodesContent = (): string => {
       return "(No 'assistant' type nodes found)";
   }
   return assistantNodes
-      .map(node => `Name: ${node.name}\\nDescription: ${node.longDescription}\\nRules: ${node.rules}`)
+      .map(node => `Name: ${node.name}\\nDescription: ${node.longDescription}`)
       .join('\\n\\n---\\n\\n');
 };
 
@@ -404,11 +404,9 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
     };
     if (safeTaskData && safeTaskData.before) {
       truncateField(safeTaskData.before, 'longDescription');
-      truncateField(safeTaskData.before, 'rules');
     }
     if (safeTaskData && safeTaskData.after) {
       truncateField(safeTaskData.after, 'longDescription');
-      truncateField(safeTaskData.after, 'rules');
     }
     const stringifiedData = JSON.stringify(safeTaskData);
     if (stringifiedData.length > 5000 && typeof task.data === 'string') {

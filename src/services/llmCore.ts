@@ -219,13 +219,13 @@ export const getResponse = async (
               order: openrouterProvider ? [openrouterProvider] : undefined,
               allow_fallbacks: true
             },
-            temperature: 0.8,
-            top_p: 0.8,
+            temperature: 0.6,
+            top_p: 1,
             top_k: 20,
             min_p: 0,
             enable_thinking: includeReasoning,
             include_reasoning: true,
-            presence_penalty: 0,
+            presence_penalty: 0.1,
             reasoning: {
               effort: "low"
             },

@@ -24,7 +24,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
     return acc + `
     ---
     name: ${nodet.name}
-    rules: ${nodet.rules}
+    longDescription: ${nodet.longDescription}
     `;
   }, "");
   const chatHistoryContext = chatHistory.slice(-4).map(msg => `${msg.role}: ${msg.content}`).join('\n');
@@ -33,7 +33,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
     const imageGenerationNodesContent = imageGenerationNodes.map(n => {
       let prompt = "";
       if (n.longDescription) prompt += n.longDescription + "\n";
-      if (n.rules) prompt += n.rules + "\n";
       return prompt;
     }).join("\n");
 
@@ -41,7 +40,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
       image_generation_nodes_content: imageGenerationNodesContent,
       node_name: node.name,
       node_long_description: node.longDescription,
-      node_rules: node.rules,
       node_type: node.type,
       type_specific_prompt_addition: typeSpecificAddition,
       all_nodes_context: allNodesContext,
@@ -51,7 +49,6 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
     contentPrompt = formatPrompt(loadedPrompts.image_generation.base_prompt_default, {
       node_name: node.name,
       node_long_description: node.longDescription,
-      node_rules: node.rules,
       node_type: node.type,
       type_specific_prompt_addition: typeSpecificAddition,
       all_nodes_context: allNodesContext,

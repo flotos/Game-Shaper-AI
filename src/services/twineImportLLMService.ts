@@ -94,7 +94,7 @@ export const generateNodesFromExtractedData = async (
   
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "system") return acc;
-    return acc + `\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    rules: ${node.rules}\n    type: ${node.type}\n    `;
+    return acc + `\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    type: ${node.type}\n    `;
   }, "");
 
   const promptTemplateKey = mode === 'new_game' ? 
@@ -143,7 +143,6 @@ export const generateNodesFromExtractedData = async (
     }
     parsedResponse.new.forEach((node: any) => {
       node.updateImage = node.updateImage ?? false;
-      if (!node.rules) node.rules = '';
       const missingFields: string[] = [];
       if (!node.id) missingFields.push('id');
       if (!node.name) missingFields.push('name');
@@ -157,8 +156,8 @@ export const generateNodesFromExtractedData = async (
       parsedResponse.update.forEach((node: any) => {
         node.updateImage = node.updateImage ?? false;
         if (!node.id) throw new Error('Invalid update node: missing id field');
-        if (!node.longDescription && !node.rules && node.updateImage === undefined) {
-          throw new Error(`Invalid update node ${node.id}: must have at least one of longDescription, rules, or updateImage`);
+        if (!node.longDescription && node.updateImage === undefined) {
+          throw new Error(`Invalid update node ${node.id}: must have at least one of longDescription, or updateImage`);
         }
       });
     }
@@ -182,11 +181,11 @@ export const regenerateSingleNode = async (
   
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "system") return acc;
-    return acc + `\n    -\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    rules: ${node.rules}\n    type: ${node.type}\n    `;
+    return acc + `\n    -\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    type: ${node.type}\n    `;
   }, "");
 
   const recentlyGeneratedNodeDetails = recentlyGeneratedNode ? 
-    `id: ${recentlyGeneratedNode.id}\nname: ${recentlyGeneratedNode.name}\nlongDescription: ${recentlyGeneratedNode.longDescription}\nrules: ${recentlyGeneratedNode.rules}\ntype: ${recentlyGeneratedNode.type}`
+    `id: ${recentlyGeneratedNode.id}\nname: ${recentlyGeneratedNode.name}\nlongDescription: ${recentlyGeneratedNode.longDescription}\ntype: ${recentlyGeneratedNode.type}`
     : 'No recently generated node provided';
 
   const focusedPrompt = formatPrompt(loadedPrompts.twine_import.regenerate_single_node, {
@@ -194,7 +193,6 @@ export const regenerateSingleNode = async (
     existing_node_id: existingNode.id || '',
     existing_node_name: existingNode.name || '',
     existing_node_long_description: existingNode.longDescription || '',
-    existing_node_rules: existingNode.rules || '',
     existing_node_type: existingNode.type || '',
     recently_generated_node_details: recentlyGeneratedNodeDetails,
     extracted_data: JSON.stringify(extractedData.chunks, null, 2), // Use chunks for prompt
@@ -218,7 +216,6 @@ export const regenerateSingleNode = async (
     if (!updatedNodeData) throw new Error('Node not found in response');
     
     updatedNodeData.updateImage = updatedNodeData.updateImage ?? false;
-    if (!updatedNodeData.rules) updatedNodeData.rules = '';
     
     return updatedNodeData;
   } catch (error) {

@@ -161,7 +161,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
 
     const currentName = userEditsForThisNode.name ?? suggestedNodeChange.name ?? originalNode?.name ?? '';
     const currentLongDescription = userEditsForThisNode.longDescription ?? suggestedNodeChange.longDescription ?? originalNode?.longDescription ?? '';
-    const currentRules = userEditsForThisNode.rules ?? suggestedNodeChange.rules ?? originalNode?.rules ?? '';
     const currentType = userEditsForThisNode.type ?? suggestedNodeChange.type ?? originalNode?.type ?? '';
     const currentUpdateImage = userEditsForThisNode.updateImage ?? suggestedNodeChange.updateImage ?? false;
     
@@ -176,10 +175,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                 <div>
                   <span className="font-semibold block mb-1">Long Description:</span>
                   <textarea readOnly value={originalNode.longDescription} className="w-full p-2 bg-gray-700/30 rounded text-gray-400 resize-none" style={{ height: calculateHeight(originalNode.longDescription, true), overflowY: 'auto' }} />
-                </div>
-                <div>
-                  <span className="font-semibold block mb-1">Rules:</span>
-                  <textarea readOnly value={originalNode.rules} className="w-full p-2 bg-gray-700/30 rounded text-gray-400 resize-none" style={{ height: '7.5rem', overflowY: 'auto' }} />
                 </div>
                 <div>
                   <span className="font-semibold block mb-1">Type:</span>
@@ -199,10 +194,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                 <DiffViewer original={originalNode?.longDescription || ''} updated={suggestedNodeChange.longDescription || ''} isCurrent={false} className="w-full bg-gray-700/50" style={{ height: calculateHeight(suggestedNodeChange.longDescription || '', true), overflowY: 'auto' }} />
               </div>
               <div>
-                <span className="font-semibold block mb-1">Rules:</span>
-                <DiffViewer original={originalNode?.rules || ''} updated={suggestedNodeChange.rules || ''} isCurrent={false} className="w-full bg-gray-700/50" style={{ height: '7.5rem', overflowY: 'auto' }}/>
-              </div>
-              <div>
                 <span className="font-semibold block mb-1">Type:</span>
                 <DiffViewer original={originalNode?.type || ''} updated={suggestedNodeChange.type || ''} isCurrent={false} className="w-full bg-gray-700/50" />
               </div>
@@ -219,10 +210,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
                 <textarea value={currentLongDescription} onChange={(e) => handleNodeEdit(nodeId, 'longDescription', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white resize-none" style={{ height: calculateHeight(currentLongDescription || '', true), overflowY: 'auto' }} placeholder="Enter long description..."/>
-              </div>
-              <div>
-                <span className="font-semibold block mb-1">Rules:</span>
-                <textarea value={currentRules} onChange={(e) => handleNodeEdit(nodeId, 'rules', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white resize-none" style={{ height: '7.5rem', overflowY: 'auto' }} placeholder="Enter rules..."/>
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>

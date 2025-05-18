@@ -61,7 +61,6 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
     const newNode: Node = {
       id: generateRandomId(),
       name: 'new node',
-      rules: '',
       longDescription: '',
       image: '',
       type: 'Default',
@@ -125,15 +124,6 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
                 className="w-full p-2 border border-gray-700 rounded bg-gray-900"
                 rows={10}
                 style={{ minHeight: '200px' }}
-              />
-            </div>
-            <div className="mb-4">
-              <label className="block text-gray-100 bg-grey-900 mb-2">Rules (will be hidden to players later on):</label>
-              <textarea
-                value={selectedNode.rules}
-                onChange={(e) => setSelectedNode({ ...selectedNode, rules: e.target.value })}
-                className="w-full p-2 border border-gray-700 rounded bg-gray-900"
-                rows={5}
               />
             </div>
             <div className="mb-4">

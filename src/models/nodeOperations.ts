@@ -10,12 +10,12 @@ export interface TextDiffInstruction {
 // Defines how a single field on a node should be updated
 export interface FieldUpdateOperation {
   rpl?: any;                // For replacing the entire field content.
-  df?: TextDiffInstruction[]; // For targeted changes within a string field (like longDescription or rules).
+  df?: TextDiffInstruction[]; // For targeted changes within a string field (like longDescription).
 }
 
 // Defines all updates for a specific node, including an optional image update flag
 export interface NodeSpecificUpdates {
-  // Key is the field name (e.g., "name", "longDescription", "rules", "type")
+  // Key is the field name (e.g., "name", "longDescription", "type")
   // Value is how that field should be updated.
   [fieldName: string]: FieldUpdateOperation | boolean | undefined;
   img_upd?: boolean; // Optional: Explicitly signal if the node's image needs regeneration due to these updates.

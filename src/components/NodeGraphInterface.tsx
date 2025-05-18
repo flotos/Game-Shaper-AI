@@ -171,7 +171,6 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
             <div className="prose prose-invert max-w-none">
               <ReactMarkdown>{selectedNode.longDescription}</ReactMarkdown>
             </div>
-            <p className="text-xs mt-5 break-all">Hidden Description: {selectedNode.rules}</p>
             <p className="text-xs break-all">Type: {selectedNode.type}</p>
           </div>
         </div>

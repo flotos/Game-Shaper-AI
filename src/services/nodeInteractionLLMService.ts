@@ -47,7 +47,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   }, "");
 
   const nodesDescription = nodes.reduce((acc, node) => {
-    return acc + `\n    ---\n    id: ${node.id}\n    name: ${node.name}\n    rules: ${node.rules}\n    type: ${node.type}\n    `;
+    return acc + `\n    ---\n    id: ${node.id}\n    name: ${node.name}\n    type: ${node.type}\n    `;
   }, "");
 
   const prompt = formatPrompt(loadedPrompts.node_operations.get_relevant_nodes, {
@@ -80,7 +80,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "image_generation") return acc;
-    return acc + `\n        id: ${node.id}\n        name: ${node.name}\n        longDescription: ${node.longDescription}\n        rules: ${node.rules}\n        type: ${node.type}\n        `;
+    return acc + `\n        id: ${node.id}\n        name: ${node.name}\n        longDescription: ${node.longDescription}\n        type: ${node.type}\n        `;
   }, "");
 
   const lastMoxusReportSection = lastMoxusReportMessage ? `
@@ -108,7 +108,7 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
   console.log('LLM Call (NodeInteractionService): Generating actions');
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "image_generation") return acc;
-    return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      rules: ${node.rules}\n      type: ${node.type}\n      `;
+    return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      type: ${node.type}\n      `;
   }, "");
 
   let formattedChatText = "";
@@ -161,7 +161,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
 
   const nodesDescription = sortedNodes.reduce((acc, node) => {
     if (node.type === "image_generation" || node.type === "system" || node.type === "Game Rule" || node.type === "Game Rules" ) return acc; 
-    return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      rules: ${node.rules}\n      type: ${node.type}\n      `;
+    return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      type: ${node.type}\n      `;
   }, "");
 
   let formattedChatHistory = "";
@@ -239,7 +239,7 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   console.log('LLM Call (NodeInteractionService): Generating nodes from prompt');
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "system") return acc;
-    return acc + `\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    rules: ${node.rules}\n    type: ${node.type}\n    `;
+    return acc + `\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    type: ${node.type}\n    `;
   }, "");
 
   let moxusContextString = "";
@@ -285,7 +285,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
 
   const nodesDescription = nodes.reduce((acc, node) => {
     if (node.type === "image_generation") return acc;
-    return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      rules: ${node.rules}\n      type: ${node.type}\n      `;
+    return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      type: ${node.type}\n      `;
   }, "");
 
   const lastMoxusReportSection = lastMoxusReportMessage ? `

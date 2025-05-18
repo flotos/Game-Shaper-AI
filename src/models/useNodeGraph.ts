@@ -13,9 +13,6 @@ const initNodes: Node[] = [
   {
     id: '0tg',
     name: 'Adventure game',
-    rules: `PlayerGainsLevelOnBeat;CharactersHaveHealthAndPower;DenyImpossibleActions;GameControlsEvents;GameChallengesPlayer;
-      NoTeleportAllowed;GameHandlesEncounters;WriteDialogInChatText;WriteLikeNovel;
-      AvoidToUpdateImageOnLocations;DescribeNewCharactersInNewNodes_WithHairClothesAndBodyShape;Always_DisplayPlayerAppearanceOnItsDescription`,
     longDescription: "",
     image: 'https://i.ibb.co/rvy5zgd/fec82e01-b0ad-4c96-a79f-745f675b4d15.webp',
     type: 'Game Rule'
@@ -23,7 +20,6 @@ const initNodes: Node[] = [
   {
     id: '854euh',
     name: 'Tavern',
-    rules: 'JoyfulFacade;TavernIsTrapForPlayer;FakeWarmth;LivelyAtmosphereHidesDanger;DiverseCrowd;RusticDecor;RoaringFire;SubtleTension;IfPlayerOrderBeerStartAmbush',
     longDescription: `The tavern is a warm, lively place in the bustling town. As you enter, cheerful chatter and music welcome you. 
       The room is filled with a diverse crowd, from adventurers to townsfolk. Rustic decorations and a roaring fire add to the cozy ambiance. 
       Despite the joyful environment, there's a subtle tension, as if the joy hides something sinister.`,
@@ -33,7 +29,6 @@ const initNodes: Node[] = [
   {
     id: '8phg',
     name: 'Player',
-    rules: 'Stats:HP Healthy; Strength Low; Agility Low; Intelligence Low; Charisma Low;',
     longDescription: "You are a man, aged 25 with an average appearance, wearing used clothes.",
     image: 'https://i.ibb.co/WBYTzDZ/DALL-E-2024-06-13-17-46-08-A-character-sheet-icon-with-a-fantasy-theme-The-icon-should-depict-a-scro.webp',
     type: 'Game Rules'
@@ -202,7 +197,7 @@ function useNodeGraph() {
             (modifiedNode as any)[fieldName] = fieldUpdate.rpl;
             console.log(`updateGraph: Node ${nodeId}, field ${fieldName} replaced.`);
             nodeSpecificContentChanged = true;
-          } else if (fieldUpdate.df && (fieldName === 'longDescription' || fieldName === 'rules')) {
+          } else if (fieldUpdate.df && (fieldName === 'longDescription')) {
             const currentText = (originalNode as any)[fieldName] as string;
             if (typeof currentText === 'string') {
               try {

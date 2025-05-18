@@ -68,7 +68,6 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
       update?: {
         id: string;
         longDescription?: string;
-        rules?: string;
         updateImage?: boolean;
         name?: string;
         type?: string;
@@ -421,7 +420,6 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
           id: newNodePartial.id!,
           name: userEdits.name ?? newNodePartial.name ?? 'Untitled Twine Node',
           longDescription: userEdits.longDescription ?? newNodePartial.longDescription ?? '',
-          rules: userEdits.rules ?? (typeof newNodePartial.rules === 'string' ? newNodePartial.rules : ''),
           type: userEdits.type ?? newNodePartial.type ?? 'location',
           image: userEdits.image ?? newNodePartial.image ?? '',
           updateImage: userEdits.updateImage ?? newNodePartial.updateImage ?? true,
@@ -460,7 +458,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
               } else if (key === 'imageSeed' || key === 'position') { // These are direct replacements
                  updateOps[key] = { rpl: finalValue };
                  hasChanges = true;
-              } else { // For name, longDescription, rules, type
+              } else { // For name, longDescription, type
                 updateOps[key] = { rpl: finalValue };
                 hasChanges = true;
               }
@@ -585,7 +583,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                         <label>Name: <input type="text" value={displayNode.name} onChange={e => handleNodeEdit(node.id!, 'name', e.target.value)} className="bg-gray-600 p-1 rounded" /></label>
                         <label className="ml-2">Type: <input type="text" value={displayNode.type} onChange={e => handleNodeEdit(node.id!, 'type', e.target.value)} className="bg-gray-600 p-1 rounded" /></label>
                         <label className="ml-2"><input type="checkbox" checked={!!displayNode.updateImage} onChange={e => handleNodeEdit(node.id!, 'updateImage', e.target.checked)} /> Update Image</label>
-                        <DiffViewer original="" updated={`Desc: ${displayNode.longDescription}\nRules: ${displayNode.rules}`} isCurrent={false} />
+                        <DiffViewer original="" updated={`Desc: ${displayNode.longDescription}`} isCurrent={false} />
                       </div>
                     );
                   })}
@@ -597,7 +595,6 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                     const displayNode = {
                         name: edited.name ?? update.name ?? originalNode.name,
                         longDescription: edited.longDescription ?? update.longDescription ?? originalNode.longDescription,
-                        rules: edited.rules ?? update.rules ?? originalNode.rules,
                         type: edited.type ?? update.type ?? originalNode.type,
                         updateImage: edited.updateImage ?? update.updateImage ?? originalNode.updateImage
                     };
@@ -609,8 +606,6 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                         <label className="ml-2"><input type="checkbox" checked={!!displayNode.updateImage} onChange={e => handleNodeEdit(update.id, 'updateImage', e.target.checked)} /> Update Image</label>
                         <p className="text-xs mt-1">Desc Diff:</p>
                         <DiffViewer original={originalNode.longDescription} updated={displayNode.longDescription} isCurrent={false}/>
-                        <p className="text-xs mt-1">Rules Diff:</p>
-                        <DiffViewer original={originalNode.rules} updated={displayNode.rules} isCurrent={false}/>
                       </div>
                     );
                   })}
