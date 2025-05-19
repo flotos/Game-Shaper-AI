@@ -47,6 +47,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   }, "");
 
   const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "image_generation" || node.type === "assistant") return acc;
     return acc + `\n    ---\n    id: ${node.id}\n    name: ${node.name}\n    type: ${node.type}\n    `;
   }, "");
 
@@ -79,7 +80,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
   
   const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "image_generation") return acc;
+    if (node.type === "image_generation" || node.type === "assistant") return acc;
     return acc + `\n        id: ${node.id}\n        name: ${node.name}\n        longDescription: ${node.longDescription}\n        type: ${node.type}\n        `;
   }, "");
 
@@ -107,7 +108,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
 export const generateActions = async(chatText: string | Message[], nodes: Node[], userInput: string): Promise<string[]> => {
   console.log('LLM Call (NodeInteractionService): Generating actions');
   const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "image_generation") return acc;
+    if (node.type === "image_generation" || node.type === "assistant") return acc;
     return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      type: ${node.type}\n      `;
   }, "");
 
@@ -160,7 +161,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   });
 
   const nodesDescription = sortedNodes.reduce((acc, node) => {
-    if (node.type === "image_generation" || node.type === "system" || node.type === "Game Rule" || node.type === "Game Rules" ) return acc; 
+    if (node.type === "image_generation" || node.type === "system" || node.type === "Game Rule" || node.type === "Game Rules" || node.type === "assistant") return acc; 
     return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      type: ${node.type}\n      `;
   }, "");
 
@@ -238,7 +239,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
 export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[], moxusMemoryInput?: { general?: string; chatText?: string; nodeEdition?: string; }, moxusPersonality?: string): Promise<any> => {
   console.log('LLM Call (NodeInteractionService): Generating nodes from prompt');
   const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "system") return acc;
+    if (node.type === "system" || node.type === "image_generation" || node.type === "assistant") return acc;
     return acc + `\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    type: ${node.type}\n    `;
   }, "");
 
@@ -284,7 +285,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   }, "");
 
   const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "image_generation") return acc;
+    if (node.type === "image_generation" || node.type === "assistant") return acc;
     return acc + `\n      id: ${node.id}\n      name: ${node.name}\n      longDescription: ${node.longDescription}\n      type: ${node.type}\n      `;
   }, "");
 
