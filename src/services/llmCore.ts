@@ -285,7 +285,7 @@ export const getResponse = async (
           model: deepseekModel,
           messages: messages,
           stream: stream,
-          temperature: 1.5,
+          temperature: 0.5,
         };
 
         if (responseFormat) {
@@ -367,6 +367,19 @@ export const getResponse = async (
             throw new Error('Invalid DeepSeek response structure');
           }
           extractedContent = data.choices[0].message.content;
+          // Check if the original request intended a JSON object and the API is deepseek
+          if (responseFormat?.type === 'json_object') {
+            // Strip markdown ```json and ``` if present
+            if (extractedContent.startsWith("```json\n")) {
+              extractedContent = extractedContent.substring(7);
+            }
+            if (extractedContent.endsWith("\n```")) {
+              extractedContent = extractedContent.substring(0, extractedContent.length - 4);
+            } else if (extractedContent.endsWith("```")) { // Handle cases where there's no newline before the final backticks
+              extractedContent = extractedContent.substring(0, extractedContent.length - 3);
+            }
+            extractedContent = extractedContent.trim(); // Clean up any leading/trailing whitespace just in case
+          }
         }
 
         if (extractedContent === undefined) {
