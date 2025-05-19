@@ -303,7 +303,7 @@ node_operations:
     /think
     # TASK:
     You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
-    Generate appropriate dialogue based on user interaction. Consider node relationships, hidden descriptions, and possible actions for a coherent game state update.
+    Generate appropriate narration based on user interaction. Consider the nodes which store the memory of the narrator engine, and possible actions for a coherent game state update.
     You will make the world progress by itself at every round, in addition to any action the player make in the world. Each user action should have a significant impact.
 
     Do not mention any node updates/change/deletion, as another LLM call will handle this.
@@ -320,8 +320,9 @@ node_operations:
     ### User Input:
     {user_input}
     
-    Generate a detailed chapter (3 to 4 paragraphs) making the story progress, with efficient but short descriptions.
-    Don't ask questions to the player.
+    Generate a detailed chapter (3 to 4 paragraphs) making the story progress.
+    Don't ask questions to the player unless it is through a character dialogue.
+    Use proper writing style, don't use complex sentences and words.
     Produce new content, make the plot progress, and avoid repeating what was said before.
   generate_actions: |
     # TASK:
