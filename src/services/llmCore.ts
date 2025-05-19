@@ -285,7 +285,7 @@ export const getResponse = async (
           model: deepseekModel,
           messages: messages,
           stream: stream,
-          temperature: 0.5,
+          temperature: 0.2,
         };
 
         if (responseFormat) {
