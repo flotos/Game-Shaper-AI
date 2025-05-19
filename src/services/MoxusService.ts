@@ -7,7 +7,7 @@ import AllPrompts from '../prompts-instruct.yaml'; // Assuming YAML can be impor
 // Avoid circular dependency by forward declaring the function type
 type GetMoxusFeedbackFn = (promptContent: string, originalCallType?: string) => Promise<string>;
 let getMoxusFeedbackImpl: GetMoxusFeedbackFn | null = null;
-const TRUNCATE_LENGTH = import.meta.env.VITE_TRUNCATE_TEXT || 5000
+const TRUNCATE_LENGTH = parseInt(import.meta.env.VITE_TRUNCATE_TEXT || '5000', 10);
 
 // This function will be called to set the actual implementation after LLMService is initialized
 export const setMoxusFeedbackImpl = (impl: GetMoxusFeedbackFn) => {
@@ -203,7 +203,7 @@ const saveMemory = () => {
 // --- LLM Call Memory Management ---
 export const initiateLLMCallRecord = (id: string, callType: string, modelUsed: string, promptContent: string) => {
   const startTime = new Date();
-  const truncatedPrompt = promptContent.length > 5000 ? promptContent.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : promptContent;
+  const truncatedPrompt = promptContent.length > TRUNCATE_LENGTH ? promptContent.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : promptContent;
   const newCall: LLMCall = { id, prompt: truncatedPrompt, timestamp: startTime, status: 'running', startTime, callType, modelUsed };
   moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = newCall;
   saveMemory();
@@ -218,7 +218,7 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
     return;
   }
   const endTime = new Date();
-  const truncatedResponse = responseContent.length > 5000 ? responseContent.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : responseContent;
+  const truncatedResponse = responseContent.length > TRUNCATE_LENGTH ? responseContent.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : responseContent;
   call.response = truncatedResponse;
   call.status = 'completed';
   call.endTime = endTime;
@@ -275,8 +275,8 @@ export const failLLMCallRecord = (id: string, errorMessage: string) => {
 
 export const recordInternalSystemEvent = (eventId: string, eventPrompt: string, eventResponse: string, eventType: string = 'system_event', eventContextData?: { previousChatHistory?: Message[] }) => {
   const now = new Date();
-  const truncatedPrompt = eventPrompt.length > 5000 ? eventPrompt.substring(0, 5000) + "..." : eventPrompt;
-  const truncatedResponse = eventResponse.length > 5000 ? eventResponse.substring(0, 5000) + "..." : eventResponse;
+  const truncatedPrompt = eventPrompt.length > TRUNCATE_LENGTH ? eventPrompt.substring(0, TRUNCATE_LENGTH) + "..." : eventPrompt;
+  const truncatedResponse = eventResponse.length > TRUNCATE_LENGTH ? eventResponse.substring(0, TRUNCATE_LENGTH) + "..." : eventResponse;
   
   const eventCallForLog: LLMCall = { id: eventId, prompt: truncatedPrompt, response: truncatedResponse, timestamp: now, status: 'completed', startTime: now, endTime: now, callType: eventType, modelUsed: 'N/A', duration: 0 };
   moxusStructuredMemory.featureSpecificMemory.llmCalls[eventId] = eventCallForLog;
