@@ -300,16 +300,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
 
     try {
       const contextHistory = [...chatHistory];
-      const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
-
-      let detailedNodeIds;
-      if (nodes.length < maxIncludedNodes) {
-        detailedNodeIds = nodes
-          .filter(node => node.type !== "image_generation")
-          .map(node => node.id);
-      } else {
-        detailedNodeIds = await getRelevantNodes(currentInputForSuggestions || "general suggestions", contextHistory.slice(-4), nodes);
-      }
 
       const [actions, nodeEditionResponse] = await Promise.all([
         generateActions("", nodes, currentInputForSuggestions || "suggest actions"),
