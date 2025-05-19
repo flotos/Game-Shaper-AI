@@ -45,6 +45,7 @@ export interface LLMCall {
   modelUsed: string; 
   error?: string; 
   duration?: number; 
+  chatHistory?: Message[];
 }
 
 // LLM Calls memory structure
@@ -180,7 +181,8 @@ const loadMemory = () => {
               callType: call.callType || 'unknown_migrated',
               modelUsed: call.modelUsed || 'unknown_migrated',
               error: call.error,
-              duration: call.duration
+              duration: call.duration,
+              chatHistory: call.chatHistory
             };
           }
         }
@@ -259,9 +261,23 @@ const addFeedbackTasksForCall = (call: LLMCall) => {
   }
   const promptForTask = call.prompt; 
   const responseForTask = call.response;
-  const taskType = (promptForTask.includes('Generate a detailed chapter') || promptForTask.includes('Generate appropriate dialogue') || (call.id && call.id.startsWith('chatText-')) || promptForTask.includes('# TASK:\\nYou are the Game Engine of a Node-base game')) ? 'chatTextFeedback' : 'llmCallFeedback';
+  const taskType = (
+    call.callType === 'chat_text_generation' ||
+    promptForTask.includes('Generate a detailed chapter') || 
+    promptForTask.includes('Generate appropriate dialogue') || 
+    (call.id && call.id.startsWith('chatText-')) || 
+    promptForTask.includes('# TASK:\nYou are the Game Engine of a Node-base game')
+  ) ? 'chatTextFeedback' : 'llmCallFeedback';
   console.log(`[MoxusService] Adding ${taskType} feedback task for completed call ID: ${call.id}, original callType: ${call.callType}`);
-  addTask(taskType, { id: call.id, prompt: promptForTask, response: responseForTask, callType: call.callType, modelUsed: call.modelUsed });
+  const taskData = {
+    id: call.id,
+    prompt: promptForTask,
+    response: responseForTask,
+    callType: call.callType,
+    modelUsed: call.modelUsed,
+    chatHistory: call.chatHistory
+  };
+  addTask(taskType, taskData);
 };
 
 export const failLLMCallRecord = (id: string, errorMessage: string) => {
@@ -394,50 +410,30 @@ const getAssistantNodesContent = (): string => {
 
 const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string => {
   const assistantNodesContent = getAssistantNodesContent();
-  let safeTaskData: any;
+  // Ensure safeTaskData is initialized from task.data but exclude chatHistory from being stringified later if it's large.
+  const { chatHistory: taskChatHistory, ...otherDataFromTask } = task.data || {};
+  let safeTaskData: any = otherDataFromTask;
   let formattedChatHistory = "(Chat history not applicable for this task type or not available)";
 
-  if (task.data && task.data.nodes && task.type === 'llmCallFeedback') {
-    const { nodes, chatHistory, ...otherData } = task.data || {};
-    if (chatHistory) {
-      formattedChatHistory = getFormattedChatHistoryStringForMoxus(chatHistory, 10);
+  if (task.data && task.type === 'llmCallFeedback') {
+    // For llmCallFeedback, chatHistory might be on task.data.chatHistory (Message[])
+    // and nodes might be on task.data.nodes (Node[])
+    const { nodes, /* chatHistory already extracted as taskChatHistory */ ...otherLLMFeedbackData } = task.data || {}; // chatHistory from task.data is taskChatHistory
+    if (taskChatHistory && Array.isArray(taskChatHistory)) {
+        formattedChatHistory = getFormattedChatHistoryStringForMoxus(taskChatHistory, 10);
     }
-    safeTaskData = { 
-      ...otherData,
-      nodesCount: nodes?.length || 0, 
-      nodeTypes: nodes ? Array.from(new Set(nodes.map((n: any) => n.type))).join(', ') : '', 
-      nodeNames: nodes ? nodes.slice(0, 5).map((n: any) => n.name).join(', ') + (nodes.length > 5 ? '...' : '') : '' 
+    safeTaskData = { // Reconstruct safeTaskData for llmCallFeedback specifically
+        ...otherLLMFeedbackData, // This includes id, prompt, response, callType, modelUsed from otherDataFromTask
+        nodesCount: nodes?.length || 0,
+        nodeTypes: nodes ? Array.from(new Set(nodes.map((n: any) => n.type))).join(', ') : '',
+        nodeNames: nodes ? nodes.slice(0, 5).map((n: any) => n.name).join(', ') + (nodes.length > 5 ? '...' : '') : ''
     };
-  } else {
-    // Deep clone task.data to avoid modifying the original task object and to work on it
-    safeTaskData = JSON.parse(JSON.stringify(task.data)); 
-
-    if (task.type === 'nodeEditFeedback') {
-      // Sanitize 'before' node data if it exists and is an object
-      if (safeTaskData.before && typeof safeTaskData.before === 'object') {
-        delete safeTaskData.before.image;
-      }
-      // Sanitize 'after' node data if it exists and is an object
-      if (safeTaskData.after && typeof safeTaskData.after === 'object') {
-        delete safeTaskData.after.image;
-      }
+  } else if (task.type === 'chatTextFeedback') {
+    if (taskChatHistory && Array.isArray(taskChatHistory)) {
+        formattedChatHistory = getFormattedChatHistoryStringForMoxus(taskChatHistory, 10);
     }
-    
-    const truncateField = (obj: any, fieldName: string) => {
-      if (obj && typeof obj[fieldName] === 'string' && obj[fieldName].length > TRUNCATE_LENGTH) {
-        obj[fieldName] = obj[fieldName].substring(0, TRUNCATE_LENGTH) + "... [truncated]";
-      }
-    };
-    if (safeTaskData && safeTaskData.before) {
-      truncateField(safeTaskData.before, 'longDescription');
-    }
-    if (safeTaskData && safeTaskData.after) {
-      truncateField(safeTaskData.after, 'longDescription');
-    }
-    const stringifiedData = JSON.stringify(safeTaskData);
-    if (stringifiedData.length > 5000 && typeof task.data === 'string') {
-        safeTaskData = task.data.substring(0, 4950) + "... [task.data string truncated]";
-    }
+    // safeTaskData is already otherDataFromTask (task.data minus chatHistory)
+    // This is appropriate as we don't want to stringify a potentially large chatHistory array in the prompt.
   }
   
   return `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
@@ -484,9 +480,10 @@ const processQueue = async () => {
   }
 
   // 1. Attempt to launch finalReport (Highest priority)
-  if (!activeFinalReport && taskQueue[0]?.type === 'finalReport') {
-    const task = taskQueue.shift()!;
-    console.log(`[MoxusService] Launching task: ${task.type} (ID: ${task.id})`);
+  const finalReportTaskIndex = taskQueue.findIndex(t => t.type === 'finalReport');
+  if (!activeFinalReport && finalReportTaskIndex !== -1) {
+    const task = taskQueue.splice(finalReportTaskIndex, 1)[0];
+    console.log(`[MoxusService] Launching task: ${task.type} (ID: ${task.id}) from queue index ${finalReportTaskIndex}`);
     didLaunchOrProcessTaskThisCycle = true;
     activeFinalReport = handleFinalReport(task)
       .catch(err => console.error(`[MoxusService] Error in ${task.type} (ID: ${task.id}):`, err))

@@ -341,7 +341,7 @@ node_operations:
     The princess lost another game of cyvasse to Daemon Sand, won one from Joss Hood, then retired as the two of them began to teach Jayne Ladybright the rules. She was tired of such games.
     
     ## To wrap up
-    Generate a chapter (2 paragraphs) making the story progress over one action.
+    Generate a chapter (3 paragraphs) making the story progress over one action.
     Don't ask questions to the player unless it is through a character dialogue.
     Use proper book writing style, don't use complex sentences and words.
     Your wording should be grounded, making each action detailled and understandable for the reader. Take time to explain what happens, don't skip to the next action right away.
@@ -372,7 +372,7 @@ node_operations:
   generate_node_edition: |
     {think_mode}
     # TASK:
-    Based on the following game state, narrative, and possible actions, update the game graph by specifying creations, deletions, and targeted updates for nodes.
+    Based on the following game state and story, update the game graph by specifying creations, deletions, and targeted updates for nodes to match the current state of the story.
     Your output MUST be in YAML format.
 
     ## Node Properties Reference (for context on available fields):
@@ -385,13 +385,10 @@ node_operations:
     ## Current Game State, sorted by relevance:
     {nodes_description}
 
-    ## Recent Chat History (Last 5 Interactions):
+    ## Recent Chat History (Story):
     {formatted_chat_history}
     
     {last_moxus_report_section}
-
-    ## Possible Actions:
-    {actions_list}
 
     ## User Input:
     {user_input}
@@ -474,7 +471,23 @@ node_operations:
     - For small textual changes in `longDescription`, use the `df` list within the `u_nodes` block.
     - For other field updates or complete rewrites of `longDescription`, use the `rpl` key.
     - If a node's visual representation changes, set `img_upd: true` for that node within its `u_nodes` entry.
-    - You can update up to 3 existing nodes, create up to 1 new node, and delete nodes as needed.
+    - You can update up to 2 existing nodes, create up to 1 new node, and delete nodes as needed if they haven't been used in the recent history.
+
+    ## Example longDescription fields values:
+    ### Example 1:
+    The hoodie shimmered with runes that glowed faintly blue whenever its wearer was in danger.
+    Its fabric was unnaturally warm, keeping out even the bitter cold of mountain peaks without being stifling in summer heat.
+    The hood, when pulled up, rendered the wearer's face in shadow so deep that not even the keenest eyes could make out their features.
+
+    ### Example 2:
+    Her hair was the color of autumn leaves, wild and untamed, falling past her shoulders in waves that seemed to catch fire in the late afternoon sun.
+    Her hands were calloused from years of swordplay, at odds with the delicate freckles scattered across her nose and cheeks like constellations.
+    When she smiled, which was rarely, it transformed her severe face into something beautiful and dangerous all at once.
+
+    ### Example 3:
+    The library stood at the heart of the abandoned monastery, its shelves still lined with leather-bound tomes that had somehow survived the decades of neglect.
+    Dust motes danced in the shafts of colored light that fell through the stained-glass windows, painting patterns on the stone floor worn smooth by generations of shuffling feet.
+    The air was thick with the smell of old parchment and secrets, whispering to those who knew how to listen.
 
     Don't send backquotes nor text along the output as it will be sent directly to a program.
   generate_nodes_from_prompt: |
