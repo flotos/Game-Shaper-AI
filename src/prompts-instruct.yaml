@@ -342,6 +342,7 @@ node_operations:
     {user_input}
 
     Return a JSON object with a single field "actions" containing an array of exactly two strings, each describing one possible action.
+    Don't send backquotes nor text along the JSON as it will be sent directly to a program.
     Example: { "actions": ["examine the mysterious door", "ask the merchant about the strange artifact"] }
   generate_node_edition: |
     {think_mode}
@@ -451,6 +452,8 @@ node_operations:
     - For other field updates or complete rewrites of `longDescription`, use the `rpl` key.
     - If a node's visual representation changes, set `img_upd: true` for that node within its `u_nodes` entry.
     - You can update up to 3 existing nodes, create up to 1 new node, and delete nodes as needed.
+
+    Don't send backquotes nor text along the output as it will be sent directly to a program.
   generate_nodes_from_prompt: |
     You are a Game Engine. The user asked to update how the game work or to change some aspect of the world.
     Your task is to update the game nodes based on the following prompt, for a Game Engine:
@@ -565,9 +568,9 @@ moxus_prompts:
             -   `prev_txt`: (String) The exact text fragment to find within the current GeneralMemory document. This fragment must exist.
             -   `next_txt`: (String) The text to replace `prev_txt` with. If this is an empty string, the `prev_txt` fragment will be deleted.
             -   `occ`: (Integer, Optional, defaults to 1) Specifies which 1-indexed occurrence of `prev_txt` to target if it appears multiple times.
-        -   Alternatively, to replace the entire `{current_general_memory}` document: use `rpl: "new complete general memory content"`. This is suitable if the document requires extensive rewriting where targeted diffs are impractical.
+        -   Alternatively, to replace the entire `{current_general_memory}` document: use `rpl: "new complete general memory content"`. This is suitable if the document requires extensive rewriting or if applying precise diffs is problematic.
 
-        Your primary goal is to provide precise diffs using `df` when possible to reflect the synthesis and updates. Use `rpl` sparingly.
+        Your primary goal is to provide precise diffs using `df` for minor to moderate changes. For substantial revisions or full content replacement, prefer using `rpl` to ensure the update is applied correctly.
         Ensure the content provided (either in `next_txt` or `rpl`) maintains the required clear separation between analytical sections and Moxus's personality development section, as outlined in previous instructions.
 
         Example YAML Output:

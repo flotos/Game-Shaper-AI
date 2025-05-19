@@ -21,7 +21,7 @@ type MoxusTaskType =
   | 'finalReport'
   | 'llmCallFeedback'
   | 'chatTextFeedback'
-  | 'updateGeneralMemory';
+  | 'synthesizeGeneralMemory';
 
 // Define Task Structure
 interface MoxusTask {
@@ -105,6 +105,8 @@ let processingTimeoutId: ReturnType<typeof setTimeout> | null = null;
 // Flags for final report trigger
 let hasNodeEditionFeedbackCompletedForReport = false;
 let hasChatTextFeedbackCompletedForReport = false;
+
+let isInitialized = false;
 
 // --- Listener Pattern for UI Updates ---
 type LLMLogListener = (logEntries: LLMCall[]) => void;
@@ -287,7 +289,7 @@ export const recordInternalSystemEvent = (eventId: string, eventPrompt: string, 
   if (eventType === "chat_reset_event" && eventContextData?.previousChatHistory) {
     console.log(`[MoxusService] Chat reset event detected. Queueing updateGeneralMemory task with previous chat history.`);
     const previousChatHistoryString = getFormattedChatHistoryStringForMoxus(eventContextData.previousChatHistory, 20); // Use more turns for this analysis
-    addTask('updateGeneralMemory', { 
+    addTask('synthesizeGeneralMemory', { 
       reason: "chat_reset_event", 
       eventDetails: { 
         id: eventId, 
@@ -313,12 +315,17 @@ export const getLLMCallFeedback = (id: string): string | undefined => {
 
 // --- Initialization ---
 const initialize = (getNodes: () => Node[], addMessage: (message: Message) => void, getChatHistory: () => Message[]) => {
+  if (isInitialized) {
+    console.warn('[MoxusService] Already initialized. Skipping re-initialization.');
+    return;
+  }
   console.log('[MoxusService] Initializing...');
   getNodesCallback = getNodes;
   addMessageCallback = addMessage;
   getChatHistoryCallback = getChatHistory;
   loadMemory();
   triggerProcessing();
+  isInitialized = true;
   console.log('[MoxusService] Initialized with callbacks including getChatHistory.');
 };
 
@@ -331,7 +338,7 @@ const addTask = (type: MoxusTaskType, data: any, chatHistoryContext?: Message[])
     } else {
       taskData.chatHistoryContext = getFormattedChatHistoryStringForMoxus(chatHistoryContext, 10); // Default to 10 for other tasks if context is provided
     }
-  } else if (type === 'finalReport' || type === 'updateGeneralMemory') {
+  } else if (type === 'finalReport' || type === 'synthesizeGeneralMemory') {
     // This fallback for finalReport should ideally not be hit if currentChatHistory is always provided by checkAndTriggerFinalReport
     taskData.chatHistoryContext = "(Chat history context not explicitly provided for this specific task)";
   }
@@ -633,7 +640,7 @@ const handleFinalReport = async (task: MoxusTask) => {
   // addTask('updateGeneralMemory', { reason: `post_final_report_generation_for_task_${task.id}`, chatHistoryContext: chatHistoryContextString });
   // Simpler: let updateGeneralMemory handle its standard data needs if any, or rely on its synthesis of all memories.
   // Pass the original finalReport task data in case updateGeneralMemoryFromAllSources wants to use chatHistoryContext from it.
-  addTask('updateGeneralMemory', { 
+  addTask('synthesizeGeneralMemory', { 
     reason: `post_final_report_for_task_${task.id}`, 
     originalReportTaskId: task.id,
     // Pass along the chat history context that was used for the report itself, for consistency if GM update needs it.
@@ -674,7 +681,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       if (!systemEventCallTypes.includes(task.data.callType)) {
         if (processedFeedbacks > 0 && processedFeedbacks % FEEDBACK_THRESHOLD_FOR_GENERAL_MEMORY_UPDATE === 0) {
           console.log(`[MoxusService] Scheduling GeneralMemory update. Processed feedbacks: ${processedFeedbacks}. Triggered by feedback for call: ${callId} (type: ${task.data.callType})`);
-          addTask('updateGeneralMemory', { reason: `periodic_update_after_${processedFeedbacks}_feedbacks`, triggeringCallId: callId, triggeringCallType: task.data.callType });
+          addTask('synthesizeGeneralMemory', { reason: `periodic_update_after_${processedFeedbacks}_feedbacks`, triggeringCallId: callId, triggeringCallType: task.data.callType });
         }
       } else {
         console.log(`[MoxusService] Feedback for system event ${task.data.callType} (ID: ${callId}) will not trigger periodic GeneralMemory update.`);
@@ -742,7 +749,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       memoryKey = 'assistantFeedback';
       memoryToUpdate = moxusStructuredMemory.featureSpecificMemory.assistantFeedback;
       break;
-    case 'updateGeneralMemory':
+    case 'synthesizeGeneralMemory':
       console.log(`[MoxusService] Task ${task.id} (${task.type}) is calling updateGeneralMemoryFromAllSources.`);
       await updateGeneralMemoryFromAllSources(task.type, task.data);
       return;
@@ -804,7 +811,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   let promptData: Record<string, string>;
   const currentGeneralMemorySnapshot = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
 
-  if (originalCallTypeForThisUpdate === 'updateGeneralMemory' && taskData?.reason === "chat_reset_event" && taskData?.previousChatHistoryString && taskData?.eventDetails) {
+  if (originalCallTypeForThisUpdate === 'synthesizeGeneralMemory' && taskData?.reason === "chat_reset_event" && taskData?.previousChatHistoryString && taskData?.eventDetails) {
     console.log('[MoxusService] Using dedicated prompt for chat_reset_event GeneralMemory update.');
     updatePrompt = getChatResetMemoryUpdatePrompt(
       currentGeneralMemorySnapshot,

@@ -122,13 +122,17 @@ const AppContent: React.FC = () => {
   const [showMoxusMemory, setShowMoxusMemory] = useState(false);
   const [pendingMoxusTasks, setPendingMoxusTasks] = useState(0);
   const [showLLMLogger, setShowLLMLogger] = useState(false);
+  const moxusInitLoggedRef = useRef(false);
 
   useEffect(() => {
     if (typeof getNodes === 'function' && 
         typeof addMessage === 'function' && 
         typeof getChatHistory === 'function') {
       moxusService.initialize(getNodes, addMessage, getChatHistory);
-      console.log('[App.tsx] MoxusService initialized successfully.');
+      if (!moxusInitLoggedRef.current) {
+        console.log('[App.tsx] MoxusService initialized successfully.');
+        moxusInitLoggedRef.current = true;
+      }
     } else {
       console.warn(
         '[App.tsx] Could not initialize MoxusService: One or more required callback functions are undefined or not functions. getNodes type:',
