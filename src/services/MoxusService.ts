@@ -7,6 +7,7 @@ import AllPrompts from '../prompts-instruct.yaml'; // Assuming YAML can be impor
 // Avoid circular dependency by forward declaring the function type
 type GetMoxusFeedbackFn = (promptContent: string, originalCallType?: string) => Promise<string>;
 let getMoxusFeedbackImpl: GetMoxusFeedbackFn | null = null;
+const TRUNCATE_LENGTH = import.meta.env.VITE_TRUNCATE_TEXT || 5000
 
 // This function will be called to set the actual implementation after LLMService is initialized
 export const setMoxusFeedbackImpl = (impl: GetMoxusFeedbackFn) => {
@@ -202,7 +203,7 @@ const saveMemory = () => {
 // --- LLM Call Memory Management ---
 export const initiateLLMCallRecord = (id: string, callType: string, modelUsed: string, promptContent: string) => {
   const startTime = new Date();
-  const truncatedPrompt = promptContent.length > 5000 ? promptContent.substring(0, 5000) + "... [truncated]" : promptContent;
+  const truncatedPrompt = promptContent.length > 5000 ? promptContent.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : promptContent;
   const newCall: LLMCall = { id, prompt: truncatedPrompt, timestamp: startTime, status: 'running', startTime, callType, modelUsed };
   moxusStructuredMemory.featureSpecificMemory.llmCalls[id] = newCall;
   saveMemory();
@@ -217,7 +218,7 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
     return;
   }
   const endTime = new Date();
-  const truncatedResponse = responseContent.length > 5000 ? responseContent.substring(0, 5000) + "... [truncated]" : responseContent;
+  const truncatedResponse = responseContent.length > 5000 ? responseContent.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : responseContent;
   call.response = truncatedResponse;
   call.status = 'completed';
   call.endTime = endTime;
@@ -409,10 +410,9 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
       }
     }
     
-    const MAX_FIELD_LENGTH = 5000;
     const truncateField = (obj: any, fieldName: string) => {
-      if (obj && typeof obj[fieldName] === 'string' && obj[fieldName].length > MAX_FIELD_LENGTH) {
-        obj[fieldName] = obj[fieldName].substring(0, MAX_FIELD_LENGTH) + "... [truncated]";
+      if (obj && typeof obj[fieldName] === 'string' && obj[fieldName].length > TRUNCATE_LENGTH) {
+        obj[fieldName] = obj[fieldName].substring(0, TRUNCATE_LENGTH) + "... [truncated]";
       }
     };
     if (safeTaskData && safeTaskData.before) {
@@ -662,7 +662,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       const feedbackPrompt = `\n      # Task\n      You have to analyze an LLM call.\n\n      ${assistantNodesContent ? `## Additional features:\n      ---\n      ${assistantNodesContent}\n      ---` : ""}\n      \n      ## PROMPT:\n      ---start of prompt---\n      ${task.data.prompt}\n      ---end of prompt---\n      \n      ## RESPONSE:\n      ---start of response---\n      ${task.data.response}\n      ---end of response---\n      \n      Provide critical feedback focusing ONLY on problems with this response.\n      Focus exclusively on what could be improved, not what went well.\n      Identify specific issues with quality, relevance, coherence, or accuracy.`;
       if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
       const feedback = await getMoxusFeedbackImpl(feedbackPrompt, originalCallTypeForFeedback);
-      const truncatedFeedback = feedback.length > 2000 ? feedback.substring(0, 2000) + "... [truncated]" : feedback;
+      const truncatedFeedback = feedback.length > TRUNCATE_LENGTH ? feedback.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : feedback;
       if (moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
          moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = truncatedFeedback;
          saveMemory(); 
@@ -824,7 +824,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
       .sort((a, b) => new Date(a[1].timestamp).getTime() - new Date(b[1].timestamp).getTime()).reverse().slice(0, 5)
       .map(([id, call]) => ({ id, feedback: call.feedback || "No feedback available" }));
     
-    const truncateText = (text: string, maxLength: number = 2000) => text && text.length > maxLength ? text.substring(0, maxLength) + "... [truncated]" : text;
+    const truncateText = (text: string, maxLength: number = TRUNCATE_LENGTH) => text && text.length > maxLength ? text.substring(0, maxLength) + "... [truncated]" : text;
     
     const generalMemoryForPrompt = truncateText(currentGeneralMemorySnapshot); 
     const chatTextMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.chatText);
@@ -836,7 +836,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
     updatePromptTemplate = prompts.moxus_prompts.general_memory_update;
 
     promptData = {
-      assistant_nodes_content: truncateText(assistantNodesContent, 1000),
+      assistant_nodes_content: truncateText(assistantNodesContent),
       current_general_memory: generalMemoryForPrompt,
       chat_text_analysis: chatTextMemory || '(No chat text analysis available)',
       node_editions_analysis: nodeEditionMemory || '(No node edition analysis available)',
