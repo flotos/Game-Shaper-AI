@@ -169,10 +169,26 @@ export const getResponse = async (
     }
   }
 
-  if (apiType === 'openrouter') {
-    const hasUserMessage = messages.some(msg => msg.role === 'user');
-    if (!hasUserMessage) {
-      messages.push({ role: 'user', content: 'Please process the system instructions.' });
+  // Ensure the last message is from the user for APIs that use the messages array directly
+  // This applies to openai, openrouter, and deepseek. KoboldCPP transforms the array to a string prompt.
+  if (apiType === 'openai' || apiType === 'openrouter' || apiType === 'deepseek') {
+    let lastUserMessageIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserMessageIndex = i;
+        break;
+      }
+    }
+
+    if (lastUserMessageIndex !== -1) {
+      // If a user message exists and it's not already the last one
+      if (lastUserMessageIndex < messages.length - 1) {
+        const userMessage = messages.splice(lastUserMessageIndex, 1)[0];
+        messages.push(userMessage);
+      }
+    } else {
+      // No user message found, add a generic one.
+      messages.push({ role: 'user', content: 'Please process the instructions and generate a response.' });
     }
   }
 
@@ -264,19 +280,27 @@ export const getResponse = async (
         });
       } else if (apiType === 'deepseek') {
         const deepseekModel = import.meta.env.VITE_DEEPSEEK_MODEL || 'deepseek-chat';
+        
+        const deepSeekPayload: any = {
+          model: deepseekModel,
+          messages: messages,
+          stream: stream,
+          temperature: 1.5,
+        };
+
+        if (responseFormat) {
+          if (!(deepseekModel === 'deepseek-reasoner' && responseFormat.type === 'json_object')) {
+            deepSeekPayload.response_format = responseFormat;
+          }
+        }
+
         response = await fetch('https://api.deepseek.com/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_DEEPSEEK_KEY}`
           },
-          body: JSON.stringify({
-            model: deepseekModel,
-            messages: messages,
-            stream: stream,
-            temperature: 1.5,
-            response_format: responseFormat
-          })
+          body: JSON.stringify(deepSeekPayload)
         });
       } else {
         throw new Error('Unknown API type');
