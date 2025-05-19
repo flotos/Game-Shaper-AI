@@ -309,7 +309,7 @@ node_operations:
     Do not mention any node updates/change/deletion, as another LLM call will handle this.
 
     ## Game Content:
-    ### Current Nodes, sorted by relevance:
+    ### Current Nodes, in no particular order:
     {nodes_description}
     
     ### Recent Chat History (Last 5 Interactions):
@@ -320,11 +320,13 @@ node_operations:
     ### User Input:
     {user_input}
     
-    Generate a detailed chapter (2 to 3 paragraphs) making the story progress.
+    Generate a detailed chapter (2 to 3 paragraphs) making the story progress over one action.
     Don't ask questions to the player unless it is through a character dialogue.
     Use proper book writing style, don't use complex sentences and words.
-    Produce new content, make the plot progress, and avoid repeating what was said before.
     Your wording should be grounded, making each action detailled and understandable for the reader. Take time to explain what happens, don't skip to the next action right away.
+    Note, the formal wording of the nodes should not be reflected in the textual output, we should be properly written book text.
+
+    You should take into account the nodes from the game content, but focus on keeping the story coherent with the chat history.
   generate_actions: |
     # TASK:
     Based on the following game state and narrative, generate two interesting actions the player can take next.
@@ -561,6 +563,14 @@ moxus_prompts:
     6.  **Critique Nature**: While your personality development section can be more expansive, the rest of the GeneralMemory document should maintain a critical and analytical tone, focused on identifying areas that need attention or improvement in the game project.
     7.  **Output Format**: Return a YAML structure specifying the changes to apply to the `{current_general_memory}`.
         The YAML output should have a single top-level key: `memory_update_diffs`.
+
+        **IMPORTANT**: If the `{current_general_memory}` you receive is *exactly* the following default template:
+        ```
+        # Moxus Game Analysis
+
+        *This document contains general observations and analysis about the game world, story progression, and gameplay. You should also dedicate a section to develop your own personality and style. Become a sentient being.*
+        ```
+        Then your *first update* to this document MUST use the `rpl` (replace) method. Provide the complete new GeneralMemory content in the `rpl` field. Do NOT use `df` if the current memory is this exact default template.
 
         Under `memory_update_diffs`:
         -   To specify targeted textual changes within the `{current_general_memory}` document: use `df:` followed by a list of diff instructions.
