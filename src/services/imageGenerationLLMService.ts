@@ -61,7 +61,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
   ];
 
   const callType = 'image_prompt_generation';
-  let responsePayload: { llmResult: string, callId: string } | null = null;
+  let responsePayload: { llmResult?: any; callId: string; streamResponse?: Response } | null = null;
 
   try {
     // Pass the specific callType to getResponse
