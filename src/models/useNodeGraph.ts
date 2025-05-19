@@ -36,6 +36,7 @@ const initNodes: Node[] = [
 ];
 
 function useNodeGraph() {
+  const nonDeletableNodeTypes = ["system", "assistant", "image_generation"].map(type => type.toLowerCase());
   const [nodes, setNodes] = useState<Node[]>(() => {
     try {
       const savedNodes = localStorage.getItem('nodeGraph');
@@ -105,6 +106,12 @@ function useNodeGraph() {
   }, []);
 
   const deleteNode = useCallback((nodeId: string): void => {
+    const nodeToDeleteCheck = nodes.find(node => node.id === nodeId);
+    if (nodeToDeleteCheck && nonDeletableNodeTypes.includes(nodeToDeleteCheck.type.toLowerCase())) {
+      console.warn(`Attempted to delete a protected node type: ${nodeToDeleteCheck.type} (ID: ${nodeId}). Operation blocked.`);
+      return; 
+    }
+
     setNodes(prevNodes => {
       // Find the node to delete
       const nodeToDelete = prevNodes.find(node => node.id === nodeId);
@@ -120,7 +127,7 @@ function useNodeGraph() {
       // Remove the node from the array
       return prevNodes.filter(node => node.id !== nodeId);
     });
-  }, []);
+  }, [nodes]);
 
   const updateGraph = useCallback(async (
     nodeEdition: LLMNodeEditionResponse,
@@ -163,13 +170,28 @@ function useNodeGraph() {
     if (nodeEdition.d_nodes && nodeEdition.d_nodes.length > 0) {
       console.log('Processing deletions:', nodeEdition.d_nodes);
       const deleteIds = new Set(nodeEdition.d_nodes);
-      workingNodes.forEach(node => {
-        if (deleteIds.has(node.id) && node.image?.startsWith('blob:')) {
-          processedNodeIdsForImage.add(node.id);
+      const originalWorkingNodesLength = workingNodes.length;
+
+      workingNodes = workingNodes.filter(node => {
+        if (deleteIds.has(node.id)) {
+          if (nonDeletableNodeTypes.includes(node.type.toLowerCase())) {
+            console.warn(`Attempted to delete a protected node type via updateGraph: ${node.type} (ID: ${node.id}). Operation blocked.`);
+            return true;
+          }
+          // Node is to be deleted, perform cleanup before removing
+          if (node.image?.startsWith('blob:')) {
+            URL.revokeObjectURL(node.image);
+            console.log(`Revoked blob URL for deleted node ${node.id}`);
+          }
+          processedNodeIdsForImage.delete(node.id);
+          return false;
         }
+        return true;
       });
-      workingNodes = workingNodes.filter(node => !deleteIds.has(node.id));
-      hasContentChanges = true;
+      
+      if (workingNodes.length !== originalWorkingNodesLength) {
+          hasContentChanges = true;
+      }
     }
 
     // 2. Process Updates (u_nodes)
