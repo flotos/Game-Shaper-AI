@@ -262,6 +262,22 @@ export const getResponse = async (
           },
           body: JSON.stringify(requestBody)
         });
+      } else if (apiType === 'deepseek') {
+        const deepseekModel = import.meta.env.VITE_DEEPSEEK_MODEL || 'deepseek-chat';
+        response = await fetch('https://api.deepseek.com/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_DEEPSEEK_KEY}`
+          },
+          body: JSON.stringify({
+            model: deepseekModel,
+            messages: messages,
+            stream: stream,
+            temperature: 1.5,
+            response_format: responseFormat
+          })
+        });
       } else {
         throw new Error('Unknown API type');
       }
@@ -322,6 +338,11 @@ export const getResponse = async (
           } else {
             throw new Error(`Invalid KoboldCPP response structure or empty content. Full response: ${JSON.stringify(data)}`);
           }
+        } else if (apiType === 'deepseek') {
+          if (!data.choices?.[0]?.message?.content) {
+            throw new Error('Invalid DeepSeek response structure');
+          }
+          extractedContent = data.choices[0].message.content;
         }
 
         if (extractedContent === undefined) {
