@@ -238,7 +238,13 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
   emitLLMLogUpdate();
   console.log(`[MoxusService] Finalized LLM call: ${id} (type: ${call.callType}, status: completed, duration: ${call.duration}ms)`);
   
-  const isMoxusInternalProcessingCall = call.callType === 'moxus_feedback_generation' || call.callType === 'moxus_finalreport' || call.callType === 'INTERNAL_FINAL_REPORT_GENERATION_STEP' || (call.callType && call.callType.startsWith('moxus_feedback_on_')) || (call.callType && call.callType.startsWith('moxus_update_') && call.callType.endsWith('_memory'));
+  const trimmedCallType = call.callType?.trim();
+  const isMoxusInternalProcessingCall = 
+    trimmedCallType === 'moxus_feedback_generation' || 
+    trimmedCallType === 'moxus_finalreport' || 
+    trimmedCallType === 'INTERNAL_FINAL_REPORT_GENERATION_STEP' || 
+    (trimmedCallType && trimmedCallType.startsWith('moxus_feedback_on_')) || 
+    (trimmedCallType && trimmedCallType.startsWith('moxus_update_') && trimmedCallType.endsWith('_memory'));
   if (!isMoxusInternalProcessingCall) {
     addFeedbackTasksForCall(call);
   } else {
@@ -679,10 +685,10 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       const FEEDBACK_THRESHOLD_FOR_GENERAL_MEMORY_UPDATE = 5;
       const systemEventCallTypes = ['chat_reset_event', 'assistant_message_edit_event'];
       if (!systemEventCallTypes.includes(task.data.callType)) {
-        if (processedFeedbacks > 0 && processedFeedbacks % FEEDBACK_THRESHOLD_FOR_GENERAL_MEMORY_UPDATE === 0) {
-          console.log(`[MoxusService] Scheduling GeneralMemory update. Processed feedbacks: ${processedFeedbacks}. Triggered by feedback for call: ${callId} (type: ${task.data.callType})`);
-          addTask('synthesizeGeneralMemory', { reason: `periodic_update_after_${processedFeedbacks}_feedbacks`, triggeringCallId: callId, triggeringCallType: task.data.callType });
-        }
+        // if (processedFeedbacks > 0 && processedFeedbacks % FEEDBACK_THRESHOLD_FOR_GENERAL_MEMORY_UPDATE === 0) {
+        //   console.log(`[MoxusService] Scheduling GeneralMemory update. Processed feedbacks: ${processedFeedbacks}. Triggered by feedback for call: ${callId} (type: ${task.data.callType})`);
+        //   addTask('synthesizeGeneralMemory', { reason: `periodic_update_after_${processedFeedbacks}_feedbacks`, triggeringCallId: callId, triggeringCallType: task.data.callType });
+        // }
       } else {
         console.log(`[MoxusService] Feedback for system event ${task.data.callType} (ID: ${callId}) will not trigger periodic GeneralMemory update.`);
       }
