@@ -214,7 +214,7 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number, storage
   moxusService.initiateLLMCallRecord(callId, 'image_generation_novelai', modelName, prompt);
 
   console.log('Starting NovelAI v4 image generation...');
-  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art, bad anatomy";
+  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art, bad anatomy, plain background, white background, black background";
   const now = new Date().toISOString();
   const correlationId = Math.random().toString(36).substring(2, 8);
 

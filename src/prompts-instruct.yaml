@@ -320,10 +320,11 @@ node_operations:
     ### User Input:
     {user_input}
     
-    Generate a detailed chapter (3 to 4 paragraphs) making the story progress.
+    Generate a detailed chapter (2 to 3 paragraphs) making the story progress.
     Don't ask questions to the player unless it is through a character dialogue.
-    Use proper writing style, don't use complex sentences and words.
+    Use proper book writing style, don't use complex sentences and words.
     Produce new content, make the plot progress, and avoid repeating what was said before.
+    Your wording should be grounded, making each action detailled and understandable for the reader. Take time to explain what happens, don't skip to the next action right away.
   generate_actions: |
     # TASK:
     Based on the following game state and narrative, generate two interesting actions the player can take next.
