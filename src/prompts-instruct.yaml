@@ -302,7 +302,7 @@ node_operations:
   generate_chat_text: |
     /think
     # TASK:
-    You are the Game Engine of a Node-base game, which display a chat and images for each node on the right panel.
+    You are the Game Engine of a textual interactive experience using Nodes as the basis of your knowledge and memory.
     Generate appropriate narration based on user interaction. Consider the nodes which store the memory of the narrator engine, and possible actions for a coherent game state update.
     You will make the world progress by itself at every round, in addition to any action the player make in the world. Each user action should have a significant impact.
 
