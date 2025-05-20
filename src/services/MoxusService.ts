@@ -337,18 +337,35 @@ export const getLLMCallFeedback = (id: string): string | undefined => {
 
 // --- Initialization ---
 const initialize = (getNodes: () => Node[], addMessage: (message: Message) => void, getChatHistory: () => Message[]) => {
-  if (isInitialized) {
-    console.warn('[MoxusService] Already initialized. Skipping re-initialization.');
+  // Allow re-initialization in test environments (like Vitest) for clean state.
+  // In normal operation, it should ideally initialize only once.
+  if (isInitialized && !(import.meta.env && import.meta.env.VITEST)) {
+    console.warn('[MoxusService] Already initialized. Skipping re-initialization in normal mode.');
     return;
   }
-  console.log('[MoxusService] Initializing...');
+  console.log('[MoxusService] Initializing/Re-initializing for ' + (import.meta.env && import.meta.env.VITEST ? 'Vitest test' : 'normal operation') + '...');
+
   getNodesCallback = getNodes;
   addMessageCallback = addMessage;
   getChatHistoryCallback = getChatHistory;
-  loadMemory();
-  triggerProcessing();
+
+  // Explicitly reset state variables for a clean slate
+  taskQueue = [];
+  nextTaskId = 1;
+  hasNodeEditionFeedbackCompletedForReport = false;
+  hasChatTextFeedbackCompletedForReport = false;
+  activeChatTextFeedback = null;
+  activeLLMNodeEditionYamlFeedback = null;
+  activeFinalReport = null;
+  if (processingTimeoutId) {
+    clearTimeout(processingTimeoutId);
+    processingTimeoutId = null;
+  }
+
+  loadMemory(); // Loads or reloads memory, potentially applying defaults
+  // triggerProcessing(); // Let's comment this out for now. Processing should start when a task is added.
   isInitialized = true;
-  console.log('[MoxusService] Initialized with callbacks including getChatHistory.');
+  console.log('[MoxusService] Initialized/Re-initialized with callbacks.');
 };
 
 // Function to add a task to the queue
@@ -1005,8 +1022,18 @@ export const moxusService = {
     moxusStructuredMemory = createDefaultMemoryStructure();
     taskQueue = [];
     nextTaskId = 1;
+    // Also reset flags and active promises here for complete reset
+    hasNodeEditionFeedbackCompletedForReport = false;
+    hasChatTextFeedbackCompletedForReport = false;
+    activeChatTextFeedback = null;
+    activeLLMNodeEditionYamlFeedback = null;
+    activeFinalReport = null;
+    if (processingTimeoutId) {
+      clearTimeout(processingTimeoutId);
+      processingTimeoutId = null;
+    }
     localStorage.removeItem(MOXUS_STRUCTURED_MEMORY_KEY);
-    console.log('[MoxusService] Memory reset to initial state');
+    console.log('[MoxusService] Memory and operational state reset to initial state');
   },
   getMoxusMemory: () => moxusStructuredMemory,
   setMoxusMemory: (importedMemory: MoxusMemoryStructure) => {
