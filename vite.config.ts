@@ -23,5 +23,11 @@ export default defineConfig({
     alias: {
       '@': '/src'
     }
+  },
+  // @ts-ignore
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/tests/setup.ts', // Optional: if we need a setup file
   }
 });
