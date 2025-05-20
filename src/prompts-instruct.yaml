@@ -322,9 +322,9 @@ node_operations:
 
     ## Example proper writing:
     ### Example 1:
-    The corridor was there. I stepped over the blocks and into it. Mr. Bowditch had been right, it was so tall I didn’t even think about ducking my head.
+    The corridor was there. I stepped over the blocks and into it. Mr. Bowditch had been right, it was so tall I didn't even think about ducking my head.
     Now I could hear more rustling up ahead and guessed they were the roosting bats Mr. Bowditch had warned me about.
-    I don’t like the idea of bats—they carry germs, sometimes rabies—but they don’t give me the horrors as they did Mr. Bowditch.
+    I don't like the idea of bats—they carry germs, sometimes rabies—but they don't give me the horrors as they did Mr. Bowditch.
     Going toward the sound of them, I was more curious than anything.
 
   
@@ -337,7 +337,7 @@ node_operations:
     ### Example 3:
     Feathers made a fire and cooked a brace of hares that Ser Garibald had taken with some wild onions and mushrooms he had found along the road.
     After they ate, Elia Sand turned a stick and some dry moss into a torch, and went off exploring deeper in the cave.
-    “See that you do not go too far,” Arianne told her. “Some of these caves go very deep, it is easy to get lost.”
+    "See that you do not go too far," Arianne told her. "Some of these caves go very deep, it is easy to get lost."
     The princess lost another game of cyvasse to Daemon Sand, won one from Joss Hood, then retired as the two of them began to teach Jayne Ladybright the rules. She was tired of such games.
     
     ## To wrap up
@@ -559,6 +559,40 @@ node_operations:
 
     Your focus is to order the nodes to sort them, from the most related to the chatHistory, to the least. This will be used to have the Story Generation AI focus on the first.
     For example, the main character and active characters should be first, then the location, then ongoing game systems, ... 
+
+  refocus_story: |
+    /think
+    # TASK:
+    The story generation has become inconsistent or of low quality. Your task is to help refocus the narrative.
+    You will generate a concise summary of the story so far, followed by an introduction to the current scene.
+    This output will replace the current chat history to provide a fresh start.
+
+    # WRITING EXAMPLES (Mimic this style and quality):
+
+    ## Example 1 (Summary Style):
+    The adventurers had navigated the treacherous Shadowfen, narrowly escaping the clutches of the bog witches. They discovered a hidden altar revealing a prophecy about the Sunstone, an artifact capable of dispelling the encroaching darkness. Their journey then led them to the city of Veridia, where they learned the Sunstone was last seen in the Obsidian Peaks, guarded by ancient constructs. Sir Kael, the stoic warrior, was driven by a personal vow to protect his homeland, while Elara, the nimble rogue, sought redemption for a past misdeed. Their wizard companion, Fendrel, hoped the Sunstone's magic could restore his lost familiar.
+
+    ## Example 2 (Scene Introduction Style):
+    The biting wind whipped at their cloaks as they stood at the precipice of the Obsidian Peaks. Jagged, black spires clawed at the bruised sky, and a palpable sense of ancient power emanated from the mountains. Below them, a narrow, treacherous path snaked its way upwards, disappearing into the swirling mists that clung to the higher slopes. The air was thin and cold, and the silence was broken only by the mournful cry of an unseen bird of prey.
+
+    # INSTRUCTIONS:
+    1.  Read the provided chat history.
+    2.  Generate a summary of the main story plot points and character motivations from the chat history. This summary should be approximately 4 paragraphs long.
+    3.  After the summary, write 1 paragraph that re-introduces the current scene, characters present, and immediate situation, based on the very latest events in chat history.
+    4.  Your entire output should be narrative text. Do not include any headings, meta-comments, or apologies.
+
+    # Past Chat History:
+    ---
+    {past_chat_history}
+    ---
+
+    # Current World and game Memory (for context):
+    ---
+    {nodes_description}
+    ---
+
+    # RETURN FORMAT:
+    Return a single block of text containing the 4-paragraph summary and the 1-paragraph scene introduction.
 
 moxus_prompts:
   general_memory_update: |

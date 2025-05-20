@@ -315,6 +315,35 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   return processJsonResponse('NodeInteractionService', 'sortNodesByRelevance', responsePayload, (jsonString) => JSON.parse(jsonString).sortedIds);
 };
 
+export const refocusStory = async (chatHistory: Message[], nodes: Node[]): Promise<{llmResult: string, callId: string}> => {
+  console.log('LLM Call (NodeInteractionService): Refocusing story');
+  const pastChatHistory = chatHistory.reduce((acc, message) => {
+    if (message.role === "user" || message.role === "assistant") {
+      return acc + `${message.role}: ${message.content}\n`;
+    }
+    return acc;
+  }, "");
+
+  const nodesDescription = nodes.reduce((acc, node) => {
+    if (node.type === "image_generation" || node.type === "assistant") return acc;
+    return acc + `\n    ---\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    type: ${node.type}\n    `;
+  }, "");
+
+  const prompt = formatPrompt(loadedPrompts.node_operations.refocus_story, {
+    past_chat_history: pastChatHistory,
+    nodes_description: nodesDescription
+  });
+
+  const messages: Message[] = [{ role: 'system', content: prompt }];
+  // Not expecting JSON, direct text response. No streaming needed for this specific call.
+  const responsePayload = await getResponse(messages, "gpt-4o", undefined, false, undefined, undefined, 'refocus_story_generation') as { llmResult: string, callId: string };
+  
+  // Finalize LLM call record, assuming it's successful if no error is thrown by getResponse
+  moxusService.finalizeLLMCallRecord(responsePayload.callId, "Refocus story text generated successfully.");
+  console.log(`[NodeInteractionService] refocusStory successful for callId: ${responsePayload.callId}`);
+  return responsePayload; 
+};
+
 export const generateUserInputResponse = async(userInput: string, chatHistory: Message[], nodes: Node[], detailledNodeIds: String[]) => {
   console.log('LLM Call (NodeInteractionService): Generating full user input response');
   

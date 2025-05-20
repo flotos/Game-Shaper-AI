@@ -8,9 +8,10 @@ interface ChatInputProps {
   waitingForAnswer: boolean;
   onRegenerate: () => void;
   showRegenerate: boolean;
+  handleRefocus: () => void;
 }
 
-const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, handleSendAsNote, waitingForAnswer, onRegenerate, showRegenerate }) => {
+const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, handleSendAsNote, waitingForAnswer, onRegenerate, showRegenerate, handleRefocus }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -53,6 +54,14 @@ const ChatInput: React.FC<ChatInputProps> = ({ input, setInput, handleSend, hand
         disabled={waitingForAnswer}
       >
         Send as Note
+      </button>
+      <button
+        className="ml-2 px-4 py-2 bg-yellow-500 text-white rounded disabled:bg-gray-600 hover:bg-yellow-600"
+        onClick={handleRefocus}
+        disabled={waitingForAnswer}
+        title="Refocus story (clears history)"
+      >
+        Refocus
       </button>
       <button
         className="ml-2 px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-600"

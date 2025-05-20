@@ -27,6 +27,7 @@ export interface PromptsConfig {
     generate_node_edition: string;
     generate_nodes_from_prompt: string;
     sort_nodes_by_relevance: string;
+    refocus_story: string;
   };
 }
 

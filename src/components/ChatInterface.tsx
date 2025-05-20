@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition } from '../services/llm';
+import { generateUserInputResponse, getRelevantNodes, generateChatText, generateActions, generateNodeEdition, refocusStory } from '../services/llm';
 import { Node } from '../models/Node';
 import { useChat, Message } from '../context/ChatContext';
 import ChatHistory from './ChatHistory';
@@ -20,7 +20,7 @@ interface ChatInterfaceProps {
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMessage }) => {
-  const { chatHistory, setChatHistory, updateStreamingMessage, endStreaming } = useChat();
+  const { chatHistory, setChatHistory, updateStreamingMessage, endStreaming, clearChatHistory } = useChat();
   const [input, setInput] = useState('');
   const [waitingForAnswer, setWaitingForAnswer] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
@@ -56,6 +56,47 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
       setErrorMessage('');
     }
   }, [chatHistory]);
+
+  const handleRefocusClick = async () => {
+    if (isLoading) return;
+
+    setIsLoading(true);
+    setErrorMessage('');
+    setLoadingMessage('Refocusing story... (this will clear chat history)');
+    const timestamp = new Date().toLocaleTimeString();
+
+    try {
+      console.log('Starting story refocus at:', timestamp);
+      const refocusResult = await refocusStory(chatHistory, nodes);
+
+      clearChatHistory();
+
+      const refocusMessage: Message = {
+        role: "assistant",
+        content: refocusResult.llmResult,
+        timestamp: new Date().toLocaleTimeString(),
+        isStreaming: false
+      };
+      addMessage(refocusMessage);
+
+      moxusService.recordInternalSystemEvent(
+        `refocus-${Date.now()}`,
+        "System Event: Story refocus triggered by user.",
+        `Chat history cleared. New starting point: ${refocusResult.llmResult.substring(0, 100)}...`,
+        "story_refocus_event"
+      );
+
+      setLoadingMessage('');
+      setIsLoading(false);
+      console.log('Story refocus completed.');
+
+    } catch (error) {
+      console.error('Error during story refocus:', error);
+      setErrorMessage('An error occurred during refocus. Please try again.');
+      setLoadingMessage('');
+      setIsLoading(false);
+    }
+  };
 
   const handleSend = async (retry = false) => {
     chatTextCallId_to_finalize = null;
@@ -390,6 +431,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
           waitingForAnswer={isLoading}
           onRegenerate={handleRegenerate}
           showRegenerate={chatHistory.length > 0 && !isLoading}
+          handleRefocus={handleRefocusClick}
         />
       )}
       <div className="flex space-x-4">

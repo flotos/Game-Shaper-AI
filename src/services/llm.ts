@@ -21,6 +21,7 @@ export {
   generateNodesFromPrompt,
   sortNodesByRelevance,
   generateUserInputResponse,
+  refocusStory,
 } from './nodeInteractionLLMService';
 
 // It's generally not recommended to export core functionalities like getResponse, formatPrompt, or loadedPrompts directly
