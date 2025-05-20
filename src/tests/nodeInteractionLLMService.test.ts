@@ -326,70 +326,88 @@ describe('Node Interaction LLM Service', () => {
       { id: '5', name: 'GameRuleNode', longDescription: 'rule desc', image: 'rule.png', type: 'Game Rule' } // Filtered
     ];
 
-    it('should call formatPrompt with correct replacements (user interaction true)', async () => {
-      const mockEditionLLMResponse: LLMNodeEditionResponse = {
-        callId: 'edition-call-id-user-true',
+    it('should correctly parse complex LLM YAML response for node editions', async () => {
+      // This is what we expect processJsonResponse to return after parsing the YAML and adding callId
+      const mockExpectedParsedResponse: LLMNodeEditionResponse = {
+        callId: 'edition-complex-call-id',
+        n_nodes: [
+          { id: 'new1', name: 'New Node Alpha', type: 'event', longDescription: 'Alpha event description', image:'alpha.png' },
+          { id: 'new2', name: 'New Node Beta', type: 'character', longDescription: 'Beta character intro', image:'beta.png' }
+        ],
         u_nodes: { 
-          '1': { 
-            name: { rpl: 'Updated Node1' },
-            longDescription: { df: [{ prev_txt: 'old', next_txt: 'new'}] }
-          } 
+          '1': { // Existing Node ID '1' from mockNodes
+            name: { rpl: 'Updated Node1 Name' }, 
+            longDescription: { 
+              df: [ 
+                { prev_txt: 'descriptive', next_txt: 'extensively descriptive' },
+                { prev_txt: 'node', next_txt: 'entity' }
+              ] 
+            },
+            type: {rpl: 'quest_item'},
+            img_upd: true // Signal image regeneration for this node
+          },
+          '2': { // Existing Node ID '2' from mockNodes
+            longDescription: { rpl: 'Completely new long description for Node 2.' }
+          }
         },
+        d_nodes: ['delete_id_1', 'delete_id_2']
       };
-      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-        llmResult: `
+
+      // This is the raw YAML string we mock the LLM to return
+      const mockLlmYamlOutput = `
+n_nodes:
+  - id: new1
+    name: New Node Alpha
+    type: event
+    longDescription: Alpha event description
+    image: alpha.png
+  - id: new2
+    name: New Node Beta
+    type: character
+    longDescription: Beta character intro
+    image: beta.png
 u_nodes:
-  "1":
-    name: 
-      rpl: Updated Node1
+  "1": # Corresponds to mockNodes[0]
+    name:
+      rpl: Updated Node1 Name
     longDescription:
       df:
-        - prev_txt: old
-          next_txt: new
-`, 
-        callId: mockEditionLLMResponse.callId
+        - prev_txt: descriptive
+          next_txt: extensively descriptive
+        - prev_txt: node
+          next_txt: entity
+    type:
+      rpl: quest_item
+    img_upd: true
+  "2": # Corresponds to mockNodes[1]
+    longDescription:
+      rpl: Completely new long description for Node 2.
+d_nodes:
+  - delete_id_1
+  - delete_id_2
+`;
+
+      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
+        llmResult: mockLlmYamlOutput,
+        callId: mockExpectedParsedResponse.callId // This callId is passed through by processJsonResponse
       });
 
-      // Expected replacements
-      const expectedFormattedChatHistory = 
-        `user: A user interaction\n` +
-        // moxus message filtered out by getLastFiveInteractions
-        `assistant: Okay, I will consider node X.\n`;
+      // Call the function under test
+      const result = await generateNodeEdition(chatHistoryForEdition, mockActionsForEdition, nodesForEditionTest, mockUserInput, true); // isUserInteraction = true for /no_think
 
-      // Nodes 'story' (id:1) and 'character' (id:2) should be included.
-      // image_generation (id:3), system (id:4), Game Rule (id:5) are filtered out.
-      const expectedNodesDescription = 
-        `\n      id: 1\n      name: Node1\n      longDescription: A descriptive node\n      type: story\n      ` +
-        `\n      id: 2\n      name: Node2\n      longDescription: Another node\n      type: character\n      `;
-
-      const expectedLastMoxusReportSection = `
-  ## Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
-  Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
-  the story and provides VITAL guidance to maintain consistency and quality in the game world.
-  ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
-  
-  Consider node X.
-  `;
-      
-      const expectedActionsList = 'action_A\naction_B';
-
-      const result = await generateNodeEdition(chatHistoryForEdition, mockActionsForEdition, nodesForEditionTest, mockUserInput, true);
-
+      // Assertions for prompt generation (already covered, but good to keep)
       expect(formatPrompt).toHaveBeenCalledTimes(1);
       expect(formatPrompt).toHaveBeenCalledWith(
         (loadedPrompts.node_operations as any).generate_node_edition,
-        {
-          think_mode: '/no_think',
-          nodes_description: expectedNodesDescription,
-          formatted_chat_history: expectedFormattedChatHistory,
-          last_moxus_report_section: expectedLastMoxusReportSection,
-          actions_list: expectedActionsList,
-          user_input: mockUserInput
-        }
+        expect.objectContaining({ think_mode: '/no_think' })
       );
-      expect(getResponse).toHaveBeenCalledTimes(1); // Other assertions for getResponse remain
-      expect(result.u_nodes).toEqual(mockEditionLLMResponse.u_nodes);
-      expect(result.callId).toBe(mockEditionLLMResponse.callId);
+      expect(getResponse).toHaveBeenCalledTimes(1);
+
+      // Assertions for the parsed response structure
+      expect(result.callId).toBe(mockExpectedParsedResponse.callId);
+      expect(result.n_nodes).toEqual(mockExpectedParsedResponse.n_nodes);
+      expect(result.u_nodes).toEqual(mockExpectedParsedResponse.u_nodes);
+      expect(result.d_nodes).toEqual(mockExpectedParsedResponse.d_nodes);
     });
     
     it('should use /think for think_mode when isUserInteraction is false', async () => {
