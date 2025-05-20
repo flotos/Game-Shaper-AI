@@ -466,13 +466,6 @@ node_operations:
       - "obsoleteNode03"
     ```
 
-    ## General Guidelines:
-    - Output valid YAML. Indentation is critical.
-    - For small textual changes in `longDescription`, use the `df` list within the `u_nodes` block.
-    - For other field updates or complete rewrites of `longDescription`, use the `rpl` key.
-    - If a node's visual representation changes, set `img_upd: true` for that node within its `u_nodes` entry.
-    - You can update up to 2 existing nodes, create up to 1 new node, and delete nodes as needed if they haven't been used in the recent history.
-
     ## Example longDescription fields values:
     ### Example 1:
     The hoodie shimmered with runes that glowed faintly blue whenever its wearer was in danger.
@@ -488,6 +481,18 @@ node_operations:
     The library stood at the heart of the abandoned monastery, its shelves still lined with leather-bound tomes that had somehow survived the decades of neglect.
     Dust motes danced in the shafts of colored light that fell through the stained-glass windows, painting patterns on the stone floor worn smooth by generations of shuffling feet.
     The air was thick with the smell of old parchment and secrets, whispering to those who knew how to listen.
+
+    ## General Guidelines:
+    - Output valid YAML. Indentation is critical.
+    - For small textual changes in `longDescription`, use the `df` list within the `u_nodes` block.
+    - For other field updates or complete rewrites of `longDescription`, use the `rpl` key.
+    - If a node's visual representation changes, set `img_upd: true` for that node within its `u_nodes` entry.
+    - You can update up to 2 existing nodes, create up to 1 new node, and delete nodes as needed if they haven't been used in the recent history.
+    - Only output the current state of nodes, don't make up new information unless it doesn't contradict nor expand on the current story (chat).
+    - Items usually don't need to regenerate images, unless they change very very drastically.
+    - Pay close attention to update the details in the nodes, for example track the appearance of the characters there if the chat mention a change in look
+      or accessory, clothing.
+    - Keep the node length below 4 paragraphs.
 
     Don't send backquotes nor text along the output as it will be sent directly to a program.
   generate_nodes_from_prompt: |
