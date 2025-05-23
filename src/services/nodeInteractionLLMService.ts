@@ -9,6 +9,7 @@ import {
 import { moxusService } from '../services/MoxusService';
 import { LLMNodeEditionResponse } from '../models/nodeOperations';
 import yaml from 'js-yaml';
+import { safeJsonParse } from '../utils/jsonUtils';
 
 // Helper function to manage try/catch for JSON parsing and logging
 async function processJsonResponse<T>(
@@ -64,7 +65,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
     console.error('[NodeInteractionService] getRelevantNodes: getResponse failed.', error);
     throw error; 
   }
-  return processJsonResponse('NodeInteractionService', 'getRelevantNodes', responsePayload, (jsonString) => JSON.parse(jsonString).relevantNodes);
+  return processJsonResponse('NodeInteractionService', 'getRelevantNodes', responsePayload, (jsonString) => safeJsonParse(jsonString).relevantNodes);
 };
 
 export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], _detailledNodeIds: String[]): Promise<{ streamResponse: Response, callId: string }> => {
@@ -148,7 +149,7 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
     console.error('[NodeInteractionService] generateActions: getResponse failed.', error);
     throw error;
   }
-  return processJsonResponse('NodeInteractionService', 'generateActions', responsePayload, (jsonString) => JSON.parse(jsonString).actions);
+  return processJsonResponse('NodeInteractionService', 'generateActions', responsePayload, (jsonString) => safeJsonParse(jsonString).actions);
 };
 
 export const generateNodeEdition = async(chatText: string | Message[], actions: string[], nodes: Node[], userInput: string, isUserInteraction: boolean = false): Promise<LLMNodeEditionResponse> => {
@@ -271,7 +272,7 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   // This function still returns the old format from its prompt, which is { merge: [], delete: [] }
   // This will need to be updated if generate_nodes_from_prompt also adopts the new new/update/delete structure.
   // For now, assuming its prompt and return type are unchanged by this specific refactor.
-  return processJsonResponse('NodeInteractionService', 'generateNodesFromPrompt', responsePayload, JSON.parse);
+  return processJsonResponse('NodeInteractionService', 'generateNodesFromPrompt', responsePayload, safeJsonParse);
 };
 
 export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]): Promise<string[]> => {
@@ -312,7 +313,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
     console.error('[NodeInteractionService] sortNodesByRelevance: getResponse failed.', error);
     throw error;
   }
-  return processJsonResponse('NodeInteractionService', 'sortNodesByRelevance', responsePayload, (jsonString) => JSON.parse(jsonString).sortedIds);
+  return processJsonResponse('NodeInteractionService', 'sortNodesByRelevance', responsePayload, (jsonString) => safeJsonParse(jsonString).sortedIds);
 };
 
 export const refocusStory = async (chatHistory: Message[], nodes: Node[]): Promise<{llmResult: string, callId: string}> => {

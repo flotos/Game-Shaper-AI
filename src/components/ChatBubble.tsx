@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '../context/ChatContext';
+import { safeJsonParse } from '../utils/jsonUtils';
 
 const expandableMessagesTypes = ["reasoning", "nodeEdition", "selectedNodes", "moxus"];
 
 const formatJsonContent = (content: string) => {
   try {
-    const parsed = JSON.parse(content);
+    const parsed = safeJsonParse(content);
     return JSON.stringify(parsed, null, 2);
   } catch (e) {
     return content;

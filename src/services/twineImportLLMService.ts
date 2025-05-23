@@ -1,6 +1,7 @@
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext'; // Message may not be directly used, but good for consistency if types evolve
 import { getResponse, formatPrompt, loadedPrompts } from './llmCore';
+import { safeJsonParse } from '../utils/jsonUtils';
 
 // Interfaces specific to Twine data extraction
 export interface ExtractedElement {
@@ -44,7 +45,7 @@ export const extractDataFromTwine = async (
 
     try {
       const result = await getResponse(extractionMessagesInternal, 'gpt-4o', undefined, false, { type: 'json_object' });
-      const parsedResult = typeof result === 'string' ? JSON.parse(result) : result;
+      const parsedResult = typeof result === 'string' ? safeJsonParse(result) : result;
       
       if (!parsedResult.elements || !Array.isArray(parsedResult.elements)) {
         throw new Error('Invalid response structure: missing or invalid elements array');
@@ -114,7 +115,7 @@ export const generateNodesFromExtractedData = async (
   const response = await getResponse(generationMessagesInternal, 'gpt-4o', undefined, false, { type: 'json_object' });
   
   try {
-    const parsedResponse = typeof response === 'string' ? JSON.parse(response) : response;
+    const parsedResponse = typeof response === 'string' ? safeJsonParse(response) : response;
     if (!parsedResponse.new || !Array.isArray(parsedResponse.new)) {
       throw new Error('Invalid response structure: missing or invalid new array');
     }
@@ -207,7 +208,7 @@ export const regenerateSingleNode = async (
   const response = await getResponse(messagesInternal, 'gpt-4o', undefined, false, { type: 'json_object' });
   
   try {
-    const parsedResponse = typeof response === 'string' ? JSON.parse(response) : response;
+    const parsedResponse = typeof response === 'string' ? safeJsonParse(response) : response;
     if (!parsedResponse.new || !Array.isArray(parsedResponse.new) || !parsedResponse.update || !Array.isArray(parsedResponse.update)) {
       throw new Error('Invalid response structure: missing or invalid arrays');
     }

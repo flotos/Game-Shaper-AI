@@ -2,6 +2,7 @@ import * as yaml from 'js-yaml';
 import { Message } from '../context/ChatContext';
 import { moxusService } from './MoxusService'; // MoxusService will use setMoxusFeedbackImpl with getMoxusFeedback from this file
 import { Node } from '../models/Node'; // Needed for types in helper functions if they remain here
+import { safeJsonParse } from '../utils/jsonUtils';
 
 // Load and parse prompts
 export interface PromptsConfig {
@@ -347,7 +348,7 @@ export const getResponse = async (
           } else {
             // Only process for reasoning if not a json_object type, as per original logic structure
             try {
-              const parsedContent = JSON.parse(content);
+              const parsedContent = safeJsonParse(content);
               if (!includeReasoning && parsedContent.reasoning !== undefined) {
                 delete parsedContent.reasoning;
                 extractedContent = JSON.stringify(parsedContent);
