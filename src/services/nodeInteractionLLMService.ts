@@ -264,12 +264,85 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   const messages: Message[] = [{ role: 'system', content: promptMessageContent }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_creation_from_prompt') as { llmResult: string, callId: string };
+    // No longer using response_format as we're expecting YAML, not JSON
+    responsePayload = await getResponse(messages, "gpt-4", undefined, false, undefined, undefined, 'node_creation_from_prompt') as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] generateNodesFromPrompt: getResponse failed.', error);
     throw error;
   }
-  return processJsonResponse('NodeInteractionService', 'generateNodesFromPrompt', responsePayload, parseNodeOperationJson);
+  
+  return processJsonResponse(
+    'NodeInteractionService', 
+    'generateNodesFromPrompt', 
+    responsePayload, 
+    (yamlString) => {
+      // Remove potential YAML code block fences before parsing
+      const cleanedYamlString = yamlString.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
+      const parsedFromYaml = yaml.load(cleanedYamlString) as any;
+
+      // Process the YAML result into the format expected by the UI
+      const result: any = {};
+      
+      // Map n_nodes to newNodes for backward compatibility with UI
+      if (parsedFromYaml.n_nodes && Array.isArray(parsedFromYaml.n_nodes)) {
+        result.newNodes = parsedFromYaml.n_nodes;
+      }
+      
+      // Map u_nodes to merge field
+      if (parsedFromYaml.u_nodes && typeof parsedFromYaml.u_nodes === 'object') {
+        // Convert u_nodes format to merge format (array of nodes with full fields)
+        const mergeNodes: Partial<Node>[] = [];
+        
+        for (const [nodeId, updates] of Object.entries(parsedFromYaml.u_nodes || {})) {
+          // Find the existing node
+          const existingNode = nodes.find(n => n.id === nodeId);
+          if (!existingNode) continue;
+          
+          const updatedNode: Partial<Node> = { id: nodeId };
+          
+          // Apply updates
+          if (typeof updates === 'object' && updates !== null) {
+            // Handle standard field updates
+            for (const [field, operation] of Object.entries(updates)) {
+              if (field === 'img_upd') {
+                updatedNode.updateImage = operation as boolean;
+                continue;
+              }
+              
+              if (typeof operation === 'object' && operation !== null) {
+                if ('rpl' in operation) {
+                  (updatedNode as any)[field] = operation.rpl;
+                }
+                // We don't process df (diffs) here as the UI expects complete node objects
+                // For now, we just use the original field value if there's a df but no rpl
+                else if (!('rpl' in operation) && existingNode) {
+                  (updatedNode as any)[field] = (existingNode as any)[field];
+                }
+              }
+            }
+            
+            // Ensure essential fields are present
+            if (!updatedNode.name && existingNode) updatedNode.name = existingNode.name;
+            if (!updatedNode.longDescription && existingNode) updatedNode.longDescription = existingNode.longDescription;
+            if (!updatedNode.type && existingNode) updatedNode.type = existingNode.type;
+            
+            mergeNodes.push(updatedNode);
+          }
+        }
+        
+        if (mergeNodes.length > 0) {
+          result.merge = mergeNodes;
+        }
+      }
+      
+      // Map d_nodes directly to delete field
+      if (parsedFromYaml.d_nodes && Array.isArray(parsedFromYaml.d_nodes)) {
+        result.delete = parsedFromYaml.d_nodes;
+      }
+      
+      return result;
+    }
+  );
 };
 
 export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]): Promise<string[]> => {

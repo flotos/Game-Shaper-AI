@@ -208,12 +208,20 @@ export const regenerateSingleNode = async (
   const response = await getResponse(messagesInternal, 'gpt-4o', undefined, false, { type: 'json_object' });
   
   try {
-    const parsedResponse = typeof response === 'string' ? safeJsonParse(response) : response;
-    if (!parsedResponse.new || !Array.isArray(parsedResponse.new) || !parsedResponse.update || !Array.isArray(parsedResponse.update)) {
+    // Handle response wrapped in llmResult
+    let parsedResponse;
+    if (typeof response === 'object' && response !== null && 'llmResult' in response && typeof response.llmResult === 'string') {
+      parsedResponse = safeJsonParse(response.llmResult);
+    } else {
+      parsedResponse = typeof response === 'string' ? safeJsonParse(response) : response;
+    }
+    
+    if ((!parsedResponse.new || !Array.isArray(parsedResponse.new)) && 
+        (!parsedResponse.update || !Array.isArray(parsedResponse.update))) {
       throw new Error('Invalid response structure: missing or invalid arrays');
     }
-    const updatedNodeData = parsedResponse.new.find((n: Partial<Node>) => n.id === nodeId) || 
-                           parsedResponse.update.find((n: { id: string; }) => n.id === nodeId);
+    const updatedNodeData = parsedResponse.new?.find((n: Partial<Node>) => n.id === nodeId) || 
+                           parsedResponse.update?.find((n: { id: string; }) => n.id === nodeId);
     if (!updatedNodeData) throw new Error('Node not found in response');
     
     updatedNodeData.updateImage = updatedNodeData.updateImage ?? false;

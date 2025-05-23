@@ -23,20 +23,20 @@ interface PreviewState {
   llmResponse?: {
     merge?: Partial<Node>[];
     delete?: string[];
-    newNodes?: Node[];
+    newNodes?: Partial<Node>[];
   };
   originalNodes: Node[];
   prompt?: string;
   editedNodes?: Map<string, Partial<Node>>;
+  newNodesEdits?: Map<string, Partial<Node>>;
+  deletedNodesConfirm?: Set<string>;
 }
 
-// Helper function to calculate height based on content length
-const calculateHeight = (text: string, isLongDescription: boolean = false, defaultRows: number = 10) => {
-  if (!isLongDescription) return `${defaultRows * 1.5}rem`;
-  const lineCount = (text || '').split('\n').length;
-  const minHeight = '15rem';
-  const calculatedHeight = `${Math.max(15, lineCount * 1.5)}rem`;
-  return calculatedHeight;
+// Helper to calculate textarea height
+const calculateHeight = (value: string, isLong = false) => {
+  const numberOfLines = (value.match(/\n/g) || []).length + 1;
+  const minHeight = isLong ? 100 : 40;
+  return `${Math.max(minHeight, numberOfLines * 20)}px`;
 };
 
 const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph, closeOverlay }) => {
@@ -47,7 +47,9 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   const [preview, setPreview] = useState<PreviewState>({
     showPreview: false,
     originalNodes: nodes,
-    editedNodes: new Map()
+    editedNodes: new Map<string, Partial<Node>>(),
+    newNodesEdits: new Map<string, Partial<Node>>(),
+    deletedNodesConfirm: new Set<string>()
   });
 
   const handleSubmit = async () => {
@@ -74,12 +76,21 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
 
       const llmResponseData = await generateNodesFromPrompt(query, nodes, moxusMemoryData, moxusPersonalityData);
       
+      // Normalize response format to handle both old (merge) and new (u_nodes) formats
+      const normalizedResponse = {
+        merge: llmResponseData.merge || [],
+        delete: llmResponseData.delete || [],
+        newNodes: llmResponseData.newNodes || llmResponseData.n_nodes || [],
+      };
+      
       setPreview({
         showPreview: true,
-        llmResponse: llmResponseData,
+        llmResponse: normalizedResponse,
         originalNodes: nodes,
         prompt: query,
-        editedNodes: new Map()
+        editedNodes: new Map<string, Partial<Node>>(),
+        newNodesEdits: new Map<string, Partial<Node>>(),
+        deletedNodesConfirm: new Set<string>()
       });
     } catch (err) {
       setError('Failed to process your request. Please try again.');
@@ -91,10 +102,31 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
 
   const handleNodeEdit = (nodeId: string, field: keyof Node, value: string | boolean) => {
     setPreview(prev => {
-      const newEditedNodes = new Map(prev.editedNodes || new Map());
+      const newEditedNodes = new Map(prev.editedNodes || new Map<string, Partial<Node>>());
       const existingEdit = newEditedNodes.get(nodeId) || {};
       newEditedNodes.set(nodeId, { ...existingEdit, [field]: value });
       return { ...prev, editedNodes: newEditedNodes };
+    });
+  };
+
+  const handleNewNodeEdit = (nodeId: string, field: keyof Node, value: string | boolean) => {
+    setPreview(prev => {
+      const newNodesEdits = new Map(prev.newNodesEdits || new Map<string, Partial<Node>>());
+      const existingEdit = newNodesEdits.get(nodeId) || {};
+      newNodesEdits.set(nodeId, { ...existingEdit, [field]: value });
+      return { ...prev, newNodesEdits: newNodesEdits };
+    });
+  };
+
+  const toggleDeleteConfirmation = (nodeId: string) => {
+    setPreview(prev => {
+      const newDeletedNodesConfirm = new Set(prev.deletedNodesConfirm || new Set<string>());
+      if (newDeletedNodesConfirm.has(nodeId)) {
+        newDeletedNodesConfirm.delete(nodeId);
+      } else {
+        newDeletedNodesConfirm.add(nodeId);
+      }
+      return { ...prev, deletedNodesConfirm: newDeletedNodesConfirm };
     });
   };
 
@@ -134,41 +166,102 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         nodeGenerationInstructions,
         nodeToRegenerate // Pass as the recently generated version
       );
-
-      // Update the preview state with the regenerated node
+      
+      // Update the preview state with the regenerated node data
       setPreview(prev => {
         if (!prev.llmResponse) return prev;
         
-        const newLLMResponse = { ...prev.llmResponse };
-        const userEdits = prev.editedNodes?.get(nodeId) || {};
+        // Create new arrays to avoid mutating state directly
+        const newMerge = [...(prev.llmResponse.merge || [])];
         
-        // Apply user edits on top of regenerated node data
-        const finalNodeData = { ...regeneratedNodeData, ...userEdits };
+        // Find the index of the node in the merge array
+        const nodeIndex = newMerge.findIndex(n => n.id === nodeId);
         
-        // Update either in merge array or add to it if not present
-        if (newLLMResponse.merge) {
-          const existingIndex = newLLMResponse.merge.findIndex(n => n.id === nodeId);
-          if (existingIndex >= 0) {
-            newLLMResponse.merge[existingIndex] = { 
-              ...newLLMResponse.merge[existingIndex], 
-              ...finalNodeData 
-            };
-          } else {
-            newLLMResponse.merge.push({ id: nodeId, ...finalNodeData });
-          }
+        if (nodeIndex !== -1) {
+          // Replace the node with regenerated version
+          newMerge[nodeIndex] = regeneratedNodeData;
         } else {
-          newLLMResponse.merge = [{ id: nodeId, ...finalNodeData }];
+          // Add it to the merge array if not found
+          newMerge.push(regeneratedNodeData);
         }
         
-        return { 
-          ...prev, 
-          llmResponse: newLLMResponse
+        return {
+          ...prev,
+          llmResponse: {
+            ...prev.llmResponse,
+            merge: newMerge
+          }
         };
       });
-      
     } catch (err) {
-      console.error('Error regenerating node:', err);
-      setError(`Failed to regenerate node: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError('Failed to regenerate node. Please try again.');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegenerateNewNode = async (nodeIndex: number) => {
+    if (!preview.llmResponse || !preview.llmResponse.newNodes) {
+      setError("No preview data available for regeneration.");
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const nodeToRegenerate = preview.llmResponse.newNodes[nodeIndex];
+      
+      if (!nodeToRegenerate) {
+        throw new Error('New node not found for regeneration');
+      }
+      
+      // Create a minimal extractedData object for the regenerateSingleNode function
+      const dummyExtractedData = { 
+        chunks: [[]], 
+      };
+      
+      // Use the prompt as node generation instructions
+      const nodeGenerationInstructions = preview.prompt || '';
+      
+      // Temporarily assign an ID for regeneration
+      const tempNodeId = `temp-new-${nodeIndex}`;
+      const nodeWithId = { ...nodeToRegenerate, id: tempNodeId };
+      
+      // Call regenerateSingleNode from the twine import service
+      const regeneratedNodeData = await regenerateSingleNode(
+        tempNodeId,
+        nodeWithId,
+        dummyExtractedData,
+        nodes,
+        'merge_story', // Always use merge mode in assistant
+        nodeGenerationInstructions,
+        nodeWithId // Pass as the recently generated version
+      );
+      
+      // Update the preview state with the regenerated node data
+      setPreview(prev => {
+        if (!prev.llmResponse || !prev.llmResponse.newNodes) return prev;
+        
+        // Create new arrays to avoid mutating state directly
+        const newNodes = [...prev.llmResponse.newNodes];
+        
+        // Replace the node with regenerated version (without the temp id)
+        const { id, ...nodeWithoutId } = regeneratedNodeData;
+        newNodes[nodeIndex] = nodeWithoutId;
+        
+        return {
+          ...prev,
+          llmResponse: {
+            ...prev.llmResponse,
+            newNodes: newNodes
+          }
+        };
+      });
+    } catch (err) {
+      setError('Failed to regenerate new node. Please try again.');
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -178,6 +271,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     if (preview.llmResponse) {
       const u_nodes: { [nodeId: string]: NodeSpecificUpdates } = {};
       
+      // Process updated nodes
       if (preview.llmResponse.merge) {
         preview.llmResponse.merge.forEach(suggestedNodeUpdate => {
           if (suggestedNodeUpdate.id) {
@@ -203,11 +297,37 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         });
       }
       
+      // Process new nodes with user edits
+      const n_nodes: Partial<Node>[] = preview.llmResponse.newNodes ? [...preview.llmResponse.newNodes] : [];
+      if (preview.newNodesEdits && preview.newNodesEdits.size > 0 && n_nodes.length > 0) {
+        for (let i = 0; i < n_nodes.length; i++) {
+          const nodeId = `new-${i}`;
+          const userEdits = preview.newNodesEdits.get(nodeId) || {};
+          n_nodes[i] = { ...n_nodes[i], ...userEdits };
+        }
+      }
+      
+      // Process nodes to delete (filter to only include confirmed deletions)
+      let d_nodes = preview.llmResponse.delete ? [...preview.llmResponse.delete] : [];
+      if (preview.deletedNodesConfirm && preview.deletedNodesConfirm.size > 0) {
+        d_nodes = d_nodes.filter(nodeId => preview.deletedNodesConfirm?.has(nodeId));
+      } else {
+        // If user didn't confirm any deletions, don't delete anything
+        d_nodes = [];
+      }
+      
       const nodeEditionPayload: LLMNodeEditionResponse = {
         callId: `assistant-${Date.now()}`,
         u_nodes: Object.keys(u_nodes).length > 0 ? u_nodes : undefined,
-        d_nodes: preview.llmResponse.delete?.length ? preview.llmResponse.delete : undefined,
-        n_nodes: preview.llmResponse.newNodes?.length ? preview.llmResponse.newNodes : undefined,
+        d_nodes: d_nodes.length > 0 ? d_nodes : undefined,
+        n_nodes: n_nodes.length > 0 ? n_nodes.map(node => ({
+          id: node.id || `new-node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          name: node.name || "New Node",
+          longDescription: node.longDescription || "",
+          type: node.type || "unknown",
+          updateImage: node.updateImage || false,
+          image: "" // Required by the Node interface, will be generated based on updateImage flag
+        })) : undefined,
       };
 
       try {
@@ -239,35 +359,44 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     return (
       <div key={nodeId} className="mb-4 p-4 bg-gray-800 rounded">
         <h3 className="text-lg font-bold mb-2 text-white">{currentName} (ID: {nodeId})</h3>
-        <div className="grid grid-cols-3 gap-4 mt-2">
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <h4 className="text-sm font-semibold mb-1">Original</h4>
             {originalNode ? (
               <div className="text-sm space-y-2">
                 <div>
+                  <span className="font-semibold block mb-1">Name:</span>
+                  <p className="p-2 bg-gray-700 rounded text-white">{originalNode.name}</p>
+                </div>
+                <div>
                   <span className="font-semibold block mb-1">Long Description:</span>
-                  <textarea readOnly value={originalNode.longDescription} className="w-full p-2 bg-gray-700/30 rounded text-gray-400 resize-none" style={{ height: calculateHeight(originalNode.longDescription, true), overflowY: 'auto' }} />
+                  <p className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap" style={{ height: calculateHeight(originalNode.longDescription || '', true), overflowY: 'auto' }}>{originalNode.longDescription}</p>
                 </div>
                 <div>
                   <span className="font-semibold block mb-1">Type:</span>
-                  <input readOnly value={originalNode.type} className="w-full p-2 bg-gray-700/30 rounded text-gray-400" />
+                  <p className="p-2 bg-gray-700 rounded text-white">{originalNode.type}</p>
                 </div>
               </div>
             ) : (
-              <p className="text-gray-400 italic">New Node</p>
+              <p className="text-gray-400 italic p-2">No original node (new node)</p>
             )}
           </div>
-
+          
           <div>
-            <h4 className="text-sm font-semibold mb-1">AI Proposed</h4>
+            <h4 className="text-sm font-semibold mb-1">Suggested Updates</h4>
             <div className="text-sm space-y-2">
               <div>
+                <span className="font-semibold block mb-1">Name:</span>
+                <DiffViewer original={originalNode?.name || ''} updated={suggestedNodeChange.name || ''} isCurrent={false} />
+              </div>
+              <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
-                <DiffViewer original={originalNode?.longDescription || ''} updated={suggestedNodeChange.longDescription || ''} isCurrent={false} className="w-full bg-gray-700/50" style={{ height: calculateHeight(suggestedNodeChange.longDescription || '', true), overflowY: 'auto' }} />
+                <DiffViewer original={originalNode?.longDescription || ''} updated={suggestedNodeChange.longDescription || ''} isCurrent={false} />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>
-                <DiffViewer original={originalNode?.type || ''} updated={suggestedNodeChange.type || ''} isCurrent={false} className="w-full bg-gray-700/50" />
+                <DiffViewer original={originalNode?.type || ''} updated={suggestedNodeChange.type || ''} isCurrent={false} />
               </div>
             </div>
           </div>
@@ -308,6 +437,77 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     );
   };
 
+  const renderNewNodeEditor = (newNode: Partial<Node>, index: number) => {
+    const nodeId = `new-${index}`;
+    const userEditsForThisNode = preview.newNodesEdits?.get(nodeId) || {};
+
+    const currentName = userEditsForThisNode.name ?? newNode.name ?? '';
+    const currentLongDescription = userEditsForThisNode.longDescription ?? newNode.longDescription ?? '';
+    const currentType = userEditsForThisNode.type ?? newNode.type ?? '';
+    const currentUpdateImage = userEditsForThisNode.updateImage ?? newNode.updateImage ?? false;
+    
+    return (
+      <div key={nodeId} className="mb-4 p-4 bg-green-900/50 rounded">
+        <h3 className="text-lg font-bold mb-2 text-white">New Node: {currentName}</h3>
+        
+        <div className="text-sm space-y-2">
+          <div>
+            <span className="font-semibold block mb-1">Name:</span>
+            <input type="text" value={currentName} onChange={(e) => handleNewNodeEdit(nodeId, 'name', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white" placeholder="Node Name"/>
+          </div>
+          <div>
+            <span className="font-semibold block mb-1">Long Description:</span>
+            <textarea value={currentLongDescription} onChange={(e) => handleNewNodeEdit(nodeId, 'longDescription', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white resize-none" style={{ height: calculateHeight(currentLongDescription || '', true), overflowY: 'auto' }} placeholder="Enter long description..."/>
+          </div>
+          <div>
+            <span className="font-semibold block mb-1">Type:</span>
+            <input type="text" value={currentType} onChange={(e) => handleNewNodeEdit(nodeId, 'type', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white" placeholder="Enter type..."/>
+          </div>
+        </div>
+        
+        <div className="mt-4 pt-4 border-t border-gray-700 flex justify-between items-center space-x-4">
+          <div>
+            <span className="font-semibold block mb-1 text-sm">Image Generation:</span>
+            <div className="flex items-center space-x-2">
+              <button onClick={() => handleNewNodeEdit(nodeId, 'updateImage', !currentUpdateImage)} className={`px-3 py-1 rounded text-sm ${currentUpdateImage ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'} text-white transition-colors`}>
+                {currentUpdateImage ? 'Will generate image' : 'No image generation'}
+              </button>
+              <span className="text-xs text-gray-400">(Click to toggle)</span>
+            </div>
+          </div>
+          <button onClick={() => handleRegenerateNewNode(index)} disabled={isLoading} className={`px-4 py-2 rounded text-sm ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+            {isLoading ? 'Processing...' : 'Regenerate Node'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderNodeToDelete = (nodeId: string) => {
+    const node = preview.originalNodes.find(n => n.id === nodeId);
+    const isConfirmed = preview.deletedNodesConfirm?.has(nodeId) || false;
+    
+    if (!node) return null;
+    
+    return (
+      <div key={nodeId} className="mb-4 p-4 bg-red-900/50 rounded">
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-lg font-bold mb-2 text-white">{node.name} (ID: {nodeId})</h3>
+            <p className="text-sm text-gray-300 mb-2">Type: {node.type}</p>
+            <p className="text-sm text-gray-300 whitespace-pre-wrap">{node.longDescription}</p>
+          </div>
+          <button 
+            onClick={() => toggleDeleteConfirmation(nodeId)} 
+            className={`px-4 py-2 rounded text-sm ${isConfirmed ? 'bg-red-700 hover:bg-red-800' : 'bg-gray-600 hover:bg-gray-700'} text-white ml-4`}
+          >
+            {isConfirmed ? 'Deletion Confirmed' : 'Confirm Deletion'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   if (preview.showPreview && preview.llmResponse) {
     return (
       <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
@@ -319,33 +519,45 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               <p className="text-white whitespace-pre-wrap">{preview.prompt}</p>
             </div>
           )}
-          {preview.llmResponse.delete && preview.llmResponse.delete.length > 0 && (
-            <div className="mb-4 p-4 bg-red-900/50 rounded">
-              <h3 className="text-lg font-bold mb-2">Nodes to be deleted:</h3>
-              <ul className="list-disc list-inside">
-                {preview.llmResponse.delete.map(id => {
-                  const node = preview.originalNodes.find(n => n.id === id);
-                  return <li key={id}>{node?.name || id}</li>;
-                })}
-              </ul>
+          
+          {preview.llmResponse.newNodes && preview.llmResponse.newNodes.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-bold mb-2 text-white">New Nodes to Create:</h3>
+              {preview.llmResponse.newNodes.map((newNode, index) => renderNewNodeEditor(newNode, index))}
             </div>
           )}
-          {preview.llmResponse.newNodes && preview.llmResponse.newNodes.map(newNode => (
-            renderNodeComparison(null, newNode)
-          ))}
-          {preview.llmResponse.merge && preview.llmResponse.merge.map(updatedNode => {
-            const originalNode = preview.originalNodes.find(n => n.id === updatedNode.id) || null;
-            return renderNodeComparison(originalNode, updatedNode);
-          })}
           
-          <div className="flex justify-end space-x-4 mt-4">
-            <button onClick={() => setPreview({ showPreview: false, originalNodes: nodes, editedNodes: new Map() })} className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600">
-              Back
+          {preview.llmResponse.delete && preview.llmResponse.delete.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-bold mb-2 text-white">Nodes to Delete (requires confirmation):</h3>
+              {preview.llmResponse.delete.map(nodeId => renderNodeToDelete(nodeId))}
+            </div>
+          )}
+          
+          {preview.llmResponse.merge && preview.llmResponse.merge.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-lg font-bold mb-2 text-white">Nodes to Update:</h3>
+              {preview.llmResponse.merge.map(updatedNode => {
+                const originalNode = preview.originalNodes.find(n => n.id === updatedNode.id) || null;
+                return renderNodeComparison(originalNode, updatedNode);
+              })}
+            </div>
+          )}
+          
+          <div className="flex justify-between mt-6">
+            <button onClick={closeOverlay} className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded">
+              Cancel
             </button>
-            <button onClick={handleConfirm} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-              OK
+            <button onClick={handleConfirm} disabled={isLoading} className={`px-4 py-2 rounded ${isLoading ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
+              {isLoading ? 'Processing...' : 'Apply Changes'}
             </button>
           </div>
+
+          {error && (
+            <div className="mt-4 p-3 bg-red-800/50 text-white rounded">
+              {error}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -353,43 +565,52 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
 
   return (
     <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
-      <div className="bg-slate-900 p-6 rounded shadow-md w-3/4 max-w-2xl">
-        <h2 className="text-xl mb-4 text-white">Game Assistant</h2>
-        <p className="text-gray-300 mb-4">
-          Ask the assistant to modify your game. Examples:
-          <ul className="list-disc list-inside mt-2 text-gray-400">
-            <li>Make the game more challenging</li>
-            <li>Change the story to be more like a fantasy adventure</li>
-            <li>Add more puzzle elements</li>
-          </ul>
-        </p>
+      <div className="bg-slate-900 p-6 rounded shadow-md w-5/6 max-w-4xl">
+        <h2 className="text-xl mb-4 text-white">Assistant</h2>
         <textarea
+          className="w-full p-3 bg-gray-800 text-white rounded mb-4"
+          placeholder="Describe what changes you want to make to the game..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Enter your request here..."
-          className="w-full p-2 mb-4 border border-gray-700 rounded bg-gray-900 text-white min-h-[100px]"
+          rows={6}
         />
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-        <div className="flex justify-end items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <label htmlFor="sendMoxusContextToggle" className="text-sm text-gray-300">
-              Send Moxus Context:
-            </label>
-            <button
-              id="sendMoxusContextToggle"
-              onClick={() => setSendMoxusContext(!sendMoxusContext)}
-              className={`px-3 py-1 rounded text-sm transition-colors ${sendMoxusContext ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600 hover:bg-gray-700'} text-white`}
-            >
-              {sendMoxusContext ? 'Enabled' : 'Disabled'}
-            </button>
-          </div>
-          <button onClick={closeOverlay} className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600">
+        
+        <div className="flex items-center mb-4">
+          <input
+            type="checkbox"
+            id="moxus-context-checkbox"
+            checked={sendMoxusContext}
+            onChange={() => setSendMoxusContext(!sendMoxusContext)}
+            className="mr-2"
+          />
+          <label htmlFor="moxus-context-checkbox" className="text-white text-sm">
+            Include Moxus context for better AI responses
+          </label>
+        </div>
+        
+        <div className="flex justify-between">
+          <button
+            onClick={closeOverlay}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded"
+          >
             Cancel
           </button>
-          <button onClick={handleSubmit} disabled={isLoading || !query.trim()} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-            {isLoading ? 'Processing...' : 'Submit'}
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading || !query.trim()}
+            className={`px-4 py-2 rounded ${
+              isLoading || !query.trim() ? 'bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'
+            } text-white`}
+          >
+            {isLoading ? 'Processing...' : 'Generate'}
           </button>
         </div>
+
+        {error && (
+          <div className="mt-4 p-3 bg-red-800/50 text-white rounded">
+            {error}
+          </div>
+        )}
       </div>
     </div>
   );
