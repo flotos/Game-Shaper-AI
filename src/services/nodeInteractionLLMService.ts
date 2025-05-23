@@ -9,7 +9,7 @@ import {
 import { moxusService } from '../services/MoxusService';
 import { LLMNodeEditionResponse } from '../models/nodeOperations';
 import yaml from 'js-yaml';
-import { safeJsonParse } from '../utils/jsonUtils';
+import { safeJsonParse, parseNodeOperationJson } from '../utils/jsonUtils';
 
 // Helper function to manage try/catch for JSON parsing and logging
 async function processJsonResponse<T>(
@@ -269,10 +269,7 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
     console.error('[NodeInteractionService] generateNodesFromPrompt: getResponse failed.', error);
     throw error;
   }
-  // This function still returns the old format from its prompt, which is { merge: [], delete: [] }
-  // This will need to be updated if generate_nodes_from_prompt also adopts the new new/update/delete structure.
-  // For now, assuming its prompt and return type are unchanged by this specific refactor.
-  return processJsonResponse('NodeInteractionService', 'generateNodesFromPrompt', responsePayload, safeJsonParse);
+  return processJsonResponse('NodeInteractionService', 'generateNodesFromPrompt', responsePayload, parseNodeOperationJson);
 };
 
 export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]): Promise<string[]> => {
