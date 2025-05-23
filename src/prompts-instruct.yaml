@@ -555,7 +555,12 @@ node_operations:
            longDescription:
              df:
                - prev_txt: "He looks tired."
-                 next_txt: "He looks battle-weary but vigilant."
+                 next_txt: |
+                  He looks battle-weary but vigilant.
+                  ### this is a new section
+                  content
+
+                  ### this is another section
                  occ: 1
                - prev_txt: "a simple sword"
                  next_txt: "a gleaming longsword"
@@ -594,6 +599,7 @@ node_operations:
     ```
 
     Make sure to format your output as valid YAML. Do not include any text around your YAML output as the output will be sent directly to a program.
+    Ensure when writing markdown for longDescription to properly follow the yaml indentation rules.
   sort_nodes_by_relevance: |
     # TASK:
     You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.
