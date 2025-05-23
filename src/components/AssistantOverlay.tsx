@@ -5,6 +5,7 @@ import { Message } from '../context/ChatContext';
 import DiffViewer from './DiffViewer';
 import { moxusService } from '../services/MoxusService';
 import { LLMNodeEditionResponse, NodeSpecificUpdates } from '../models/nodeOperations';
+import { regenerateSingleNode } from '../services/twineImportLLMService';
 
 interface AssistantOverlayProps {
   nodes: Node[];
@@ -98,8 +99,79 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   };
 
   const handleRegenerateNode = async (nodeId: string) => {
-    console.log(`Regenerate node ${nodeId} - Placeholder action`);
-    setError(`Regeneration for node ${nodeId} is not yet implemented.`);
+    if (!preview.llmResponse) {
+      setError("No preview data available for regeneration.");
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      // Get the node to regenerate (either from merge or original nodes)
+      const nodeToRegenerate = preview.llmResponse.merge?.find(n => n.id === nodeId) || 
+                              nodes.find(n => n.id === nodeId);
+      
+      if (!nodeToRegenerate) {
+        throw new Error('Node not found for regeneration');
+      }
+      
+      // Create a minimal extractedData object for the regenerateSingleNode function
+      const dummyExtractedData = { 
+        chunks: [[]], 
+      };
+      
+      // Use the prompt as node generation instructions
+      const nodeGenerationInstructions = preview.prompt || '';
+      
+      // Call regenerateSingleNode from the twine import service
+      const regeneratedNodeData = await regenerateSingleNode(
+        nodeId,
+        nodeToRegenerate,
+        dummyExtractedData,
+        nodes,
+        'merge_story', // Always use merge mode in assistant
+        nodeGenerationInstructions,
+        nodeToRegenerate // Pass as the recently generated version
+      );
+
+      // Update the preview state with the regenerated node
+      setPreview(prev => {
+        if (!prev.llmResponse) return prev;
+        
+        const newLLMResponse = { ...prev.llmResponse };
+        const userEdits = prev.editedNodes?.get(nodeId) || {};
+        
+        // Apply user edits on top of regenerated node data
+        const finalNodeData = { ...regeneratedNodeData, ...userEdits };
+        
+        // Update either in merge array or add to it if not present
+        if (newLLMResponse.merge) {
+          const existingIndex = newLLMResponse.merge.findIndex(n => n.id === nodeId);
+          if (existingIndex >= 0) {
+            newLLMResponse.merge[existingIndex] = { 
+              ...newLLMResponse.merge[existingIndex], 
+              ...finalNodeData 
+            };
+          } else {
+            newLLMResponse.merge.push({ id: nodeId, ...finalNodeData });
+          }
+        } else {
+          newLLMResponse.merge = [{ id: nodeId, ...finalNodeData }];
+        }
+        
+        return { 
+          ...prev, 
+          llmResponse: newLLMResponse
+        };
+      });
+      
+    } catch (err) {
+      console.error('Error regenerating node:', err);
+      setError(`Failed to regenerate node: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleConfirm = async () => {
@@ -323,4 +395,4 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   );
 };
 
-export default AssistantOverlay; 
+export default AssistantOverlay;
