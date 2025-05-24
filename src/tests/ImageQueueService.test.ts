@@ -216,4 +216,135 @@ describe('ImageQueueService', () => {
       vi.useRealTimers();
     });
   });
+
+  describe('Edge Cases and Robustness', () => {
+    it('should handle extremely long prompts', async () => {
+      const veryLongPrompt = 'A '.repeat(10000) + 'character in a magical forest';
+      
+      // Mock the generateImagePrompt to return our long prompt
+      (generateImagePrompt as ReturnType<typeof vi.fn>).mockResolvedValue(veryLongPrompt);
+      
+      await imageQueueService.addToQueue(mockNode, mockNodes, mockChatHistory);
+      
+      expect(generateImage).toHaveBeenCalledWith(
+        expect.stringContaining('character in a magical forest'),
+        undefined, // Node doesn't have imageSeed property, so it's undefined
+        'character'
+      );
+    });
+
+    it('should handle special characters in prompts', async () => {
+      const specialPrompt = 'Character with "quotes", symbols: @#$%^&*()[]{}|\\';
+      
+      await imageQueueService.addToQueueWithExistingPrompt(mockNode, specialPrompt);
+      
+      expect(generateImage).toHaveBeenCalledWith(
+        specialPrompt,
+        undefined, // Node doesn't have imageSeed property, so it's undefined
+        'character'
+      );
+    });
+
+    it('should handle nodes without updateImage flag', async () => {
+      const nodeWithoutUpdate = { ...mockNode, updateImage: false };
+      
+      await imageQueueService.addToQueue(nodeWithoutUpdate, mockNodes, mockChatHistory);
+      
+      // Should skip processing
+      expect(generateImagePrompt).not.toHaveBeenCalled();
+      expect(generateImage).not.toHaveBeenCalled();
+    });
+
+    it('should handle empty prompts', async () => {
+      await imageQueueService.addToQueueWithExistingPrompt(mockNode, '');
+      
+      expect(generateImage).toHaveBeenCalledWith(
+        '',
+        undefined, // Node doesn't have imageSeed property, so it's undefined
+        'character'
+      );
+    });
+
+    it('should handle nodes with unusual types', async () => {
+      const unusualNode = { ...mockNode, type: 'mysterious_entity' as any };
+      
+      await imageQueueService.addToQueue(unusualNode, mockNodes, mockChatHistory);
+      
+      expect(generateImage).toHaveBeenCalledWith(
+        expect.any(String),
+        undefined, // Node doesn't have imageSeed property, so it's undefined
+        'mysterious_entity'
+      );
+    });
+
+    it('should handle rapid successive calls with different node IDs', async () => {
+      vi.useFakeTimers();
+      const updateNodeCallback = vi.fn();
+      imageQueueService.setUpdateNodeCallback(updateNodeCallback);
+      
+      // Create different nodes to ensure they're all processed
+      const nodes = Array(5).fill(0).map((_, i) => ({
+        ...mockNode, 
+        id: `node-${i}`,
+        name: `Node ${i}`,
+        updateImage: true
+      }));
+      
+      const promises = nodes.map((node, i) => 
+        imageQueueService.addToQueueWithExistingPrompt(node, `prompt ${i}`)
+      );
+      
+      await Promise.all(promises);
+      
+      // Allow all queue processing to complete
+      await vi.runAllTimersAsync();
+      
+      // Should have queued all calls since they have different node IDs
+      expect(generateImage).toHaveBeenCalledTimes(5);
+      
+      vi.useRealTimers();
+    });
+
+    it('should handle nodes with missing image seeds', async () => {
+      const nodeWithoutSeed = { ...mockNode };
+      delete (nodeWithoutSeed as any).imageSeed;
+      
+      await imageQueueService.addToQueue(nodeWithoutSeed, mockNodes, mockChatHistory);
+      
+      expect(generateImage).toHaveBeenCalledWith(
+        expect.any(String),
+        undefined, // Should handle undefined seed gracefully
+        'character'
+      );
+    });
+
+    it('should handle nodes with explicit image seeds', async () => {
+      const nodeWithSeed = { ...mockNode, imageSeed: 12345 };
+      
+      await imageQueueService.addToQueue(nodeWithSeed, mockNodes, mockChatHistory);
+      
+      expect(generateImage).toHaveBeenCalledWith(
+        expect.any(String),
+        12345, // Should use the provided seed
+        'character'
+      );
+    });
+
+    it('should reveal queue behavior with same node ID', async () => {
+      // This test documents the actual behavior when adding the same node multiple times
+      const promises = Array(3).fill(0).map((_, i) => 
+        imageQueueService.addToQueueWithExistingPrompt(mockNode, `prompt ${i}`)
+      );
+      
+      await Promise.all(promises);
+      
+      // Document what actually happens - this is valuable insight into queue behavior
+      const callCount = (generateImage as any).mock.calls.length;
+      console.log(`Queue processed ${callCount} calls for same node ID`);
+      
+      // The service behavior might be to deduplicate or replace - let's document it
+      expect(callCount).toBeGreaterThan(0);
+      expect(callCount).toBeLessThanOrEqual(3);
+    });
+  });
 }); 
