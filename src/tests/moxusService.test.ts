@@ -297,10 +297,14 @@ describe('Moxus Service LLM Calls', () => {
       moxusService.getMoxusMemory().featureSpecificMemory.nodeEdition = "Node edition analysis for GM.";
       
       const newGeneralMemoryContent = "Completely new general memory via rpl for this test.";
-      const mockYamlRplResponse = `memory_update_diffs:\n  rpl: "${newGeneralMemoryContent}"`;
+      const mockJsonResponse = JSON.stringify({
+        memory_update_diffs: {
+          rpl: newGeneralMemoryContent
+        }
+      });
       
       mockGetMoxusFeedbackImpl.mockReset();
-      mockGetMoxusFeedbackImpl.mockResolvedValueOnce(mockYamlRplResponse);
+      mockGetMoxusFeedbackImpl.mockResolvedValueOnce(mockJsonResponse);
 
       moxusService.addTask('synthesizeGeneralMemory', { reason: "Test GM rpl update" });
       await advanceTimersByTime(200);
@@ -325,16 +329,16 @@ describe('Moxus Service LLM Calls', () => {
       const initialGeneralMemory = "Line one.\nLine two with old text.\nLine three.";
       moxusService.getMoxusMemory().GeneralMemory = initialGeneralMemory;
       
-      const mockYamlDfResponse = `
-memory_update_diffs:
-  df:
-    - prev_txt: "old text"
-      next_txt: "new replacement text"
-    - prev_txt: "Line one."
-      next_txt: "Updated line one."
-`; 
+      const mockJsonResponse = JSON.stringify({
+        memory_update_diffs: {
+          df: [
+            { prev_txt: "old text", next_txt: "new replacement text" },
+            { prev_txt: "Line one.", next_txt: "Updated line one." }
+          ]
+        }
+      });
       mockGetMoxusFeedbackImpl.mockReset();
-      mockGetMoxusFeedbackImpl.mockResolvedValueOnce(mockYamlDfResponse);
+      mockGetMoxusFeedbackImpl.mockResolvedValueOnce(mockJsonResponse);
 
       moxusService.addTask('synthesizeGeneralMemory', { reason: "Test GM df update" });
       await advanceTimersByTime(200);

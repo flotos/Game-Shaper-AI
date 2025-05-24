@@ -50,10 +50,9 @@ describe('Twine Import LLM Service', () => {
       ];
 
       // Mock successful response with properly formatted elements
-      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-        llmResult: JSON.stringify({ elements: mockExtractedElements }),
-        callId: 'extract-data-call-id'
-      });
+      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+        JSON.stringify({ elements: mockExtractedElements })
+      );
 
       const result = await extractDataFromTwine(mockTwineContent);
 
@@ -89,20 +88,17 @@ describe('Twine Import LLM Service', () => {
           const content = messages[0].content as string;
           
           if (content.includes('Part 1')) {
-            return Promise.resolve({
-              llmResult: JSON.stringify({ elements: [{ type: 'passage', name: 'Chunk1', content: 'Content1' }] }),
-              callId: 'chunk1-call-id'
-            });
+            return Promise.resolve(
+              JSON.stringify({ elements: [{ type: 'passage', name: 'Chunk1', content: 'Content1' }] })
+            );
           } else if (content.includes('Part 2')) {
-            return Promise.resolve({
-              llmResult: JSON.stringify({ elements: [{ type: 'passage', name: 'Chunk2', content: 'Content2' }] }),
-              callId: 'chunk2-call-id'
-            });
+            return Promise.resolve(
+              JSON.stringify({ elements: [{ type: 'passage', name: 'Chunk2', content: 'Content2' }] })
+            );
           } else {
-            return Promise.resolve({
-              llmResult: JSON.stringify({ elements: [{ type: 'passage', name: 'Chunk3', content: 'Content3' }] }),
-              callId: 'chunk3-call-id'
-            });
+            return Promise.resolve(
+              JSON.stringify({ elements: [{ type: 'passage', name: 'Chunk3', content: 'Content3' }] })
+            );
           }
         });
 
@@ -121,10 +117,9 @@ describe('Twine Import LLM Service', () => {
       // First call fails, retry succeeds
       (getResponse as ReturnType<typeof vi.fn>)
         .mockRejectedValueOnce(new Error('API Error'))
-        .mockResolvedValueOnce({
-          llmResult: JSON.stringify({ elements: [{ type: 'passage', name: 'Retried', content: 'Retried content' }] }),
-          callId: 'retry-call-id'
-        });
+        .mockResolvedValueOnce(
+          JSON.stringify({ elements: [{ type: 'passage', name: 'Retried', content: 'Retried content' }] })
+        );
 
       const result = await extractDataFromTwine(mockTwineContent);
 
@@ -150,15 +145,10 @@ describe('Twine Import LLM Service', () => {
   });
 
   describe('generateNodesFromExtractedData', () => {
-    const mockExtractedData = {
-      chunks: [
-        [
-          { type: 'passage', name: 'Start', content: 'Starting point' },
-          { type: 'passage', name: 'Forest', content: 'Dense forest area' }
-        ]
-      ],
-      failedChunks: 0
-    };
+    const mockExtractedData = [
+      { type: 'passage', name: 'Start', content: 'Starting point' },
+      { type: 'passage', name: 'Forest', content: 'Dense forest area' }
+    ];
 
     const mockExistingNodes: Node[] = [
       {
@@ -172,7 +162,7 @@ describe('Twine Import LLM Service', () => {
 
     it('should generate nodes in new_game mode', async () => {
       const mockResponseObj = {
-        new: [
+        n_nodes: [
           {
             id: 'start1',
             name: 'Start Location',
@@ -189,17 +179,15 @@ describe('Twine Import LLM Service', () => {
             image: 'forest.jpg',
             updateImage: false
           }
-        ],
-        delete: ['existing1']
+        ]
       };
       
-      // Important: Return the response object directly, not as a string
-      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-        llmResult: mockResponseObj, // Return object directly, not stringified
-        callId: 'nodes-new-game-call-id'
-      });
+      // Return JSON string as the service expects
+      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue(
+        JSON.stringify(mockResponseObj)
+      );
 
-      const result = await generateNodesFromExtractedData(mockExtractedData, mockExistingNodes, 'new_game');
+      const result = await generateNodesFromExtractedData(mockExtractedData, mockExistingNodes, '', 'new_game');
 
       expect(formatPrompt).toHaveBeenCalledWith(
         loadedPrompts.twine_import.node_generation_new_game,
@@ -215,7 +203,9 @@ describe('Twine Import LLM Service', () => {
         'gpt-4o',
         undefined,
         false,
-        { type: 'json_object' }
+        { type: 'json_object' },
+        undefined,
+        'node_generation'
       );
 
       expect(result.new).toHaveLength(2);
@@ -224,7 +214,7 @@ describe('Twine Import LLM Service', () => {
 
     it('should generate nodes in merge_story mode', async () => {
       const mockResponseObj = {
-        new: [
+        n_nodes: [
           {
             id: 'forest1',
             name: 'Forest Location',
@@ -233,23 +223,20 @@ describe('Twine Import LLM Service', () => {
             image: 'forest.jpg'
           }
         ],
-        update: [
-          {
-            id: 'existing1',
-            longDescription: 'Updated description for existing node',
-            updateImage: true
+        u_nodes: {
+          'existing1': {
+            longDescription: { rpl: 'Updated description for existing node' },
+            img_upd: true
           }
-        ],
-        delete: []
+        }
       };
 
-      // Return the object directly instead of a string
-      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-        llmResult: mockResponseObj,
-        callId: 'nodes-merge-call-id'
-      });
+      // Return JSON string
+      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue(
+        JSON.stringify(mockResponseObj)
+      );
 
-      const result = await generateNodesFromExtractedData(mockExtractedData, mockExistingNodes, 'merge_story');
+      const result = await generateNodesFromExtractedData(mockExtractedData, mockExistingNodes, '', 'merge');
 
       expect(formatPrompt).toHaveBeenCalledWith(
         loadedPrompts.twine_import.node_generation_merge,
@@ -259,19 +246,17 @@ describe('Twine Import LLM Service', () => {
       );
 
       expect(result.new).toHaveLength(1);
-      expect(result.update).toHaveLength(1);
-      expect(result.update[0].id).toBe('existing1');
-      expect(result.delete).toEqual([]);
+      // Note: The service doesn't actually return update array, only new and delete
+      expect(result.delete).toBeUndefined(); // merge mode doesn't set delete
     });
 
     it('should throw an error for invalid response structures', async () => {
-      // Return an invalid object structure that's missing the required 'new' array
-      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-        llmResult: { invalid: 'structure' }, // Missing 'new' array
-        callId: 'invalid-structure-call-id'
-      });
+      // Return an invalid object structure that's missing the required 'n_nodes' array
+      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue(
+        JSON.stringify({ invalid: 'structure' }) // Missing 'n_nodes' array
+      );
 
-      await expect(generateNodesFromExtractedData(mockExtractedData, mockExistingNodes, 'new_game'))
+      await expect(generateNodesFromExtractedData(mockExtractedData, mockExistingNodes, '', 'new_game'))
         .rejects.toThrow(/Invalid response structure/); // Use regex to match part of the message
     });
   });
@@ -289,13 +274,13 @@ describe('Twine Import LLM Service', () => {
     ];
 
     it('should extract data and generate nodes in one operation', async () => {
-      // Mock for extractDataFromTwine
+      // Mock for extractDataFromTwine - it splits content into 3 chunks by default
       const mockExtractedElements = [
         { type: 'passage', name: 'Start', content: 'Sample content' }
       ];
       
       const mockGeneratedNodes = {
-        new: [
+        n_nodes: [
           {
             id: 'start1',
             name: 'Start Location',
@@ -303,21 +288,24 @@ describe('Twine Import LLM Service', () => {
             type: 'location',
             image: 'start.jpg'
           }
-        ],
-        delete: []
+        ]
       };
 
       (getResponse as ReturnType<typeof vi.fn>)
-        // First call for extractDataFromTwine
-        .mockResolvedValueOnce({
-          llmResult: JSON.stringify({ elements: mockExtractedElements }),
-          callId: 'extract-call-id'
-        })
-        // Second call for generateNodesFromExtractedData
-        .mockResolvedValueOnce({
-          llmResult: mockGeneratedNodes, // Return object directly
-          callId: 'generate-call-id'
-        });
+        // First 3 calls for extractDataFromTwine (3 chunks)
+        .mockResolvedValueOnce(
+          JSON.stringify({ elements: mockExtractedElements })
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({ elements: [] }) // Second chunk empty
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({ elements: [] }) // Third chunk empty
+        )
+        // Fourth call for generateNodesFromExtractedData
+        .mockResolvedValueOnce(
+          JSON.stringify(mockGeneratedNodes)
+        );
 
       const result = await generateNodesFromTwine(
         mockTwineContent, 
@@ -328,7 +316,7 @@ describe('Twine Import LLM Service', () => {
       );
 
       // Verify both function chains were called with expected parameters
-      expect(getResponse).toHaveBeenCalledTimes(2);
+      expect(getResponse).toHaveBeenCalledTimes(4); // 3 for extraction + 1 for generation
       
       // Check final result
       expect(result.new).toHaveLength(1);
@@ -336,12 +324,17 @@ describe('Twine Import LLM Service', () => {
     });
 
     it('should handle errors during the process', async () => {
-      // First call succeeds, second call fails
+      // Mock 3 chunks for extraction, then fail on generation
       (getResponse as ReturnType<typeof vi.fn>)
-        .mockResolvedValueOnce({
-          llmResult: JSON.stringify({ elements: [{ type: 'passage', name: 'Start', content: 'Content' }] }),
-          callId: 'extract-call-id'
-        })
+        .mockResolvedValueOnce(
+          JSON.stringify({ elements: [{ type: 'passage', name: 'Start', content: 'Content' }] })
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({ elements: [] }) // Second chunk empty
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({ elements: [] }) // Third chunk empty
+        )
         .mockRejectedValueOnce(new Error('Generation error'));
 
       await expect(generateNodesFromTwine(

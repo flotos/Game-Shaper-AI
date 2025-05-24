@@ -148,23 +148,16 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         throw new Error('Node not found for regeneration');
       }
       
-      // Create a minimal extractedData object for the regenerateSingleNode function
-      const dummyExtractedData = { 
-        chunks: [[]], 
-      };
-      
       // Use the prompt as node generation instructions
       const nodeGenerationInstructions = preview.prompt || '';
       
       // Call regenerateSingleNode from the twine import service
       const regeneratedNodeData = await regenerateSingleNode(
         nodeId,
-        nodeToRegenerate,
-        dummyExtractedData,
-        nodes,
-        'merge_story', // Always use merge mode in assistant
+        nodes, // Pass all nodes, not just the one to regenerate
+        [], // Empty extracted data since we're not using Twine content
         nodeGenerationInstructions,
-        nodeToRegenerate // Pass as the recently generated version
+        JSON.stringify(nodeToRegenerate) // Pass the node details as a string
       );
       
       // Update the preview state with the regenerated node data
@@ -217,27 +210,26 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         throw new Error('New node not found for regeneration');
       }
       
-      // Create a minimal extractedData object for the regenerateSingleNode function
-      const dummyExtractedData = { 
-        chunks: [[]], 
-      };
-      
       // Use the prompt as node generation instructions
       const nodeGenerationInstructions = preview.prompt || '';
       
       // Temporarily assign an ID for regeneration
       const tempNodeId = `temp-new-${nodeIndex}`;
-      const nodeWithId = { ...nodeToRegenerate, id: tempNodeId };
+      const nodeWithId: Node = { 
+        id: tempNodeId,
+        name: nodeToRegenerate.name || 'New Node',
+        longDescription: nodeToRegenerate.longDescription || '',
+        type: nodeToRegenerate.type || 'unknown',
+        image: nodeToRegenerate.image || ''
+      };
       
       // Call regenerateSingleNode from the twine import service
       const regeneratedNodeData = await regenerateSingleNode(
         tempNodeId,
-        nodeWithId,
-        dummyExtractedData,
-        nodes,
-        'merge_story', // Always use merge mode in assistant
+        [...nodes, nodeWithId], // Add the temporary node to the nodes list
+        [], // Empty extracted data since we're not using Twine content
         nodeGenerationInstructions,
-        nodeWithId // Pass as the recently generated version
+        JSON.stringify(nodeWithId) // Pass the node details as a string
       );
       
       // Update the preview state with the regenerated node data

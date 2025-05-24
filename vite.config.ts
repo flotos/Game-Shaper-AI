@@ -1,10 +1,13 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import yaml from '@rollup/plugin-yaml';
 
 export default defineConfig({
   plugins: [
-    react(),
+    react({
+      jsxRuntime: 'automatic'
+    }),
     yaml()
   ],
   define: {
@@ -28,6 +31,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/tests/setup.ts', // Optional: if we need a setup file
+    setupFiles: './src/tests/setup.ts',
   }
 });

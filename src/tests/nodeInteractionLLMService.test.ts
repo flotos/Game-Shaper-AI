@@ -353,42 +353,15 @@ describe('Node Interaction LLM Service', () => {
         d_nodes: ['delete_id_1', 'delete_id_2']
       };
 
-      // This is the raw YAML string we mock the LLM to return
-      const mockLlmYamlOutput = `
-n_nodes:
-  - id: new1
-    name: New Node Alpha
-    type: event
-    longDescription: Alpha event description
-    image: alpha.png
-  - id: new2
-    name: New Node Beta
-    type: character
-    longDescription: Beta character intro
-    image: beta.png
-u_nodes:
-  "1": # Corresponds to mockNodes[0]
-    name:
-      rpl: Updated Node1 Name
-    longDescription:
-      df:
-        - prev_txt: descriptive
-          next_txt: extensively descriptive
-        - prev_txt: node
-          next_txt: entity
-    type:
-      rpl: quest_item
-    img_upd: true
-  "2": # Corresponds to mockNodes[1]
-    longDescription:
-      rpl: Completely new long description for Node 2.
-d_nodes:
-  - delete_id_1
-  - delete_id_2
-`;
+      // Return the JSON object directly (processJsonResponse expects JSON string or object)
+      const mockLlmJsonOutput = JSON.stringify({
+        n_nodes: mockExpectedParsedResponse.n_nodes,
+        u_nodes: mockExpectedParsedResponse.u_nodes,
+        d_nodes: mockExpectedParsedResponse.d_nodes
+      });
 
       (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-        llmResult: mockLlmYamlOutput,
+        llmResult: mockLlmJsonOutput,
         callId: mockExpectedParsedResponse.callId // This callId is passed through by processJsonResponse
       });
 
@@ -411,8 +384,17 @@ d_nodes:
     });
     
     it('should use /think for think_mode when isUserInteraction is false', async () => {
+      // Return proper JSON instead of YAML
+      const mockLlmJsonOutput = JSON.stringify({
+        u_nodes: {
+          "1": {
+            name: { rpl: "Updated Node1" }
+          }
+        }
+      });
+      
       (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-        llmResult: `u_nodes:\n  "1":\n    name: { rpl: "Updated Node1" }`,
+        llmResult: mockLlmJsonOutput,
         callId: 'edition-call-id-user-false'
       });
 
