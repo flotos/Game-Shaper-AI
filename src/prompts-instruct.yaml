@@ -61,19 +61,23 @@ twine_import:
 
     # Return format
 
-    Return a JSON object with the following structure:
-    {
-      "new": [
-        {
-          "id": "unique-id",
-          "name": "node name",
-          "longDescription": "detailed description",
-          "type": "node type",
-          "updateImage": true/false
-        }
-      ],
-      "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
-    }
+    Return a YAML structure with the following format:
+    ```yaml
+    n_nodes:
+      - id: "unique-id"
+        name: "node name"
+        longDescription: "detailed description"
+        type: "node type"
+        updateImage: true/false
+      - id: "unique-id-2"
+        name: "another node name"
+        longDescription: "another detailed description"
+        type: "another node type"
+        updateImage: true/false
+    d_nodes:
+      - "nodeID1ToDelete"
+      - "nodeID2ToDelete"
+    ```
   node_generation_merge: |
     /think
 
@@ -117,26 +121,25 @@ twine_import:
 
     # Return format
 
-    Return a JSON object with the following structure:
-    {
-      "new": [
-        {
-          "id": "unique-id",
-          "name": "node name",
-          "longDescription": "detailed description",
-          "type": "node type",
-          "updateImage": true/false
-        }
-      ],
-      "update": [
-        {
-          "id": "existing-node-id",
-          "longDescription": "updated description that merges existing and new content",
-          "updateImage": true/false
-        }
-      ],
-      "delete": ["nodeID1ToDelete", "nodeID2ToDelete", ...]
-    }
+    Return a YAML structure with the following format:
+    ```yaml
+    n_nodes:
+      - id: "unique-id"
+        name: "node name"
+        longDescription: "detailed description"
+        type: "node type"
+        updateImage: true/false
+    u_nodes:
+      "existing-node-id":
+        name:
+          rpl: "updated node name"
+        longDescription:
+          rpl: "updated description that merges existing and new content"
+        img_upd: true/false
+    d_nodes:
+      - "nodeID1ToDelete"
+      - "nodeID2ToDelete"
+    ```
       
     During your reasoning process, verify after every node created that you preserved ALL the original feature and did not discard any content.
   regenerate_single_node: |
@@ -176,25 +179,21 @@ twine_import:
 
     # Return format
 
-    Return a JSON object with the following structure:
-    {
-      "new": [
-        {
-          "id": "{node_id_to_regenerate}",
-          "name": "node name",
-          "longDescription": "detailed description",
-          "type": "node type",
-          "updateImage": true/false
-        }
-      ],
-      "update": [
-        {
-          "id": "{node_id_to_regenerate}",
-          "longDescription": "updated description",
-          "updateImage": true/false
-        }
-      ]
-    }
+    Return a YAML structure with the following format:
+    ```yaml
+    n_nodes:
+      - id: "{node_id_to_regenerate}"
+        name: "node name"
+        longDescription: "detailed description"
+        type: "node type"
+        updateImage: true/false
+    # OR
+    u_nodes:
+      "{node_id_to_regenerate}":
+        longDescription:
+          rpl: "updated description"
+        img_upd: true/false
+    ```
 
 image_generation:
   base_prompt_with_instructions_node: |
@@ -397,6 +396,8 @@ node_operations:
     Return a YAML structure with three optional top-level keys: "n_nodes", "u_nodes", and "d_nodes".
 
     1.  **n_nodes**: (Optional) A list of new node objects to be created.
+        - IMPORTANT: ONLY create new nodes for entities EXPLICITLY mentioned in the chat history but not yet represented in the game state.
+        - DO NOT invent new characters, items, locations, or concepts that weren't directly mentioned in the chat.
         - Each node object must have a new unique "id", "name", "longDescription", "type".
         - Set "updateImage": true if the new node needs an image generated.
         Example (YAML):
@@ -419,6 +420,7 @@ node_operations:
             - `next_txt`: Text to replace `prev_txt`. If empty, `prev_txt` is deleted.
             - `occ`: (Optional, defaults to 1) Which instance of `prev_txt`.
         - To signal image regeneration for a node, include `img_upd: true` at the level of the node ID.
+        - You may add subtle hooks or potential story elements to existing nodes, but keep them minimal and directly related to the current story context.
 
         Example of `u_nodes` block (YAML):
         ```yaml
@@ -487,8 +489,10 @@ node_operations:
     - For small textual changes in `longDescription`, use the `df` list within the `u_nodes` block.
     - For other field updates or complete rewrites of `longDescription`, use the `rpl` key.
     - If a node's visual representation changes, set `img_upd: true` for that node within its `u_nodes` entry.
-    - You can update up to 2 existing nodes, create up to 1 new node, and delete nodes as needed if they haven't been used in the recent history.
-    - Only output the current state of nodes, don't make up new information unless it doesn't contradict nor expand on the current story (chat).
+    - IMPORTANT: Create new nodes (n_nodes) ONLY for entities explicitly mentioned in the chat history but not yet represented in the game state.
+    - You can update up to 2 existing nodes, and delete nodes as needed if they haven't been used in the recent history (past 5 interactions).
+    - In updates (u_nodes), stick closely to information from the chat history, with only minimal embellishment or minor hooks for future story development.
+    - Only track what actually appears in the chat history - DO NOT invent major new plot elements, characters, or items.
     - Items usually don't need to regenerate images, unless they change very very drastically.
     - Pay close attention to update the details in the nodes, for example track the appearance of the characters there if the chat mention a change in look
       or accessory, clothing.
@@ -583,7 +587,10 @@ node_operations:
     n_nodes:
       - id: "ng01"
         name: "New Item"
-        longDescription: "..."
+        longDescription: |
+          line1
+          line2
+          ...
         type: "item"
         updateImage: true
     u_nodes:
@@ -598,8 +605,9 @@ node_operations:
       - "obsoleteNode03"
     ```
 
-    Make sure to format your output as valid YAML. Do not include any text around your YAML output as the output will be sent directly to a program.
     Ensure when writing markdown for longDescription to properly follow the yaml indentation rules.
+    Always use the | character instead of the " character for strings in longDescription to prevent some parsing issues for multiline content.
+    Make sure to format your output as valid YAML. ONLY output the straight YAML, as all your generated content will be sent directly to a program.
   sort_nodes_by_relevance: |
     # TASK:
     You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.

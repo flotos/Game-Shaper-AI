@@ -2,6 +2,7 @@ import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext'; // Message may not be directly used, but good for consistency if types evolve
 import { getResponse, formatPrompt, loadedPrompts } from './llmCore';
 import { safeJsonParse } from '../utils/jsonUtils';
+import yaml from 'js-yaml';
 
 // Interfaces specific to Twine data extraction
 export interface ExtractedElement {
@@ -112,25 +113,83 @@ export const generateNodesFromExtractedData = async (
     { role: 'system', content: generationPrompt },
   ];
 
-  const response = await getResponse(generationMessagesInternal, 'gpt-4o', undefined, false, { type: 'json_object' });
+  // Remove the JSON response format as we're expecting YAML output now
+  const response = await getResponse(generationMessagesInternal, 'gpt-4o', undefined, false);
   
   try {
-    const parsedResponse = typeof response === 'string' ? safeJsonParse(response) : response;
-    if (!parsedResponse.new || !Array.isArray(parsedResponse.new)) {
-      throw new Error('Invalid response structure: missing or invalid new array');
+    // Handle YAML response
+    const yamlString = typeof response === 'string' ? response : (response as any).llmResult;
+    // Remove potential YAML code block fences before parsing
+    const cleanedYamlString = yamlString.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
+    const parsedFromYaml = yaml.load(cleanedYamlString) as any;
+    
+    if (!parsedFromYaml.n_nodes || !Array.isArray(parsedFromYaml.n_nodes)) {
+      throw new Error('Invalid response structure: missing or invalid n_nodes array');
     }
+    
+    // Process the YAML result into the format expected by the UI
+    const result: any = {};
+    
+    // New nodes
+    result.new = parsedFromYaml.n_nodes;
+    
     if (mode === 'new_game') {
-      parsedResponse.delete = nodes.map(node => node.id);
+      result.delete = nodes.map(node => node.id);
     } else if (mode === 'merge_story') {
-      if (!parsedResponse.update || !Array.isArray(parsedResponse.update)) {
-        throw new Error('Invalid response structure: missing or invalid update array in merge mode');
+      // Handle update nodes (u_nodes in YAML)
+      if (parsedFromYaml.u_nodes && typeof parsedFromYaml.u_nodes === 'object') {
+        // Convert u_nodes format to update array (for backward compatibility)
+        const updateNodes: any[] = [];
+        
+        for (const [nodeId, updates] of Object.entries(parsedFromYaml.u_nodes)) {
+          const existingNode = nodes.find(n => n.id === nodeId);
+          if (!existingNode) continue;
+          
+          const updatedNode: any = { id: nodeId };
+          
+          // Apply updates
+          if (typeof updates === 'object' && updates !== null) {
+            for (const [field, operation] of Object.entries(updates as any)) {
+              if (field === 'img_upd') {
+                updatedNode.updateImage = operation as boolean;
+                continue;
+              }
+              
+              if (typeof operation === 'object' && operation !== null) {
+                if ('rpl' in operation) {
+                  updatedNode[field] = (operation as any).rpl;
+                }
+              }
+            }
+            
+            // Ensure essential fields are present
+            if (!updatedNode.name && existingNode) updatedNode.name = existingNode.name;
+            if (!updatedNode.longDescription && existingNode) updatedNode.longDescription = existingNode.longDescription;
+            if (!updatedNode.type && existingNode) updatedNode.type = existingNode.type;
+            
+            updateNodes.push(updatedNode);
+          }
+        }
+        
+        result.update = updateNodes;
       }
-      if (!parsedResponse.delete) parsedResponse.delete = [];
-      if (parsedResponse.update) {
+      
+      // Handle delete nodes
+      if (parsedFromYaml.d_nodes && Array.isArray(parsedFromYaml.d_nodes)) {
+        result.delete = parsedFromYaml.d_nodes;
+      } else {
+        result.delete = [];
+      }
+      
+      // Final validation for merge mode
+      if (!result.update) result.update = [];
+      
+      if (result.update) {
         const existingNodeIds = new Set(nodes.map(node => node.id));
         const validUpdates: any[] = [];
-        const newNodesFromUpdate = [...parsedResponse.new]; // Start with new nodes from LLM
-        for (const update of parsedResponse.update) {
+        const newNodesFromUpdate = [...result.new]; // Start with new nodes
+        
+        for (const update of result.update) {
           if (existingNodeIds.has(update.id)) {
             validUpdates.push(update);
           } else {
@@ -138,11 +197,14 @@ export const generateNodesFromExtractedData = async (
             if (existingNode) newNodesFromUpdate.push({ ...existingNode, ...update });
           }
         }
-        parsedResponse.update = validUpdates;
-        parsedResponse.new = newNodesFromUpdate;
+        
+        result.update = validUpdates;
+        result.new = newNodesFromUpdate;
       }
     }
-    parsedResponse.new.forEach((node: any) => {
+    
+    // Validate node fields
+    result.new.forEach((node: any) => {
       node.updateImage = node.updateImage ?? false;
       const missingFields: string[] = [];
       if (!node.id) missingFields.push('id');
@@ -153,8 +215,9 @@ export const generateNodesFromExtractedData = async (
         throw new Error(`Invalid node structure: missing required fields in node ${node.id || 'unknown'}: ${missingFields.join(', ')}`);
       }
     });
-    if (parsedResponse.update) {
-      parsedResponse.update.forEach((node: any) => {
+    
+    if (result.update) {
+      result.update.forEach((node: any) => {
         node.updateImage = node.updateImage ?? false;
         if (!node.id) throw new Error('Invalid update node: missing id field');
         if (!node.longDescription && node.updateImage === undefined) {
@@ -162,10 +225,11 @@ export const generateNodesFromExtractedData = async (
         }
       });
     }
-    return parsedResponse;
+    
+    return result;
   } catch (error) {
     console.error('Error parsing Twine import response:', error, 'Response content:', response);
-    throw new Error('Failed to parse Twine import response as JSON.');
+    throw new Error('Failed to parse Twine import response as YAML.');
   }
 };
 
@@ -205,23 +269,54 @@ export const regenerateSingleNode = async (
     { role: 'system', content: focusedPrompt },
   ];
 
-  const response = await getResponse(messagesInternal, 'gpt-4o', undefined, false, { type: 'json_object' });
+  // Remove JSON response format to use YAML instead
+  const response = await getResponse(messagesInternal, 'gpt-4o', undefined, false);
   
   try {
-    // Handle response wrapped in llmResult
-    let parsedResponse;
-    if (typeof response === 'object' && response !== null && 'llmResult' in response && typeof response.llmResult === 'string') {
-      parsedResponse = safeJsonParse(response.llmResult);
-    } else {
-      parsedResponse = typeof response === 'string' ? safeJsonParse(response) : response;
+    // Handle YAML response
+    const yamlString = typeof response === 'string' ? response : (response as any).llmResult;
+    // Remove potential YAML code block fences before parsing
+    const cleanedYamlString = yamlString.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
+    const parsedFromYaml = yaml.load(cleanedYamlString) as any;
+    
+    if ((!parsedFromYaml.n_nodes || !Array.isArray(parsedFromYaml.n_nodes)) && 
+        (!parsedFromYaml.u_nodes || typeof parsedFromYaml.u_nodes !== 'object')) {
+      throw new Error('Invalid response structure: missing or invalid n_nodes array or u_nodes object');
     }
     
-    if ((!parsedResponse.new || !Array.isArray(parsedResponse.new)) && 
-        (!parsedResponse.update || !Array.isArray(parsedResponse.update))) {
-      throw new Error('Invalid response structure: missing or invalid arrays');
+    // Look for the node in n_nodes first
+    let updatedNodeData = parsedFromYaml.n_nodes?.find((n: Partial<Node>) => n.id === nodeId);
+    
+    // If not found in n_nodes, look in u_nodes and convert the update format to a node object
+    if (!updatedNodeData && parsedFromYaml.u_nodes && nodeId in parsedFromYaml.u_nodes) {
+      const updates = parsedFromYaml.u_nodes[nodeId];
+      const existingNode = nodes.find(n => n.id === nodeId);
+      if (!existingNode) throw new Error(`Node with ID ${nodeId} not found`);
+      
+      updatedNodeData = { id: nodeId };
+      
+      // Apply updates from u_nodes
+      if (typeof updates === 'object' && updates !== null) {
+        for (const [field, operation] of Object.entries(updates)) {
+          if (field === 'img_upd') {
+            updatedNodeData.updateImage = operation as boolean;
+            continue;
+          }
+          
+          if (typeof operation === 'object' && operation !== null) {
+            if ('rpl' in operation) {
+              (updatedNodeData as any)[field] = (operation as any).rpl;
+            }
+          }
+        }
+        
+        // Ensure essential fields are present
+        if (!updatedNodeData.name && existingNode) updatedNodeData.name = existingNode.name;
+        if (!updatedNodeData.longDescription && existingNode) updatedNodeData.longDescription = existingNode.longDescription;
+        if (!updatedNodeData.type && existingNode) updatedNodeData.type = existingNode.type;
+      }
     }
-    const updatedNodeData = parsedResponse.new?.find((n: Partial<Node>) => n.id === nodeId) || 
-                           parsedResponse.update?.find((n: { id: string; }) => n.id === nodeId);
+    
     if (!updatedNodeData) throw new Error('Node not found in response');
     
     updatedNodeData.updateImage = updatedNodeData.updateImage ?? false;
@@ -229,7 +324,7 @@ export const regenerateSingleNode = async (
     return updatedNodeData;
   } catch (error) {
     console.error('Error parsing node regeneration response:', error, 'Response content:', response);
-    throw new Error('Failed to parse node regeneration response as JSON');
+    throw new Error('Failed to parse node regeneration response as YAML');
   }
 };
 
