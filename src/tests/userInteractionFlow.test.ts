@@ -233,24 +233,50 @@ n_nodes:
     }));
   });
 
-  it('should process a complete chain of LLM calls after a user interaction', async () => {
+  it('should process a complete comprehensive chain of all LLM calls after a user interaction', async () => {
+    // This test comprehensively covers ALL LLM calls made during a complete user interaction:
+    //
+    // MAIN USER INTERACTION LLM CALLS (9 total):
+    // 1. getRelevantNodes (node_relevance_check) - when nodes > 15
+    // 2. generateChatText (chat_text_generation) - streaming response  
+    // 3. generateActions (action_generation) - parallel with node edition
+    // 4. generateNodeEdition (node_edition_yaml) - parallel with actions
+    // 5-9. generateImagePrompt (image_prompt_generation) x5 - background image generation
+    //
+    // MOXUS FEEDBACK PIPELINE LLM CALLS (6 total):
+    // 1. Feedback for node_relevance_check 
+    // 2. Feedback for chat_text_generation
+    // 3. chatText memory update (INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback)
+    // 4. Feedback for node_edition_yaml
+    // 5. nodeEdition memory update (INTERNAL_MEMORY_UPDATE_FOR_node_edition) 
+    // 6. Final report generation (INTERNAL_FINAL_REPORT_GENERATION_STEP)
+    // 7. General memory update (INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory) - optional
+    //
+    // CALL TYPES VERIFIED TO BE SKIPPED:
+    // - action_generation (no feedback generated)
+    // - image_prompt_generation (no feedback generated)
+    //
+    // TOTAL: 15+ LLM operations per user interaction
+    
     vi.useFakeTimers();
     
-    // Setup mock data
+    // Setup mock data with many nodes to trigger getRelevantNodes
     const mockNodes: Node[] = [
       {
         id: 'char1', 
         name: 'Hero Character',
         longDescription: 'A brave hero',
         type: 'character',
-        image: 'hero.jpg'
+        image: 'hero.jpg',
+        updateImage: true
       },
       {
         id: 'location1',
         name: 'Fantasy World',
         longDescription: 'A magical realm',
         type: 'location',
-        image: 'world.jpg'
+        image: 'world.jpg',
+        updateImage: true
       },
       {
         id: 'assist1',
@@ -258,7 +284,16 @@ n_nodes:
         longDescription: 'Helpful storyteller',
         type: 'assistant',
         image: 'assistant.jpg'
-      }
+      },
+      // Add many more nodes to trigger getRelevantNodes (>15 nodes)
+      ...Array.from({ length: 13 }, (_, i) => ({
+        id: `extra_node_${i + 1}`,
+        name: `Extra Node ${i + 1}`,
+        longDescription: `Description for extra node ${i + 1}`,
+        type: 'location',
+        image: `extra${i + 1}.jpg`,
+        updateImage: i < 2 // Only first 2 extra nodes need image updates
+      }))
     ];
     
     const mockChatHistory: Message[] = [
@@ -270,111 +305,232 @@ n_nodes:
     mockGetNodesCallback.mockReturnValue(mockNodes);
     mockGetChatHistoryCallback.mockReturnValue(mockChatHistory);
     
-    // Setup different responses for each stage of the process
+    // Track all LLM calls made by callType
+    const llmCallTracker: Record<string, number> = {};
     mockGetMoxusFeedbackImpl.mockReset();
     mockGetMoxusFeedbackImpl.mockImplementation((prompt, callType) => {
       console.log(`[TEST] MockGetMoxusFeedback called with callType: ${callType}`);
+      llmCallTracker[callType] = (llmCallTracker[callType] || 0) + 1;
       return Promise.resolve('Moxus feedback response');
     });
     
-    // STEP 1: First LLM call - Chat text generation
-    const chatTextCallId = 'flow-chat-text-123';
+    // PHASE 1: Main User Interaction LLM Calls
+    
+    // STEP 1: getRelevantNodes (triggered because we have >15 nodes)
+    const relevantNodesCallId = 'comprehensive-relevant-nodes-123';
+    moxusService.initiateLLMCallRecord(
+      relevantNodesCallId,
+      'node_relevance_check',
+      'gpt-3.5-turbo',
+      'Determine which nodes are relevant to user input'
+    );
+    moxusService.finalizeLLMCallRecord(
+      relevantNodesCallId,
+      '{"relevantNodes": ["char1", "location1"]}'
+    );
+    
+    // STEP 2: generateChatText (streaming)
+    const chatTextCallId = 'comprehensive-chat-text-456';
     moxusService.initiateLLMCallRecord(
       chatTextCallId,
       'chat_text_generation',
       'gpt-4o',
       'Generate a response to the user question about what happens next'
     );
-    
-    // Add chat history to the LLM call
     moxusService.getMoxusMemory().featureSpecificMemory.llmCalls[chatTextCallId].chatHistory = mockChatHistory;
-    
-    // Finalize the chat text call
     moxusService.finalizeLLMCallRecord(
       chatTextCallId,
       'The hero ventured into the dark forest, where ancient secrets awaited...'
     );
     
-    // Allow time for feedback task to be queued and processed
-    await advanceTimersByTime(300);
+    // STEP 3: generateActions (parallel with node edition)
+    const actionsCallId = 'comprehensive-actions-789';
+    moxusService.initiateLLMCallRecord(
+      actionsCallId,
+      'action_generation',
+      'gpt-4o',
+      'Generate possible actions based on the story text'
+    );
+    moxusService.finalizeLLMCallRecord(
+      actionsCallId,
+      '{"actions": ["Explore deeper into the forest", "Set up camp for the night", "Look for clues"]}'
+    );
     
-    // STEP 2: Second LLM call - Node edition based on the new narrative
-    const nodeEditionCallId = 'flow-node-edition-456';
+    // STEP 4: generateNodeEdition (parallel with actions)
+    const nodeEditionCallId = 'comprehensive-node-edition-012';
     moxusService.initiateLLMCallRecord(
       nodeEditionCallId,
       'node_edition_yaml',
       'gpt-4o',
       'Update nodes based on the hero entering the forest'
     );
-    
-    // Finalize the node edition call
     moxusService.finalizeLLMCallRecord(
       nodeEditionCallId,
-      `
-n_nodes:
-  - id: forest1
-    name: Dark Forest
-    type: location
-    longDescription: An ancient forest filled with mysteries and secrets.
-    image: forest.jpg
-u_nodes:
-  "char1":
-    longDescription:
-      df:
-        - prev_txt: "A brave hero"
-          next_txt: "A brave hero exploring the ancient forest"
-`
+      JSON.stringify({
+        n_nodes: [{
+          id: 'forest1',
+          name: 'Dark Forest',
+          type: 'location',
+          longDescription: 'An ancient forest filled with mysteries and secrets.',
+          image: 'forest.jpg',
+          updateImage: true
+        }],
+        u_nodes: {
+          "char1": {
+            longDescription: {
+              df: [{
+                prev_txt: "A brave hero",
+                next_txt: "A brave hero exploring the ancient forest"
+              }]
+            },
+            img_upd: true
+          }
+        }
+      })
     );
     
-    // Allow time for feedback and memory updates
+    // PHASE 2: Image Generation LLM Calls (background)
+    
+    // STEP 5: Image prompt generation for multiple nodes
+    const imagePromptCallIds = [];
+    const nodesToUpdateImages = ['char1', 'location1', 'forest1', 'extra_node_1', 'extra_node_2'];
+    
+    for (let i = 0; i < nodesToUpdateImages.length; i++) {
+      const nodeId = nodesToUpdateImages[i];
+      const imageCallId = `comprehensive-image-prompt-${nodeId}-${i}`;
+      imagePromptCallIds.push(imageCallId);
+      
+      moxusService.initiateLLMCallRecord(
+        imageCallId,
+        'image_prompt_generation',
+        'gpt-4o',
+        `Generate image prompt for node ${nodeId}`
+      );
+      moxusService.finalizeLLMCallRecord(
+        imageCallId,
+        `A detailed image prompt for ${nodeId} with fantasy elements`
+      );
+    }
+    
+    // Allow time for initial feedback tasks to be queued
+    await advanceTimersByTime(100);
+    
+    // PHASE 3: Moxus Feedback Pipeline (background, asynchronous)
+    
+    // Allow time for all feedback tasks to be processed sequentially
+    // The MoxusService should process these in order: chatTextFeedback, llmCallFeedback, then finalReport
+    console.log('[TEST] Processing Moxus feedback pipeline...');
+    
+    // Process chatTextFeedback
+    await advanceTimersByTime(400);
+    
+    // Process llmCallFeedback tasks (for node_edition_yaml, action_generation, etc.)
+    await advanceTimersByTime(400);
+    
+    // Process nodeEdition memory update (part of node_edition_yaml feedback)
     await advanceTimersByTime(300);
     
-    // STEP 3: Manually trigger a final report
-    console.log('[TEST] About to add finalReport task');
-    moxusService.addTask('finalReport', { reason: "Test-driven final report" }, mockChatHistory);
-    
-    // Allow more time for the final report and general memory update
-    console.log('[TEST] Advancing time for final report processing');
-    await advanceTimersByTime(300);
+    // Process chatText memory update
     await advanceTimersByTime(300);
     
-    // VERIFY THE COMPLETE FLOW
-    console.log('[TEST] Starting verification');
+    // Final report should be triggered when both major feedbacks are complete
+    await advanceTimersByTime(400);
     
-    // 1. Verify all LLM calls were recorded
+    // General memory update after final report
+    await advanceTimersByTime(400);
+    
+    // COMPREHENSIVE VERIFICATION
+    console.log('[TEST] Starting comprehensive verification');
+    
+    // 1. Verify all main interaction LLM calls were recorded
     const llmCalls = moxusService.getLLMLogEntries();
-    expect(llmCalls.length).toBe(2);
-    expect(llmCalls.some(call => call.id === chatTextCallId)).toBe(true);
-    expect(llmCalls.some(call => call.id === nodeEditionCallId)).toBe(true);
+    console.log(`[TEST] Total LLM calls recorded: ${llmCalls.length}`);
     
-    // 2. Verify feedback was generated for both calls
+    // Should have: relevantNodes + chatText + actions + nodeEdition + 5 imagePrompts = 9 main calls
+    const mainCallTypes = ['node_relevance_check', 'chat_text_generation', 'action_generation', 'node_edition_yaml', 'image_prompt_generation'];
+    const mainCalls = llmCalls.filter(call => mainCallTypes.includes(call.callType));
+    expect(mainCalls.length).toBeGreaterThanOrEqual(9); // 4 main + 5 image prompts
+    
+    // Verify specific main calls exist
+    expect(llmCalls.some(call => call.id === relevantNodesCallId)).toBe(true);
+    expect(llmCalls.some(call => call.id === chatTextCallId)).toBe(true);
+    expect(llmCalls.some(call => call.id === actionsCallId)).toBe(true);
+    expect(llmCalls.some(call => call.id === nodeEditionCallId)).toBe(true);
+    imagePromptCallIds.forEach(imageId => {
+      expect(llmCalls.some(call => call.id === imageId)).toBe(true);
+    });
+    
+    // 2. Verify feedback was generated for eligible calls ONLY
+    // According to MoxusService: action_generation and image_prompt_generation are SKIPPED
     const chatTextCall = llmCalls.find(call => call.id === chatTextCallId);
+    const actionsCall = llmCalls.find(call => call.id === actionsCallId);
     const nodeEditionCall = llmCalls.find(call => call.id === nodeEditionCallId);
+    
     expect(chatTextCall?.feedback).toBeTruthy();
     expect(nodeEditionCall?.feedback).toBeTruthy();
     
-    // 3. Verify memory was updated in all areas
+    // action_generation calls should NOT have feedback (they're skipped)
+    expect(actionsCall?.feedback).toBeUndefined();
+    
+    // Image prompt calls should NOT have feedback (they're skipped)
+    imagePromptCallIds.forEach(imageId => {
+      const imageCall = llmCalls.find(call => call.id === imageId);
+      expect(imageCall?.feedback).toBeUndefined();
+    });
+    
+    // 3. Verify all memory areas were updated
     const memory = moxusService.getMoxusMemory();
     expect(memory.featureSpecificMemory.chatText).toBeTruthy();
     expect(memory.featureSpecificMemory.nodeEdition).toBeTruthy();
     expect(memory.GeneralMemory).toBeTruthy();
     
-    // 4. Verify that a Moxus report was sent to chat
+    // 4. Verify comprehensive Moxus LLM call pattern
+    const moxusCallCount = mockGetMoxusFeedbackImpl.mock.calls.length;
+    console.log(`[TEST] Total Moxus LLM calls made: ${moxusCallCount}`);
+    console.log('[TEST] Moxus call breakdown by type:', llmCallTracker);
+    
+    // Expected Moxus calls (based on actual behavior observed):
+    // - Feedback for node_relevance_check (✓) - NOT skipped, gets feedback
+    // - Feedback for chat_text_generation (✓)
+    // - chatText memory update (✓)
+    // - Feedback for node_edition_yaml (✓) 
+    // - nodeEdition memory update (part of node_edition_yaml feedback) (✓)
+    // - Final report generation (✓)
+    // - General memory update (may or may not happen in test timing)
+    // NOTE: action_generation and image_prompt_generation are SKIPPED
+    expect(moxusCallCount).toBeGreaterThanOrEqual(6);
+    expect(moxusCallCount).toBeLessThanOrEqual(8); // Allow some variation in processing order
+    
+    // Verify specific Moxus call types were made
+    expect(llmCallTracker['node_relevance_check']).toBe(1);
+    expect(llmCallTracker['chat_text_generation']).toBe(1);
+    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback']).toBe(1);
+    expect(llmCallTracker['node_edition_yaml']).toBe(1);
+    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_node_edition']).toBe(1);
+    expect(llmCallTracker['INTERNAL_FINAL_REPORT_GENERATION_STEP']).toBe(1);
+    
+    // General memory update may or may not complete in test timing - make it optional
+    if (llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory']) {
+      expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory']).toBe(1);
+    }
+    
+    // Verify that action_generation and image_prompt_generation were NOT processed by Moxus
+    expect(llmCallTracker['action_generation']).toBeUndefined();
+    expect(llmCallTracker['image_prompt_generation']).toBeUndefined();
+    
+    // 5. Verify that a Moxus report was sent to chat
     expect(mockAddMessageCallback).toHaveBeenCalledWith(expect.objectContaining({
       role: 'moxus',
       content: expect.any(String)
     }));
     
-    // 5. Verify a reasonable number of LLM calls were made by Moxus
-    const callCount = mockGetMoxusFeedbackImpl.mock.calls.length;
-    console.log(`[TEST] mockGetMoxusFeedbackImpl was called ${callCount} times`);
-    mockGetMoxusFeedbackImpl.mock.calls.forEach((call, index) => {
-      console.log(`[TEST] Call ${index + 1} callType: ${call[1]}`);
-    });
+    // 6. Verify total LLM call count is comprehensive
+    // Main calls (4) + Image prompts (5) + Moxus calls (4-6) = 13-15 total
+    const totalLLMCalls = llmCalls.length + moxusCallCount;
+    console.log(`[TEST] Total LLM operations (main + Moxus): ${totalLLMCalls}`);
+    expect(totalLLMCalls).toBeGreaterThanOrEqual(13);
+    expect(totalLLMCalls).toBeLessThanOrEqual(17); // Reasonable upper bound
     
-    // We expect at least 4 calls (chat feedback, node feedback, chat memory, final report)
-    expect(callCount).toBeGreaterThanOrEqual(4);
-    // The general memory update and node edition memory update might happen in different order
-    expect(callCount).toBeLessThanOrEqual(6);
+    console.log('[TEST] Comprehensive userInteractionFlow test completed successfully');
   });
 }); 
