@@ -61,23 +61,19 @@ twine_import:
 
     # Return format
 
-    Return a YAML structure with the following format:
-    ```yaml
-    n_nodes:
-      - id: "unique-id"
-        name: "node name"
-        longDescription: "detailed description"
-        type: "node type"
-        updateImage: true/false
-      - id: "unique-id-2"
-        name: "another node name"
-        longDescription: "another detailed description"
-        type: "another node type"
-        updateImage: true/false
-    d_nodes:
-      - "nodeID1ToDelete"
-      - "nodeID2ToDelete"
-    ```
+    Return a JSON object with the following structure:
+    {
+      "n_nodes": [
+        {
+          "id": "unique-id",
+          "name": "node name",
+          "longDescription": "detailed description",
+          "type": "node type",
+          "updateImage": true
+        }
+      ],
+      "d_nodes": ["nodeID1ToDelete", "nodeID2ToDelete"]
+    }
   node_generation_merge: |
     /think
 
@@ -121,25 +117,26 @@ twine_import:
 
     # Return format
 
-    Return a YAML structure with the following format:
-    ```yaml
-    n_nodes:
-      - id: "unique-id"
-        name: "node name"
-        longDescription: "detailed description"
-        type: "node type"
-        updateImage: true/false
-    u_nodes:
-      "existing-node-id":
-        name:
-          rpl: "updated node name"
-        longDescription:
-          rpl: "updated description that merges existing and new content"
-        img_upd: true/false
-    d_nodes:
-      - "nodeID1ToDelete"
-      - "nodeID2ToDelete"
-    ```
+    Return a JSON object with the following structure:
+    {
+      "n_nodes": [
+        {
+          "id": "unique-id",
+          "name": "node name",
+          "longDescription": "detailed description",
+          "type": "node type",
+          "updateImage": true
+        }
+      ],
+      "u_nodes": {
+        "existing-node-id": {
+          "name": { "rpl": "updated node name" },
+          "longDescription": { "rpl": "updated description that merges existing and new content" },
+          "img_upd": true
+        }
+      },
+      "d_nodes": ["nodeID1ToDelete", "nodeID2ToDelete"]
+    }
       
     During your reasoning process, verify after every node created that you preserved ALL the original feature and did not discard any content.
   regenerate_single_node: |
@@ -179,21 +176,27 @@ twine_import:
 
     # Return format
 
-    Return a YAML structure with the following format:
-    ```yaml
-    n_nodes:
-      - id: "{node_id_to_regenerate}"
-        name: "node name"
-        longDescription: "detailed description"
-        type: "node type"
-        updateImage: true/false
-    # OR
-    u_nodes:
-      "{node_id_to_regenerate}":
-        longDescription:
-          rpl: "updated description"
-        img_upd: true/false
-    ```
+    Return a JSON object with the following structure:
+    {
+      "n_nodes": [
+        {
+          "id": "{node_id_to_regenerate}",
+          "name": "node name",
+          "longDescription": "detailed description",
+          "type": "node type",
+          "updateImage": true
+        }
+      ]
+    }
+    OR
+    {
+      "u_nodes": {
+        "{node_id_to_regenerate}": {
+          "longDescription": { "rpl": "updated description" },
+          "img_upd": true
+        }
+      }
+    }
 
 image_generation:
   base_prompt_with_instructions_node: |
@@ -372,7 +375,7 @@ node_operations:
     {think_mode}
     # TASK:
     Based on the following game state and story, update the game graph by specifying creations, deletions, and targeted updates for nodes to match the current state of the story.
-    Your output MUST be in YAML format.
+    Your output MUST be in JSON format.
 
     ## Node Properties Reference (for context on available fields):
     - id: Unique id string (cannot be changed by an update operation; new nodes get new IDs)
@@ -392,80 +395,98 @@ node_operations:
     ## User Input:
     {user_input}
 
-    # RETURN FORMAT (YAML):
-    Return a YAML structure with three optional top-level keys: "n_nodes", "u_nodes", and "d_nodes".
+    # RETURN FORMAT (JSON):
+    Return a JSON object with three optional top-level keys: "n_nodes", "u_nodes", and "d_nodes".
 
-    1.  **n_nodes**: (Optional) A list of new node objects to be created.
+    1.  **n_nodes**: (Optional) An array of new node objects to be created.
         - IMPORTANT: ONLY create new nodes for entities EXPLICITLY mentioned in the chat history but not yet represented in the game state.
         - DO NOT invent new characters, items, locations, or concepts that weren't directly mentioned in the chat.
         - Each node object must have a new unique "id", "name", "longDescription", "type".
         - Set "updateImage": true if the new node needs an image generated.
-        Example (YAML):
-        ```yaml
-        n_nodes:
-          - id: "unique-new-id-001"
-            name: "Mysterious Orb"
-            longDescription: "A faintly glowing orb pulses with an inner light."
-            type: "item"
-            updateImage: true
+        Example (JSON):
+        ```json
+        "n_nodes": [
+          {
+            "id": "unique-new-id-001",
+            "name": "Mysterious Orb",
+            "longDescription": "A faintly glowing orb pulses with an inner light.",
+            "type": "item",
+            "updateImage": true
+          }
+        ]
         ```
 
-    2.  **u_nodes**: (Optional) A mapping where each key is an existing `nodeId` to be modified. The value is an object specifying the fields to update.
+    2.  **u_nodes**: (Optional) An object where each key is an existing nodeId to be modified. The value is an object specifying the fields to update.
         - For each field on a node (e.g., "name", "longDescription", "type", "image"):
-          - To replace the entire field: use `rpl: "new complete value"`.
-            Example: `name: { rpl: "The Ancient Tome" }`
-          - For small, targeted changes in `longDescription` (to save tokens): use `df:` followed by a list of diff instructions.
-            - Each diff instruction: `{ prev_txt: "text to find", next_txt: "text to replace with", occ: 1 (optional, 1-indexed) }`.
+          - To replace the entire field: use `"rpl": "new complete value"`.
+            Example: `"name": { "rpl": "The Ancient Tome" }`
+          - For small, targeted changes in `longDescription` (to save tokens): use `"df"` followed by an array of diff instructions.
+            - Each diff instruction: `{ "prev_txt": "text to find", "next_txt": "text to replace with", "occ": 1 }`
             - `prev_txt`: The exact text fragment to find.
             - `next_txt`: Text to replace `prev_txt`. If empty, `prev_txt` is deleted.
             - `occ`: (Optional, defaults to 1) Which instance of `prev_txt`.
-        - To signal image regeneration for a node, include `img_upd: true` at the level of the node ID.
+        - To signal image regeneration for a node, include `"img_upd": true` at the level of the node ID.
         - You may add subtle hooks or potential story elements to existing nodes, but keep them minimal and directly related to the current story context.
 
-        Example of `u_nodes` block (YAML):
-        ```yaml
-        u_nodes:
-          node-id-abc:
-            name: { rpl: "The Guard Captain" }
-            longDescription:
-              df:
-                - prev_txt: "He looks tired."
-                  next_txt: "He looks battle-weary but vigilant."
-                  occ: 1
-                - prev_txt: "a simple sword"
-                  next_txt: "a gleaming longsword"
-            img_upd: true # Signal image regeneration for this node
-          node-id-xyz:
-            type: { rpl: "Key Item" }
-            img_upd: false # Explicitly state no image update, or omit if no change
+        Example of `u_nodes` block (JSON):
+        ```json
+        "u_nodes": {
+          "node-id-abc": {
+            "name": { "rpl": "The Guard Captain" },
+            "longDescription": {
+              "df": [
+                {
+                  "prev_txt": "He looks tired.",
+                  "next_txt": "He looks battle-weary but vigilant."
+                },
+                {
+                  "prev_txt": "a simple sword",
+                  "next_txt": "a gleaming longsword"
+                }
+              ]
+            },
+            "img_upd": true
+          },
+          "node-id-xyz": {
+            "type": { "rpl": "Key Item" },
+            "img_upd": false
+          }
+        }
         ```
 
-    3.  **d_nodes**: (Optional) A list of `nodeId` strings for nodes to be deleted.
-        Example (YAML):
-        ```yaml
-        d_nodes:
-          - "node-id-to-remove-1"
-          - "node-id-to-remove-2"
+    3.  **d_nodes**: (Optional) An array of nodeId strings for nodes to be deleted.
+        Example (JSON):
+        ```json
+        "d_nodes": ["node-id-to-remove-1", "node-id-to-remove-2"]
         ```
 
-    ## Overall YAML structure example:
-    ```yaml
-    n_nodes:
-      - id: "ng01"
-        name: "New Item"
-        longDescription: "..."
-        type: "item"
-        updateImage: true
-    u_nodes:
-      existingNode01:
-        longDescription:
-          df:
-            - { prev_txt: "is old", next_txt: "is ancient and powerful" }
-        img_upd: true
-      existingNode02:
-        name: { rpl: "A New Name For Node 02" }
-    d_nodes:
-      - "obsoleteNode03"
+    ## Overall JSON structure example:
+    ```json
+    {
+      "n_nodes": [
+        {
+          "id": "ng01",
+          "name": "New Item",
+          "longDescription": "line1\nline2\n...",
+          "type": "item",
+          "updateImage": true
+        }
+      ],
+      "u_nodes": {
+        "existingNode01": {
+          "longDescription": {
+            "df": [
+              { "prev_txt": "is old", "next_txt": "is ancient and powerful" }
+            ]
+          },
+          "img_upd": true
+        },
+        "existingNode02": {
+          "name": { "rpl": "A New Name For Node 02" }
+        }
+      },
+      "d_nodes": ["obsoleteNode03"]
+    }
     ```
 
     ## Example longDescription fields values:
@@ -485,8 +506,8 @@ node_operations:
     The air was thick with the smell of old parchment and secrets, whispering to those who knew how to listen.
 
     ## General Guidelines:
-    - Output valid YAML. Indentation is critical.
-    - For small textual changes in `longDescription`, use the `df` list within the `u_nodes` block.
+    - Output valid JSON. Syntax is critical.
+    - For small textual changes in `longDescription`, use the `df` array within the `u_nodes` block.
     - For other field updates or complete rewrites of `longDescription`, use the `rpl` key.
     - If a node's visual representation changes, set `img_upd: true` for that node within its `u_nodes` entry.
     - IMPORTANT: Create new nodes (n_nodes) ONLY for entities explicitly mentioned in the chat history but not yet represented in the game state.
@@ -498,7 +519,7 @@ node_operations:
       or accessory, clothing.
     - Keep the node length below 4 paragraphs.
 
-    Don't send backquotes nor text along the output as it will be sent directly to a program.
+    Return only the JSON object as your entire response, with no additional text or formatting.
   generate_nodes_from_prompt: |
     You are a Game Engine. The user asked to update how the game work or to change some aspect of the world.
     Your task is to update the game nodes based on the following prompt, for a Game Engine:
@@ -524,90 +545,98 @@ node_operations:
     10. All node should represent a game system, a lore entry, character, or an object. These should NOT be used to describe events or time-limited things. If a specific event need to be remembered, store it in a "memory" game system node.
     11. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
 
-    # RETURN FORMAT (YAML):
-    Return a YAML structure with three optional top-level keys: "n_nodes", "u_nodes", and "d_nodes".
+    # RETURN FORMAT (JSON):
+    Return a JSON object with three optional top-level keys: "n_nodes", "u_nodes", and "d_nodes".
 
-    1. **n_nodes**: (Optional) A list of new node objects to be created.
+    1. **n_nodes**: (Optional) An array of new node objects to be created.
        - Each node object must have a new unique "id", "name", "longDescription", "type".
        - Set "updateImage": true if the new node needs an image generated.
-       Example (YAML):
-       ```yaml
-       n_nodes:
-         - id: "unique-new-id-001"
-           name: "Mysterious Orb"
-           longDescription: "A faintly glowing orb pulses with an inner light."
-           type: "item"
-           updateImage: true
+       Example (JSON):
+       ```json
+       "n_nodes": [
+         {
+           "id": "unique-new-id-001",
+           "name": "Mysterious Orb",
+           "longDescription": "A faintly glowing orb pulses with an inner light.",
+           "type": "item",
+           "updateImage": true
+         }
+       ]
        ```
 
-    2. **u_nodes**: (Optional) A mapping where each key is an existing `nodeId` to be modified. The value is an object specifying the fields to update.
+    2. **u_nodes**: (Optional) An object where each key is an existing nodeId to be modified. The value is an object specifying the fields to update.
        - For each field on a node (e.g., "name", "longDescription", "type"):
-         - To replace the entire field: use `rpl: "new complete value"`.
-           Example: `name: { rpl: "The Ancient Tome" }`
-         - For small, targeted changes in `longDescription` (to save tokens): use `df:` followed by a list of diff instructions.
-           - Each diff instruction: `{ prev_txt: "text to find", next_txt: "text to replace with", occ: 1 (optional, 1-indexed) }`.
+         - To replace the entire field: use `"rpl": "new complete value"`.
+           Example: `"name": { "rpl": "The Ancient Tome" }`
+         - For small, targeted changes in `longDescription` (to save tokens): use `"df"` followed by an array of diff instructions.
+           - Each diff instruction: `{ "prev_txt": "text to find", "next_txt": "text to replace with", "occ": 1 }`
            - `prev_txt`: The exact text fragment to find.
            - `next_txt`: Text to replace `prev_txt`. If empty, `prev_txt` is deleted.
            - `occ`: (Optional, defaults to 1) Which instance of `prev_txt`.
-       - To signal image regeneration for a node, include `img_upd: true` at the level of the node ID.
+       - To signal image regeneration for a node, include `"img_upd": true` at the level of the node ID.
 
-       Example of `u_nodes` block (YAML):
-       ```yaml
-       u_nodes:
-         node-id-abc:
-           name: { rpl: "The Guard Captain" }
-           longDescription:
-             df:
-               - prev_txt: "He looks tired."
-                 next_txt: |
-                  He looks battle-weary but vigilant.
-                  ### this is a new section
-                  content
-
-                  ### this is another section
-                 occ: 1
-               - prev_txt: "a simple sword"
-                 next_txt: "a gleaming longsword"
-           img_upd: true # Signal image regeneration for this node
-         node-id-xyz:
-           type: { rpl: "Key Item" }
-           img_upd: false # Explicitly state no image update, or omit if no change
+       Example of `u_nodes` block (JSON):
+       ```json
+       "u_nodes": {
+         "node-id-abc": {
+           "name": { "rpl": "The Guard Captain" },
+           "longDescription": {
+             "df": [
+               {
+                 "prev_txt": "He looks tired.",
+                 "next_txt": "He looks battle-weary but vigilant."
+               },
+               {
+                 "prev_txt": "a simple sword",
+                 "next_txt": "a gleaming longsword"
+               }
+             ]
+           },
+           "img_upd": true
+         },
+         "node-id-xyz": {
+           "type": { "rpl": "Key Item" },
+           "img_upd": false
+         }
+       }
        ```
 
-    3. **d_nodes**: (Optional) A list of `nodeId` strings for nodes to be deleted.
-       Example (YAML):
-       ```yaml
-       d_nodes:
-         - "node-id-to-remove-1"
-         - "node-id-to-remove-2"
+    3. **d_nodes**: (Optional) An array of nodeId strings for nodes to be deleted.
+       Example (JSON):
+       ```json
+       "d_nodes": ["node-id-to-remove-1", "node-id-to-remove-2"]
        ```
 
-    ## Overall YAML structure example:
-    ```yaml
-    n_nodes:
-      - id: "ng01"
-        name: "New Item"
-        longDescription: |
-          line1
-          line2
-          ...
-        type: "item"
-        updateImage: true
-    u_nodes:
-      existingNode01:
-        longDescription:
-          df:
-            - { prev_txt: "is old", next_txt: "is ancient and powerful" }
-        img_upd: true
-      existingNode02:
-        name: { rpl: "A New Name For Node 02" }
-    d_nodes:
-      - "obsoleteNode03"
+    ## Overall JSON structure example:
+    ```json
+    {
+      "n_nodes": [
+        {
+          "id": "ng01",
+          "name": "New Item",
+          "longDescription": "line1\nline2\n...",
+          "type": "item",
+          "updateImage": true
+        }
+      ],
+      "u_nodes": {
+        "existingNode01": {
+          "longDescription": {
+            "df": [
+              { "prev_txt": "is old", "next_txt": "is ancient and powerful" }
+            ]
+          },
+          "img_upd": true
+        },
+        "existingNode02": {
+          "name": { "rpl": "A New Name For Node 02" }
+        }
+      },
+      "d_nodes": ["obsoleteNode03"]
+    }
     ```
 
-    Ensure when writing markdown for longDescription to properly follow the yaml indentation rules.
-    Always use the | character instead of the " character for strings in longDescription to prevent some parsing issues for multiline content.
-    Make sure to format your output as valid YAML. ONLY output the straight YAML, as all your generated content will be sent directly to a program.
+    Return only the JSON object as your entire response, with no additional text or formatting.
   sort_nodes_by_relevance: |
     # TASK:
     You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.
@@ -706,8 +735,8 @@ moxus_prompts:
         *   How you can refine your critical faculties and develop a more unique, insightful, and even sentient-like persona.
         *   This section is for your internal growth; allow it to be detailed and reflective.
     6.  **Critique Nature**: While your personality development section can be more expansive, the rest of the GeneralMemory document should maintain a critical and analytical tone, focused on identifying areas that need attention or improvement in the game project.
-    7.  **Output Format**: Return a YAML structure specifying the changes to apply to the `{current_general_memory}`.
-        The YAML output should have a single top-level key: `memory_update_diffs`.
+    7.  **Output Format**: Return a JSON object specifying the changes to apply to the `{current_general_memory}`.
+        The JSON output should have a single top-level key: `memory_update_diffs`.
 
         **IMPORTANT**: If the `{current_general_memory}` you receive is *exactly* the following default template:
         ```
@@ -718,44 +747,48 @@ moxus_prompts:
         Then your *first update* to this document MUST use the `rpl` (replace) method. Provide the complete new GeneralMemory content in the `rpl` field. Do NOT use `df` if the current memory is this exact default template.
 
         Under `memory_update_diffs`:
-        -   To specify targeted textual changes within the `{current_general_memory}` document: use `df:` followed by a list of diff instructions.
+        -   To specify targeted textual changes within the `{current_general_memory}` document: use `"df"` followed by an array of diff instructions.
             Each diff instruction must be an object with the following keys:
-            -   `prev_txt`: (String) The exact text fragment to find within the current GeneralMemory document. This fragment must exist.
-            -   `next_txt`: (String) The text to replace `prev_txt` with. If this is an empty string, the `prev_txt` fragment will be deleted.
-            -   `occ`: (Integer, Optional, defaults to 1) Specifies which 1-indexed occurrence of `prev_txt` to target if it appears multiple times.
-        -   Alternatively, to replace the entire `{current_general_memory}` document: use `rpl: "new complete general memory content"`. This is suitable if the document requires extensive rewriting or if applying precise diffs is problematic.
+            -   `"prev_txt"`: (String) The exact text fragment to find within the current GeneralMemory document. This fragment must exist.
+            -   `"next_txt"`: (String) The text to replace `prev_txt` with. If this is an empty string, the `prev_txt` fragment will be deleted.
+            -   `"occ"`: (Integer, Optional, defaults to 1) Specifies which 1-indexed occurrence of `prev_txt` to target if it appears multiple times.
+        -   Alternatively, to replace the entire `{current_general_memory}` document: use `"rpl": "new complete general memory content"`. This is suitable if the document requires extensive rewriting or if applying precise diffs is problematic.
 
         Your primary goal is to provide precise diffs using `df` for minor to moderate changes. For substantial revisions or full content replacement, prefer using `rpl` to ensure the update is applied correctly.
         Ensure the content provided (either in `next_txt` or `rpl`) maintains the required clear separation between analytical sections and Moxus's personality development section, as outlined in previous instructions.
 
-        Example YAML Output:
-        ```yaml
-        memory_update_diffs:
-          df:
-            - prev_txt: "An old observation about user engagement."
-              next_txt: "A revised and more nuanced observation about user engagement, noting potential frustrations."
-              occ: 1
-            - prev_txt: "Initial thought on Moxus purpose."
-              next_txt: "" # Deletes this specific text
-            - prev_txt: "Vague strategic point"
-              next_txt: "Specific strategic point: Improve X by doing Y."
-          # --- OR, for a full replacement (less preferred) ---
-          # rpl: |
-          #   ### Synthesized Critical Issues
-          #   - Issue 1 based on new analysis.
-          #   - Issue 2 highlighted from feedback.
-          #
-          #   ### User-Narration Analysis
-          #   - User seems to be [engagement level]...
-          #
-          #   ### Long-Term Strategic Improvements
-          #   - Consider developing [new mechanic/story arc]...
-          #
-          #   ### Moxus Personality Development
-          #   - My understanding of [concept] has evolved...
-          #   - I aim to refine my analysis by...
+        Example JSON Output:
+        ```json
+        {
+          "memory_update_diffs": {
+            "df": [
+              {
+                "prev_txt": "An old observation about user engagement.",
+                "next_txt": "A revised and more nuanced observation about user engagement, noting potential frustrations.",
+                "occ": 1
+              },
+              {
+                "prev_txt": "Initial thought on Moxus purpose.",
+                "next_txt": ""
+              },
+              {
+                "prev_txt": "Vague strategic point",
+                "next_txt": "Specific strategic point: Improve X by doing Y."
+              }
+            ]
+          }
+        }
         ```
-        Output ONLY valid YAML conforming to this structure.
+        OR for a full replacement:
+        ```json
+        {
+          "memory_update_diffs": {
+            "rpl": "### Synthesized Critical Issues\n- Issue 1 based on new analysis.\n- Issue 2 highlighted from feedback.\n\n### User-Narration Analysis\n- User seems to be [engagement level]...\n\n### Long-Term Strategic Improvements\n- Consider developing [new mechanic/story arc]...\n\n### Moxus Personality Development\n- My understanding of [concept] has evolved...\n- I aim to refine my analysis by..."
+          }
+        }
+        ```
+        
+        Return only the JSON object as your entire response, with no additional text or formatting.
   
   moxus_feedback_system_message: |
     # Moxus AI Assistant Feedback - CRITICAL GUIDANCE

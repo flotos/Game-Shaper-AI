@@ -13,7 +13,7 @@ import { LLMLoggerPanel } from './components/LLMLoggerPanel';
 import { NodeSpecificUpdates, LLMNodeEditionResponse } from './models/nodeOperations';
 
 const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [memoryYaml, setMemoryYaml] = useState<string>("");
+  const [memoryJson, setMemoryJson] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingTasks, setPendingTasks] = useState(0);
   
@@ -22,22 +22,22 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     setPendingTasks(moxusService.getPendingTaskCount());
     setTimeout(() => {
       try {
-        setMemoryYaml(moxusService.getLLMCallsMemoryYAML());
+        setMemoryJson(moxusService.getLLMCallsMemoryJSON());
       } catch (error) {
         console.error("Error getting Moxus memory:", error);
-        setMemoryYaml("Error loading Moxus memory YAML");
+        setMemoryJson("Error loading Moxus memory JSON");
       } finally {
         setIsLoading(false);
       }
     }, 100);
   };
   
-  const exportMemoryYaml = () => {
-    const blob = new Blob([memoryYaml], { type: 'text/yaml' });
+  const exportMemoryJson = () => {
+    const blob = new Blob([memoryJson], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `moxus-memory-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.yaml`;
+    link.download = `moxus-memory-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -61,7 +61,7 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="bg-slate-900 p-6 rounded shadow-md w-3/4 h-3/4 flex flex-col">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl">
-            Moxus Memory (YAML)
+            Moxus Memory (JSON)
             {pendingTasks > 0 && (
               <span className="ml-2 bg-cyan-600 text-white text-sm rounded-full px-2 py-0.5">
                 {pendingTasks} pending tasks
@@ -77,11 +77,11 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               Reset to Default
             </button>
             <button 
-              onClick={exportMemoryYaml}
+              onClick={exportMemoryJson}
               className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
               disabled={isLoading}
             >
-              Export YAML
+              Export JSON
             </button>
             <button 
               onClick={refreshMemory}
@@ -104,7 +104,7 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </div>
         ) : (
           <pre className="bg-gray-800 p-4 rounded overflow-auto flex-grow text-green-300 font-mono text-sm">
-            {memoryYaml}
+            {memoryJson}
           </pre>
         )}
       </div>
@@ -269,7 +269,7 @@ const AppContent: React.FC = () => {
             onClick={() => setShowMoxusMemory(true)} 
             className="px-1 relative bg-slate-800 text-white rounded hover:bg-cyan-700"
           >
-            Moxus YAML{pendingMoxusTasks > 0 && ` (${pendingMoxusTasks})`}
+            Moxus JSON{pendingMoxusTasks > 0 && ` (${pendingMoxusTasks})`}
           </button>
           <button
             onClick={handleRegenerateAllImages}

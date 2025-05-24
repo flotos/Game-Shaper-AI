@@ -1,4 +1,3 @@
-import * as yaml from 'js-yaml';
 import { Message } from '../context/ChatContext';
 import { moxusService } from './MoxusService'; // MoxusService will use setMoxusFeedbackImpl with getMoxusFeedback from this file
 import { Node } from '../models/Node'; // Needed for types in helper functions if they remain here
@@ -32,21 +31,17 @@ export interface PromptsConfig {
   };
 }
 
-let rawPrompts: string;
 const llmMode = import.meta.env.VITE_LLM_MODE?.toUpperCase();
 
+let loadedPrompts: PromptsConfig;
+
 if (llmMode === 'BASE' && false) {
-  // not ready yet
-  // @ts-ignore
-  const module = await import('../prompts-base.yaml?raw');
-  rawPrompts = module.default;
-} else { // Default to INSTRUCT
-  // @ts-ignore
-  const module = await import('../prompts-instruct.yaml?raw');
-  rawPrompts = module.default;
+  loadedPrompts = (await import('../prompts-base.yaml')).default as PromptsConfig;
+} else {
+  loadedPrompts = (await import('../prompts-instruct.yaml')).default as PromptsConfig;
 }
 
-export const loadedPrompts = yaml.load(rawPrompts) as PromptsConfig;
+export { loadedPrompts };
 
 // Utility function to format prompts
 export function formatPrompt(promptTemplate: string, replacements: Record<string, string | undefined>): string {
@@ -157,7 +152,7 @@ export const getResponse = async (
 
   if (!options?.skipMoxusFeedback && !stream) {
     const moxusFeedbackContent = formatPrompt(loadedPrompts.moxus_prompts.moxus_feedback_system_message, {
-      moxus_llm_calls_memory_yaml: moxusService.getLLMCallsMemoryYAML()
+      moxus_llm_calls_memory_yaml: moxusService.getLLMCallsMemoryJSON()
     });
     const feedbackMessage: Message = {
       role: 'system',
@@ -421,80 +416,27 @@ export const getResponse = async (
   throw lastError;
 };
 
-export const getMoxusFeedback = async (promptContent: string, originalCallType?: string): Promise<string> => {
-  console.log(`[LLMCore] Moxus request received. Generating feedback for original call type: ${originalCallType || 'unknown_original_type'}`);
-  const estimatedTokens = Math.ceil(promptContent.length / 4);
-  console.log(`[LLMCore] Estimated tokens for Moxus request: ~${estimatedTokens}`);
-  
-  const MAX_SAFE_TOKENS = 100000; 
-  let processedPrompt = promptContent;
-  
-  if (estimatedTokens > MAX_SAFE_TOKENS) {
-    console.warn(`[LLMCore] Moxus prompt exceeds safe token limit (~${estimatedTokens} tokens). Truncating...`);
-    const sections = promptContent.split(/^#\s+/m);
-    let truncatedPrompt = sections[0];
-    let currentLength = truncatedPrompt.length;
-    let i = 1;
-    while (i < sections.length && (currentLength + sections[i].length) / 4 < MAX_SAFE_TOKENS) {
-      truncatedPrompt += `# ${sections[i]}`;
-      currentLength += sections[i].length + 2;
-      i++;
-    }
-    if (truncatedPrompt.length / 4 > MAX_SAFE_TOKENS || truncatedPrompt === sections[0]) {
-      truncatedPrompt = promptContent.substring(0, MAX_SAFE_TOKENS * 4);
-      truncatedPrompt += "\n\n[CONTENT TRUNCATED DUE TO LENGTH CONSTRAINTS]\n\n";
-    }
-    processedPrompt = truncatedPrompt;
-    console.log(`[LLMCore] Truncated Moxus prompt to ~${Math.ceil(processedPrompt.length / 4)} tokens`);
-  }
-  
-  const messages: Message[] = [
-    { role: 'system', content: processedPrompt },
-    { role: 'user', content: loadedPrompts.moxus_prompts.moxus_get_feedback_user_message }
-  ];
-
-  // Determine the specific callType for this moxus feedback generation
-  let moxusCallType: string;
-  if (originalCallType === 'INTERNAL_FINAL_REPORT_GENERATION_STEP') {
-    moxusCallType = 'finalreport'; // Log the LLM call that *generates the report content* as 'finalreport'
-  } else if (originalCallType && originalCallType.startsWith('INTERNAL_MEMORY_UPDATE_FOR_')) {
-    const baseType = originalCallType.substring('INTERNAL_MEMORY_UPDATE_FOR_'.length);
-    moxusCallType = `moxus_update_${baseType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}_memory`;
-  } else if (originalCallType === 'finalreport' || originalCallType === 'moxus_finalreport') {
-    // If originalCallType is finalreport or moxus_finalreport, log feedback generation as generic
-    // This prevents 'moxus_feedback_on_finalreport' or 'moxus_feedback_on_moxus_finalreport' from being created.
-    moxusCallType = 'moxus_feedback_generation';
-  } else if (originalCallType) {
-    // For all other cases where feedback is generated on a specific call type
-    moxusCallType = `moxus_feedback_on_${originalCallType.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()}`;
-  } else {
-    moxusCallType = 'moxus_feedback_generation'; // Default if no originalCallType
-  }
-
-  let feedbackCallId: string | null = null; 
+export const getMoxusFeedback = async (promptContent: string, originalCallType: string = 'unknown'): Promise<string> => {
   try {
-    const responsePayload = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true }, moxusCallType);
-    feedbackCallId = responsePayload.callId; // callId should always be present in responsePayload
+    const moxusSystemMessage = loadedPrompts.moxus_prompts.moxus_feedback_system_message.replace(
+      '{moxus_llm_calls_memory_yaml}',
+      moxusService.getLLMCallsMemoryJSON()
+    );
+
+    const messages: Message[] = [
+      { role: 'system', content: moxusSystemMessage },
+      { role: 'user', content: loadedPrompts.moxus_prompts.moxus_get_feedback_user_message }
+    ];
+
+    const response = await getResponse(messages, 'gpt-4o-mini', undefined, false, { type: 'json_object' }, undefined, 'moxus_feedback');
     
-    // Ensure feedbackCallId is treated as string before passing
-    if (feedbackCallId) { 
-      moxusService.finalizeLLMCallRecord(feedbackCallId, responsePayload.llmResult as string);
-      console.log(`[LLMCore] Moxus feedback generated for type: ${moxusCallType} (Call ID: ${feedbackCallId})`);
-      return responsePayload.llmResult as string;
+    if (typeof response === 'string') {
+      return response;
     } else {
-      // This case should ideally not happen if getResponse always returns a callId
-      console.error('[LLMCore] Failed to get callId from getResponse for Moxus feedback.');
-      throw new Error('Failed to obtain callId for Moxus feedback logging.');
+      return response.llmResult;
     }
   } catch (error) {
-    if (feedbackCallId) { // This check is good
-      moxusService.failLLMCallRecord(feedbackCallId, error instanceof Error ? error.message : String(error));
-    }
-    console.error('[LLMCore] Error getting Moxus feedback:', error);
-    // Re-throw the original error or a new specific one
-    if (error instanceof Error && error.message === 'Failed to obtain callId for Moxus feedback logging.') {
-        throw error;
-    }
-    throw new Error(`Failed to get Moxus feedback from LLM. Original error: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('Error getting Moxus feedback:', error);
+    return 'Error getting Moxus feedback';
   }
 }; 

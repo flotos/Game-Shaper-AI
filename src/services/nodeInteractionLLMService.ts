@@ -8,7 +8,6 @@ import {
 } from './llmCore';
 import { moxusService } from '../services/MoxusService';
 import { LLMNodeEditionResponse } from '../models/nodeOperations';
-import yaml from 'js-yaml';
 import { safeJsonParse, parseNodeOperationJson } from '../utils/jsonUtils';
 
 // Helper function to manage try/catch for JSON parsing and logging
@@ -17,11 +16,10 @@ async function processJsonResponse<T>(
   operationName: string, 
   responsePayload: { llmResult: string, callId: string },
   parseFn: (dataString: string) => T,
-  isNodeEdition: boolean = false // Flag to indicate if we are parsing node edition for more specific error handling
+  isNodeEdition: boolean = false
 ): Promise<T> {
   try {
     const parsedResult = parseFn(responsePayload.llmResult);
-    // Successfully parsed, finalize the LLM call as completed
     moxusService.finalizeLLMCallRecord(responsePayload.callId, "LLM output successfully parsed"); 
     console.log(`[${serviceName}] ${operationName} successful for callId: ${responsePayload.callId}`);
     return parsedResult;
@@ -32,7 +30,7 @@ async function processJsonResponse<T>(
     
     let userFriendlyMessage = `Failed to parse LLM output for ${operationName}: ${parseErrorMessage}`;
     if (isNodeEdition) {
-        userFriendlyMessage += ". The LLM may have returned an invalid YAML structure or incorrect field names for node updates. Please check the console for the raw LLM output and consider simplifying your request or asking the AI to be more careful with the YAML format.";
+        userFriendlyMessage += ". The LLM may have returned an invalid JSON structure or incorrect field names for node updates. Please check the console for the raw LLM output and consider simplifying your request or asking the AI to be more careful with the JSON format.";
     }
     throw new Error(userFriendlyMessage);
   }
@@ -153,7 +151,7 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
 };
 
 export const generateNodeEdition = async(chatText: string | Message[], actions: string[], nodes: Node[], userInput: string, isUserInteraction: boolean = false): Promise<LLMNodeEditionResponse> => {
-  console.log('LLM Call (NodeInteractionService): Generating node edition (YAML structure)');
+  console.log('LLM Call (NodeInteractionService): Generating node edition (JSON structure)');
   
   const sortedNodes = [...nodes].sort((a, b) => {
     if (a.type === "system" && b.type !== "system") return -1;
@@ -200,40 +198,36 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   const messages: Message[] = [{ role: 'system', content: nodeEditionPrompt }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    // For YAML, we don't specify response_format: { type: 'json_object' }
-    responsePayload = await getResponse(messages, "gpt-4o", undefined, false, undefined, undefined, 'node_edition_yaml') as { llmResult: string, callId: string };
+    responsePayload = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'node_edition_json') as { llmResult: string, callId: string };
   } catch (error) {
-    console.error('[NodeInteractionService] generateNodeEdition (YAML): getResponse failed.', error);
+    console.error('[NodeInteractionService] generateNodeEdition (JSON): getResponse failed.', error);
     throw error;
   }
   
   return processJsonResponse(
     'NodeInteractionService', 
-    'generateNodeEdition (YAML)', 
+    'generateNodeEdition (JSON)', 
     responsePayload, 
-    (yamlString) => {
-      // Remove potential YAML code block fences before parsing
-      const cleanedYamlString = yamlString.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
-      const parsedFromYaml = yaml.load(cleanedYamlString) as any; // Parse as any initially
+    (jsonString) => {
+      const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
+      const parsedFromJson = JSON.parse(cleanedJsonString);
 
-      // Validate and map to LLMNodeEditionResponse, ensuring shortened keys are used
-      if (parsedFromYaml && typeof parsedFromYaml === 'object') {
+      if (parsedFromJson && typeof parsedFromJson === 'object') {
         const response: LLMNodeEditionResponse = {
             callId: responsePayload.callId,
-            n_nodes: parsedFromYaml.n_nodes || undefined,
-            u_nodes: parsedFromYaml.u_nodes || undefined,
-            d_nodes: parsedFromYaml.d_nodes || undefined,
+            n_nodes: parsedFromJson.n_nodes || undefined,
+            u_nodes: parsedFromJson.u_nodes || undefined,
+            d_nodes: parsedFromJson.d_nodes || undefined,
         };
-        // Basic validation of sub-structures (can be expanded)
         if (response.n_nodes !== undefined && !Array.isArray(response.n_nodes)) throw new Error("Invalid 'n_nodes' field: not an array.");
         if (response.u_nodes !== undefined && typeof response.u_nodes !== 'object') throw new Error("Invalid 'u_nodes' field: not an object.");
         if (response.d_nodes !== undefined && !Array.isArray(response.d_nodes)) throw new Error("Invalid 'd_nodes' field: not an array.");
         return response;
       } else {
-        throw new Error('Parsed YAML is not a valid object for node edition.');
+        throw new Error('Parsed JSON is not a valid object for node edition.');
       }
     },
-    true // isNodeEdition = true for more detailed error message to user
+    true
   );
 };
 
@@ -264,8 +258,7 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   const messages: Message[] = [{ role: 'system', content: promptMessageContent }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    // No longer using response_format as we're expecting YAML, not JSON
-    responsePayload = await getResponse(messages, "gpt-4", undefined, false, undefined, undefined, 'node_creation_from_prompt') as { llmResult: string, callId: string };
+    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_creation_from_prompt') as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] generateNodesFromPrompt: getResponse failed.', error);
     throw error;
@@ -275,34 +268,26 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
     'NodeInteractionService', 
     'generateNodesFromPrompt', 
     responsePayload, 
-    (yamlString) => {
-      // Remove potential YAML code block fences before parsing
-      const cleanedYamlString = yamlString.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
-      const parsedFromYaml = yaml.load(cleanedYamlString) as any;
+    (jsonString) => {
+      const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
+      const parsedFromJson = JSON.parse(cleanedJsonString);
 
-      // Process the YAML result into the format expected by the UI
       const result: any = {};
       
-      // Map n_nodes to newNodes for backward compatibility with UI
-      if (parsedFromYaml.n_nodes && Array.isArray(parsedFromYaml.n_nodes)) {
-        result.newNodes = parsedFromYaml.n_nodes;
+      if (parsedFromJson.n_nodes && Array.isArray(parsedFromJson.n_nodes)) {
+        result.newNodes = parsedFromJson.n_nodes;
       }
       
-      // Map u_nodes to merge field
-      if (parsedFromYaml.u_nodes && typeof parsedFromYaml.u_nodes === 'object') {
-        // Convert u_nodes format to merge format (array of nodes with full fields)
+      if (parsedFromJson.u_nodes && typeof parsedFromJson.u_nodes === 'object') {
         const mergeNodes: Partial<Node>[] = [];
         
-        for (const [nodeId, updates] of Object.entries(parsedFromYaml.u_nodes || {})) {
-          // Find the existing node
+        for (const [nodeId, updates] of Object.entries(parsedFromJson.u_nodes || {})) {
           const existingNode = nodes.find(n => n.id === nodeId);
           if (!existingNode) continue;
           
           const updatedNode: Partial<Node> = { id: nodeId };
           
-          // Apply updates
           if (typeof updates === 'object' && updates !== null) {
-            // Handle standard field updates
             for (const [field, operation] of Object.entries(updates)) {
               if (field === 'img_upd') {
                 updatedNode.updateImage = operation as boolean;
@@ -313,15 +298,9 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
                 if ('rpl' in operation) {
                   (updatedNode as any)[field] = operation.rpl;
                 }
-                // We don't process df (diffs) here as the UI expects complete node objects
-                // For now, we just use the original field value if there's a df but no rpl
-                else if (!('rpl' in operation) && existingNode) {
-                  (updatedNode as any)[field] = (existingNode as any)[field];
-                }
               }
             }
             
-            // Ensure essential fields are present
             if (!updatedNode.name && existingNode) updatedNode.name = existingNode.name;
             if (!updatedNode.longDescription && existingNode) updatedNode.longDescription = existingNode.longDescription;
             if (!updatedNode.type && existingNode) updatedNode.type = existingNode.type;
@@ -335,9 +314,8 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
         }
       }
       
-      // Map d_nodes directly to delete field
-      if (parsedFromYaml.d_nodes && Array.isArray(parsedFromYaml.d_nodes)) {
-        result.delete = parsedFromYaml.d_nodes;
+      if (parsedFromJson.d_nodes && Array.isArray(parsedFromJson.d_nodes)) {
+        result.delete = parsedFromJson.d_nodes;
       }
       
       return result;
@@ -443,7 +421,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   return {
     chatText: accumulatedChatText,
     actions,
-    nodeEdition, // This is LLMNodeEditionResponse (YAML structure with shortened keys)
+    nodeEdition, // This is LLMNodeEditionResponse (JSON structure with shortened keys)
     chatTextCallId
   };
 } 

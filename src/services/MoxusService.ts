@@ -1,8 +1,7 @@
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
-import yaml from 'js-yaml';
 import { getChatHistoryForMoxus } from './llmCore';
-import AllPrompts from '../prompts-instruct.yaml'; // Assuming YAML can be imported like this
+import AllPrompts from '../prompts-instruct.yaml';
 
 // Avoid circular dependency by forward declaring the function type
 type GetMoxusFeedbackFn = (promptContent: string, originalCallType?: string) => Promise<string>;
@@ -846,7 +845,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
     saveMemory();
     return;
   } else {
-    console.log('[MoxusService] Using standard synthesis prompt for GeneralMemory update (expecting YAML diff).');
+    console.log('[MoxusService] Using standard synthesis prompt for GeneralMemory update (expecting JSON diff).');
     const recentFeedbacks = Object.entries(moxusStructuredMemory.featureSpecificMemory.llmCalls)
       .sort((a, b) => new Date(a[1].timestamp).getTime() - new Date(b[1].timestamp).getTime()).reverse().slice(0, 5)
       .map(([id, call]) => ({ id, feedback: call.feedback || "No feedback available" }));
@@ -879,37 +878,27 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   }
   
   if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
-  const yamlResponse = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForThisUpdate}`);
+  const jsonResponse = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForThisUpdate}`);
   
-  let contentToParse = yamlResponse.trim();
-  const yamlFenceStart = "```yaml";
-  const yamlFenceEnd = "```";
-
-  if (contentToParse.startsWith(yamlFenceStart)) {
-    contentToParse = contentToParse.substring(yamlFenceStart.length).trimStart();
-    if (contentToParse.endsWith(yamlFenceEnd)) {
-      contentToParse = contentToParse.substring(0, contentToParse.length - yamlFenceEnd.length).trimEnd();
-    }
-  }
-  contentToParse = contentToParse.trim();
+  let contentToParse = jsonResponse.trim();
 
   try {
-    const parsedYaml = yaml.load(contentToParse) as any;
+    const parsedJson = JSON.parse(contentToParse) as any;
     let finalGeneralMemory = currentGeneralMemorySnapshot;
 
-    if (parsedYaml && parsedYaml.memory_update_diffs) {
-      if (parsedYaml.memory_update_diffs.rpl !== undefined) {
+    if (parsedJson && parsedJson.memory_update_diffs) {
+      if (parsedJson.memory_update_diffs.rpl !== undefined) {
         console.log('[MoxusService] Applying full replacement to GeneralMemory.');
-        finalGeneralMemory = parsedYaml.memory_update_diffs.rpl;
-      } else if (parsedYaml.memory_update_diffs.df && Array.isArray(parsedYaml.memory_update_diffs.df)) {
+        finalGeneralMemory = parsedJson.memory_update_diffs.rpl;
+      } else if (parsedJson.memory_update_diffs.df && Array.isArray(parsedJson.memory_update_diffs.df)) {
         console.log('[MoxusService] Applying diffs to GeneralMemory.');
-        finalGeneralMemory = applyDiffs(currentGeneralMemorySnapshot, parsedYaml.memory_update_diffs.df);
+        finalGeneralMemory = applyDiffs(currentGeneralMemorySnapshot, parsedJson.memory_update_diffs.df);
       } else {
-        console.warn('[MoxusService] Received YAML for GeneralMemory update, but no valid rpl or df instructions found in memory_update_diffs. Using raw (cleaned) response.');
+        console.warn('[MoxusService] Received JSON for GeneralMemory update, but no valid rpl or df instructions found in memory_update_diffs. Using raw (cleaned) response.');
         finalGeneralMemory = contentToParse; 
       }
     } else {
-      console.warn('[MoxusService] GeneralMemory update response was not valid YAML or did not contain memory_update_diffs after cleaning. Using raw (cleaned) response as fallback.');
+      console.warn('[MoxusService] GeneralMemory update response was not valid JSON or did not contain memory_update_diffs after cleaning. Using raw (cleaned) response as fallback.');
       finalGeneralMemory = contentToParse;
     }
 
@@ -921,8 +910,8 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
     saveMemory();
 
   } catch (error) {
-    console.error('[MoxusService] Error processing YAML response for GeneralMemory update:', error);
-    console.warn('[MoxusService] Falling back to storing raw (cleaned) response in GeneralMemory due to YAML processing error.');
+    console.error('[MoxusService] Error processing JSON response for GeneralMemory update:', error);
+    console.warn('[MoxusService] Falling back to storing raw (cleaned) response in GeneralMemory due to JSON processing error.');
     const rawCleanedResponseFallback = contentToParse.length > 15000 
         ? contentToParse.substring(0, 15000) + "... [GeneralMemory truncated due to excessive length]" 
         : contentToParse;
@@ -977,9 +966,9 @@ export const getMoxusPersonalityContext = (): string => {
   return getAssistantNodesContent();
 };
 
-export const getLLMCallsMemoryYAML = (): string => {
+export const getLLMCallsMemoryJSON = (): string => {
   try {
-    const memoryForYaml = {
+    const memoryForJson = {
       GeneralMemory: moxusStructuredMemory.GeneralMemory,
       featureSpecificMemory: {
         nodeEdition: moxusStructuredMemory.featureSpecificMemory.nodeEdition,
@@ -991,10 +980,10 @@ export const getLLMCallsMemoryYAML = (): string => {
         .sort((a, b) => new Date(a[1].timestamp).getTime() - new Date(b[1].timestamp).getTime()).reverse().slice(0, 5)
         .map(([id, call]) => ({ id, feedback: call.feedback || "No feedback available" }))
     };
-    return yaml.dump(memoryForYaml, { lineWidth: 100, noRefs: true, quotingType: '"' });
+    return JSON.stringify(memoryForJson, null, 2);
   } catch (error) {
-    console.error('[MoxusService] Error generating YAML:', error);
-    return "Error generating memory YAML";
+    console.error('[MoxusService] Error generating JSON:', error);
+    return "Error generating memory JSON";
   }
 };
 
@@ -1016,7 +1005,7 @@ export const moxusService = {
   subscribeToLLMLogUpdates,
   clearLLMLogEntries,
   getLLMCallFeedback,
-  getLLMCallsMemoryYAML,
+  getLLMCallsMemoryJSON,
   getPendingTaskCount: () => taskQueue.length,
   resetMemory: () => {
     moxusStructuredMemory = createDefaultMemoryStructure();
@@ -1060,7 +1049,7 @@ export const moxusService = {
   },
   debugLogMemory: () => {
     console.log('Structured Memory:', moxusStructuredMemory);
-    console.log('YAML representation:', getLLMCallsMemoryYAML());
+    console.log('JSON representation:', getLLMCallsMemoryJSON());
   },
   getMoxusPersonalityContext
 };

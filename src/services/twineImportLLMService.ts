@@ -2,7 +2,6 @@ import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext'; // Message may not be directly used, but good for consistency if types evolve
 import { getResponse, formatPrompt, loadedPrompts } from './llmCore';
 import { safeJsonParse } from '../utils/jsonUtils';
-import yaml from 'js-yaml';
 
 // Interfaces specific to Twine data extraction
 export interface ExtractedElement {
@@ -87,256 +86,217 @@ export const extractDataFromTwine = async (
 };
 
 export const generateNodesFromExtractedData = async (
-  extractedData: ExtractedData,
+  extractedData: ExtractedElement[],
   nodes: Node[],
-  mode: 'new_game' | 'merge_story',
-  nodeGenerationInstructions?: string
-): Promise<any> => { // Consider defining a more specific return type than any
-  console.log('LLM Call (TwineImportService): Generating nodes from extracted data in mode:', mode);
-  
-  const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "system") return acc;
-    return acc + `\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    type: ${node.type}\n    `;
-  }, "");
+  additionalInstructions: string = '',
+  mode: 'new_game' | 'merge' = 'new_game'
+): Promise<any> => {
+  const MAX_PROMPT_SIZE = 200000;
+  const nodesDescription = nodes.slice(0, 200).map(node => {
+    const description = `${node.id}: ${node.name} - ${node.longDescription}`.substring(0, 500);
+    return description;
+  }).join('\n');
 
-  const promptTemplateKey = mode === 'new_game' ? 
-    loadedPrompts.twine_import.node_generation_new_game : 
-    loadedPrompts.twine_import.node_generation_merge;
+  const formatExtractedData = (data: ExtractedElement[]): string => {
+    return data.map(element => `${element.type}: ${element.name}\n${element.content}`).join('\n\n');
+  };
 
-  const generationPrompt = formatPrompt(promptTemplateKey, {
-    additional_instructions: nodeGenerationInstructions || '',
-    extracted_data: JSON.stringify(extractedData.chunks, null, 2), // Assuming we only need chunks here
+  const extractedDataString = formatExtractedData(extractedData);
+  const extractedDataInfo = `${extractedData.length} elements extracted from story`;
+
+  console.log('[TwineImportService] generateNodesFromExtractedData starting with:', {
+    mode,
+    extractedDataLength: extractedData.length,
+    nodesCount: nodes.length,
+    extractedDataInfo
+  });
+
+  const templateKey = mode === 'new_game' ? 'node_generation_new_game' : 'node_generation_merge';
+  const promptTemplate = loadedPrompts.twine_import[templateKey];
+
+  let fullPrompt = formatPrompt(promptTemplate, {
+    additional_instructions: additionalInstructions,
+    extracted_data: extractedDataString,
     nodes_description: nodesDescription
   });
 
-  const generationMessagesInternal: Message[] = [
-    { role: 'system', content: generationPrompt },
-  ];
+  if (fullPrompt.length > MAX_PROMPT_SIZE) {
+    const limitedData = extractedData.slice(0, Math.floor(extractedData.length * 0.7));
+    const limitedDataString = formatExtractedData(limitedData);
+    fullPrompt = formatPrompt(promptTemplate, {
+      additional_instructions: additionalInstructions,
+      extracted_data: limitedDataString,
+      nodes_description: nodesDescription
+    });
+    console.log('[TwineImportService] Trimmed prompt due to size constraints');
+  }
 
-  // Remove the JSON response format as we're expecting YAML output now
-  const response = await getResponse(generationMessagesInternal, 'gpt-4o', undefined, false);
+  const messages: Message[] = [{ role: 'system', content: fullPrompt }];
+  
+  let response: any;
+  try {
+    response = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'node_generation');
+  } catch (error) {
+    console.error('[TwineImportService] generateNodesFromExtractedData: getResponse failed.', error);
+    throw error;
+  }
   
   try {
-    // Handle YAML response
-    const yamlString = typeof response === 'string' ? response : (response as any).llmResult;
-    // Remove potential YAML code block fences before parsing
-    const cleanedYamlString = yamlString.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
-    const parsedFromYaml = yaml.load(cleanedYamlString) as any;
+    const jsonString = typeof response === 'string' ? response : (response as any).llmResult;
+    const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
+    const parsedFromJson = JSON.parse(cleanedJsonString);
     
-    if (!parsedFromYaml.n_nodes || !Array.isArray(parsedFromYaml.n_nodes)) {
+    if (!parsedFromJson.n_nodes || !Array.isArray(parsedFromJson.n_nodes)) {
       throw new Error('Invalid response structure: missing or invalid n_nodes array');
     }
     
-    // Process the YAML result into the format expected by the UI
     const result: any = {};
     
-    // New nodes
-    result.new = parsedFromYaml.n_nodes;
+    result.new = parsedFromJson.n_nodes;
     
     if (mode === 'new_game') {
       result.delete = nodes.map(node => node.id);
-    } else if (mode === 'merge_story') {
-      // Handle update nodes (u_nodes in YAML)
-      if (parsedFromYaml.u_nodes && typeof parsedFromYaml.u_nodes === 'object') {
-        // Convert u_nodes format to update array (for backward compatibility)
-        const updateNodes: any[] = [];
-        
-        for (const [nodeId, updates] of Object.entries(parsedFromYaml.u_nodes)) {
-          const existingNode = nodes.find(n => n.id === nodeId);
-          if (!existingNode) continue;
-          
-          const updatedNode: any = { id: nodeId };
-          
-          // Apply updates
-          if (typeof updates === 'object' && updates !== null) {
-            for (const [field, operation] of Object.entries(updates as any)) {
-              if (field === 'img_upd') {
-                updatedNode.updateImage = operation as boolean;
-                continue;
-              }
-              
-              if (typeof operation === 'object' && operation !== null) {
-                if ('rpl' in operation) {
-                  updatedNode[field] = (operation as any).rpl;
-                }
-              }
-            }
-            
-            // Ensure essential fields are present
-            if (!updatedNode.name && existingNode) updatedNode.name = existingNode.name;
-            if (!updatedNode.longDescription && existingNode) updatedNode.longDescription = existingNode.longDescription;
-            if (!updatedNode.type && existingNode) updatedNode.type = existingNode.type;
-            
-            updateNodes.push(updatedNode);
-          }
-        }
-        
-        result.update = updateNodes;
-      }
-      
-      // Handle delete nodes
-      if (parsedFromYaml.d_nodes && Array.isArray(parsedFromYaml.d_nodes)) {
-        result.delete = parsedFromYaml.d_nodes;
-      } else {
-        result.delete = [];
-      }
-      
-      // Final validation for merge mode
-      if (!result.update) result.update = [];
-      
-      if (result.update) {
-        const existingNodeIds = new Set(nodes.map(node => node.id));
-        const validUpdates: any[] = [];
-        const newNodesFromUpdate = [...result.new]; // Start with new nodes
-        
-        for (const update of result.update) {
-          if (existingNodeIds.has(update.id)) {
-            validUpdates.push(update);
-          } else {
-            const existingNode = nodes.find(n => n.id === update.id);
-            if (existingNode) newNodesFromUpdate.push({ ...existingNode, ...update });
-          }
-        }
-        
-        result.update = validUpdates;
-        result.new = newNodesFromUpdate;
-      }
-    }
-    
-    // Validate node fields
-    result.new.forEach((node: any) => {
-      node.updateImage = node.updateImage ?? false;
-      const missingFields: string[] = [];
-      if (!node.id) missingFields.push('id');
-      if (!node.name) missingFields.push('name');
-      if (!node.longDescription) missingFields.push('longDescription');
-      if (!node.type) missingFields.push('type');
-      if (missingFields.length > 0) {
-        throw new Error(`Invalid node structure: missing required fields in node ${node.id || 'unknown'}: ${missingFields.join(', ')}`);
-      }
-    });
-    
-    if (result.update) {
-      result.update.forEach((node: any) => {
-        node.updateImage = node.updateImage ?? false;
-        if (!node.id) throw new Error('Invalid update node: missing id field');
-        if (!node.longDescription && node.updateImage === undefined) {
-          throw new Error(`Invalid update node ${node.id}: must have at least one of longDescription, or updateImage`);
-        }
-      });
     }
     
     return result;
   } catch (error) {
-    console.error('Error parsing Twine import response:', error, 'Response content:', response);
-    throw new Error('Failed to parse Twine import response as YAML.');
+    console.error('[TwineImportService] Error parsing JSON response:', error);
+    throw new Error(`Failed to parse JSON response: ${error}`);
   }
 };
 
 export const regenerateSingleNode = async (
   nodeId: string,
-  existingNode: Partial<Node>,
-  extractedData: ExtractedData, // Use the full ExtractedData for context
   nodes: Node[],
-  _mode: 'new_game' | 'merge_story', // mode might not be strictly necessary here but kept for consistency
-  nodeGenerationInstructions?: string,
-  recentlyGeneratedNode?: Partial<Node>
-): Promise<Partial<Node>> => { // Return type could be more specific
-  console.log('LLM Call (TwineImportService): Regenerating single node:', nodeId);
-  
-  const nodesDescription = nodes.reduce((acc, node) => {
-    if (node.type === "system") return acc;
-    return acc + `\n    -\n    id: ${node.id}\n    name: ${node.name}\n    longDescription: ${node.longDescription}\n    type: ${node.type}\n    `;
-  }, "");
+  extractedData: ExtractedElement[],
+  nodeGenerationInstructions: string,
+  recentlyGeneratedNodeDetails: string
+): Promise<any> => {
+  const existingNode = nodes.find(n => n.id === nodeId);
+  if (!existingNode) {
+    throw new Error(`Node with id ${nodeId} not found`);
+  }
 
-  const recentlyGeneratedNodeDetails = recentlyGeneratedNode ? 
-    `id: ${recentlyGeneratedNode.id}\nname: ${recentlyGeneratedNode.name}\nlongDescription: ${recentlyGeneratedNode.longDescription}\ntype: ${recentlyGeneratedNode.type}`
-    : 'No recently generated node provided';
+  const MAX_PROMPT_SIZE = 150000;
+  const nodesDescription = nodes.slice(0, 150).map(node => {
+    const description = `${node.id}: ${node.name} - ${node.longDescription}`.substring(0, 500);
+    return description;
+  }).join('\n');
 
-  const focusedPrompt = formatPrompt(loadedPrompts.twine_import.regenerate_single_node, {
-    node_generation_instructions: nodeGenerationInstructions || '',
-    existing_node_id: existingNode.id || '',
-    existing_node_name: existingNode.name || '',
-    existing_node_long_description: existingNode.longDescription || '',
-    existing_node_type: existingNode.type || '',
+  const formatExtractedData = (data: ExtractedElement[]): string => {
+    return data.map(element => `${element.type}: ${element.name}\n${element.content}`).join('\n\n');
+  };
+
+  const extractedDataString = formatExtractedData(extractedData);
+
+  const promptTemplate = loadedPrompts.twine_import.regenerate_single_node;
+
+  let fullPrompt = formatPrompt(promptTemplate, {
+    node_generation_instructions: nodeGenerationInstructions,
+    existing_node_id: existingNode.id,
+    existing_node_name: existingNode.name,
+    existing_node_long_description: existingNode.longDescription,
+    existing_node_type: existingNode.type,
     recently_generated_node_details: recentlyGeneratedNodeDetails,
-    extracted_data: JSON.stringify(extractedData.chunks, null, 2), // Use chunks for prompt
-    nodes_description: nodesDescription,
-    node_id_to_regenerate: nodeId
+    extracted_data: extractedDataString,
+    nodes_description: nodesDescription
   });
 
-  const messagesInternal: Message[] = [
-    { role: 'system', content: focusedPrompt },
-  ];
+  if (fullPrompt.length > MAX_PROMPT_SIZE) {
+    const limitedData = extractedData.slice(0, Math.floor(extractedData.length * 0.7));
+    const limitedDataString = formatExtractedData(limitedData);
+    fullPrompt = formatPrompt(promptTemplate, {
+      node_generation_instructions: nodeGenerationInstructions,
+      existing_node_id: existingNode.id,
+      existing_node_name: existingNode.name,
+      existing_node_long_description: existingNode.longDescription,
+      existing_node_type: existingNode.type,
+      recently_generated_node_details: recentlyGeneratedNodeDetails,
+      extracted_data: limitedDataString,
+      nodes_description: nodesDescription
+    });
+    console.log('[TwineImportService] Trimmed prompt due to size constraints');
+  }
 
-  // Remove JSON response format to use YAML instead
-  const response = await getResponse(messagesInternal, 'gpt-4o', undefined, false);
+  const messages: Message[] = [{ role: 'system', content: fullPrompt }];
+  
+  let response: any;
+  try {
+    response = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'single_node_regeneration');
+  } catch (error) {
+    console.error('[TwineImportService] regenerateSingleNode: getResponse failed.', error);
+    throw error;
+  }
   
   try {
-    // Handle YAML response
-    const yamlString = typeof response === 'string' ? response : (response as any).llmResult;
-    // Remove potential YAML code block fences before parsing
-    const cleanedYamlString = yamlString.replace(/^```yaml\n/, '').replace(/\n```$/, '').trim();
-    const parsedFromYaml = yaml.load(cleanedYamlString) as any;
+    const jsonString = typeof response === 'string' ? response : (response as any).llmResult;
+    const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
+    const parsedFromJson = JSON.parse(cleanedJsonString);
     
-    if ((!parsedFromYaml.n_nodes || !Array.isArray(parsedFromYaml.n_nodes)) && 
-        (!parsedFromYaml.u_nodes || typeof parsedFromYaml.u_nodes !== 'object')) {
+    if ((!parsedFromJson.n_nodes || !Array.isArray(parsedFromJson.n_nodes)) && 
+        (!parsedFromJson.u_nodes || typeof parsedFromJson.u_nodes !== 'object')) {
       throw new Error('Invalid response structure: missing or invalid n_nodes array or u_nodes object');
     }
     
-    // Look for the node in n_nodes first
-    let updatedNodeData = parsedFromYaml.n_nodes?.find((n: Partial<Node>) => n.id === nodeId);
+    let updatedNodeData = parsedFromJson.n_nodes?.find((n: Partial<Node>) => n.id === nodeId);
     
-    // If not found in n_nodes, look in u_nodes and convert the update format to a node object
-    if (!updatedNodeData && parsedFromYaml.u_nodes && nodeId in parsedFromYaml.u_nodes) {
-      const updates = parsedFromYaml.u_nodes[nodeId];
-      const existingNode = nodes.find(n => n.id === nodeId);
-      if (!existingNode) throw new Error(`Node with ID ${nodeId} not found`);
+    if (!updatedNodeData && parsedFromJson.u_nodes && nodeId in parsedFromJson.u_nodes) {
+      const existingNodeData = existingNode;
+      const updates = parsedFromJson.u_nodes[nodeId];
       
-      updatedNodeData = { id: nodeId };
+      updatedNodeData = { ...existingNodeData };
       
-      // Apply updates from u_nodes
-      if (typeof updates === 'object' && updates !== null) {
-        for (const [field, operation] of Object.entries(updates)) {
-          if (field === 'img_upd') {
-            updatedNodeData.updateImage = operation as boolean;
-            continue;
-          }
-          
-          if (typeof operation === 'object' && operation !== null) {
-            if ('rpl' in operation) {
-              (updatedNodeData as any)[field] = (operation as any).rpl;
-            }
-          }
+      for (const [field, operation] of Object.entries(updates)) {
+        if (field === 'img_upd') {
+          updatedNodeData.updateImage = operation as boolean;
+          continue;
         }
         
-        // Ensure essential fields are present
-        if (!updatedNodeData.name && existingNode) updatedNodeData.name = existingNode.name;
-        if (!updatedNodeData.longDescription && existingNode) updatedNodeData.longDescription = existingNode.longDescription;
-        if (!updatedNodeData.type && existingNode) updatedNodeData.type = existingNode.type;
+        if (typeof operation === 'object' && operation !== null) {
+          if ('rpl' in operation) {
+            (updatedNodeData as any)[field] = operation.rpl;
+          }
+        }
       }
     }
     
-    if (!updatedNodeData) throw new Error('Node not found in response');
-    
-    updatedNodeData.updateImage = updatedNodeData.updateImage ?? false;
+    if (!updatedNodeData) {
+      throw new Error(`No valid node data found for node ${nodeId} in the response`);
+    }
     
     return updatedNodeData;
   } catch (error) {
-    console.error('Error parsing node regeneration response:', error, 'Response content:', response);
-    throw new Error('Failed to parse node regeneration response as YAML');
+    console.error('[TwineImportService] Error parsing JSON response:', error);
+    throw new Error(`Failed to parse JSON response: ${error}`);
   }
 };
 
 export const generateNodesFromTwine = async (
   content: string,
   nodes: Node[],
-  mode: 'new_game' | 'merge_story',
-  dataExtractionInstructions?: string,
-  nodeGenerationInstructions?: string,
-  extractionCount: number = 1
-): Promise<any> => { // Consider a specific return type
+  mode: 'new_game' | 'merge_story' = 'new_game',
+  dataExtractionInstructions: string = '',
+  nodeGenerationInstructions: string = '',
+  extractionCount: number = 3
+): Promise<any> => {
   const extractedData = await extractDataFromTwine(content, dataExtractionInstructions, extractionCount);
-  // Pass the full extractedData object, including failedChunks if present
-  return generateNodesFromExtractedData(extractedData, nodes, mode, nodeGenerationInstructions);
+  const flattenedData = extractedData.chunks.flat();
+  
+  // Convert mode to match generateNodesFromExtractedData parameter
+  const adjustedMode = mode === 'merge_story' ? 'merge' : mode;
+  
+  return generateNodesFromExtractedData(flattenedData, nodes, nodeGenerationInstructions, adjustedMode);
+};
+
+export const processCompleteStory = async (
+  content: string,
+  nodes: Node[],
+  mode: 'new_game' | 'merge' = 'new_game',
+  nodeGenerationInstructions: string = '',
+  dataExtractionInstructions: string = '',
+  extractionCount: number = 3
+): Promise<any> => {
+  const extractedData = await extractDataFromTwine(content, dataExtractionInstructions, extractionCount);
+  const flattenedData = extractedData.chunks.flat();
+  return generateNodesFromExtractedData(flattenedData, nodes, nodeGenerationInstructions, mode);
 }; 

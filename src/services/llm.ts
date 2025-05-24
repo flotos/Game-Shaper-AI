@@ -9,6 +9,7 @@ export {
   generateNodesFromExtractedData,
   regenerateSingleNode,
   generateNodesFromTwine,
+  processCompleteStory,
 } from './twineImportLLMService';
 export type { ExtractedElement, ExtractedData } from './twineImportLLMService'; // Export types if needed by consumers
 
