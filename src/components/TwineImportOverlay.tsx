@@ -126,12 +126,10 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
 
       const regeneratedNodeData = await regenerateSingleNode(
         nodeId,
-        baseNodeForRegen,
+        nodes,
         preview.extractedData,
-        nodes, // Pass original nodes as context
-        importMode,
         secondPromptInstructions,
-        baseNodeForRegen // Pass itself as the recently generated version for this context
+        JSON.stringify(baseNodeForRegen)
       );
 
       if (regeneratedNodeData) {
@@ -381,11 +379,12 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
     setIsLoading(true);
     setError('');
     try {
+      const adjustedMode = importMode === 'merge_story' ? 'merge' : importMode;
       const nodeResponse = await generateNodesFromExtractedData(
         preview.extractedData,
         nodes,
-        importMode,
-        secondPromptInstructions
+        secondPromptInstructions,
+        adjustedMode
       );
       if (nodeResponse && (nodeResponse.new?.length || nodeResponse.update?.length)) {
         setPreview(prev => ({
