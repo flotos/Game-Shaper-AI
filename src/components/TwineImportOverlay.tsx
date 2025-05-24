@@ -424,8 +424,6 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
           image: userEdits.image ?? newNodePartial.image ?? '',
           updateImage: userEdits.updateImage ?? newNodePartial.updateImage ?? true,
           imageSeed: userEdits.imageSeed ?? newNodePartial.imageSeed ?? undefined,
-          // Ensure position is an object, even if empty or default
-          position: userEdits.position ?? newNodePartial.position ?? { x: Math.random() * 400, y: Math.random() * 300 }
         };
         n_nodes.push(finalNewNode);
       });
@@ -455,7 +453,7 @@ const TwineImportOverlay: React.FC<TwineImportOverlayProps> = ({ nodes, updateGr
                 else if (finalValue) updateOps.img_upd = true; 
 
                 hasChanges = true;
-              } else if (key === 'imageSeed' || key === 'position') { // These are direct replacements
+              } else if (key === 'imageSeed') { // These are direct replacements
                  updateOps[key] = { rpl: finalValue };
                  hasChanges = true;
               } else { // For name, longDescription, type
