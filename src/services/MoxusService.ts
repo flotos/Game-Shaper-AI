@@ -20,7 +20,8 @@ type MoxusTaskType =
   | 'finalReport'
   | 'llmCallFeedback'
   | 'chatTextFeedback'
-  | 'synthesizeGeneralMemory';
+  | 'synthesizeGeneralMemory'
+  | 'manualNodeEditAnalysis';
 
 // Define Task Structure
 interface MoxusTask {
@@ -556,7 +557,23 @@ const processQueue = async () => {
     }
   }
 
-  // 6. Process "other" tasks (now block 4)
+  // 4. Handle manual node edit analysis
+  if (!didLaunchOrProcessTaskThisCycle) {
+    const manualEditTaskIndex = taskQueue.findIndex(t => t.type === 'manualNodeEditAnalysis');
+    if (manualEditTaskIndex !== -1) {
+      const task = taskQueue.splice(manualEditTaskIndex, 1)[0];
+      console.log(`[MoxusService] Launching task: ${task.type} (ID: ${task.id})`);
+      didLaunchOrProcessTaskThisCycle = true;
+      handleManualNodeEditAnalysis(task)
+        .catch(err => console.error(`[MoxusService] Error in ${task.type} (ID: ${task.id}):`, err))
+        .finally(() => {
+          console.log(`[MoxusService] Completed task: ${task.type} (ID: ${task.id})`);
+          triggerProcessing();
+        });
+    }
+  }
+
+  // 5. Process "other" tasks
   if (!didLaunchOrProcessTaskThisCycle && taskQueue.length > 0) {
     const nextTask = taskQueue[0];
     const isTaskForADifferentDedicatedHandlerThatIsBusy = 
@@ -994,6 +1011,140 @@ export const clearLLMLogEntries = (): void => {
   console.log('[MoxusService] LLM log entries cleared.');
 };
 
+// Enhanced specialized guidance functions for consciousness-driven teaching
+export const getChatTextGuidance = async (currentContext: string): Promise<string> => {
+  if (!getMoxusFeedbackImpl) {
+    console.warn('[MoxusService] getMoxusFeedbackImpl not available for specialized guidance');
+    return '';
+  }
+
+  try {
+    const assistantNodesContent = getAssistantNodesContent();
+    const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+    const currentChatTextMemory = moxusStructuredMemory.featureSpecificMemory.chatText || DEFAULT_MEMORY.CHAT_TEXT;
+
+    const prompts = AllPrompts as { moxus_prompts: { moxus_specialized_chat_guidance: string } };
+    let guidancePrompt = prompts.moxus_prompts.moxus_specialized_chat_guidance;
+    
+    guidancePrompt = guidancePrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
+    guidancePrompt = guidancePrompt.replace(/{current_chat_text_memory}/g, currentChatTextMemory);
+    guidancePrompt = guidancePrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
+    guidancePrompt = guidancePrompt.replace(/{current_context}/g, currentContext);
+
+    const guidance = await getMoxusFeedbackImpl(guidancePrompt, 'moxus_specialized_chat_guidance');
+    return guidance;
+  } catch (error) {
+    console.error('[MoxusService] Error in getChatTextGuidance:', error);
+    return '';
+  }
+};
+
+export const getNodeEditionGuidance = async (currentContext: string): Promise<string> => {
+  if (!getMoxusFeedbackImpl) {
+    console.warn('[MoxusService] getMoxusFeedbackImpl not available for specialized guidance');
+    return '';
+  }
+
+  try {
+    const assistantNodesContent = getAssistantNodesContent();
+    const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+    const currentNodeEditionMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition || DEFAULT_MEMORY.NODE_EDITION;
+
+    const prompts = AllPrompts as { moxus_prompts: { moxus_specialized_worldbuilding_guidance: string } };
+    let guidancePrompt = prompts.moxus_prompts.moxus_specialized_worldbuilding_guidance;
+    
+    guidancePrompt = guidancePrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
+    guidancePrompt = guidancePrompt.replace(/{current_node_edition_memory}/g, currentNodeEditionMemory);
+    guidancePrompt = guidancePrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
+    guidancePrompt = guidancePrompt.replace(/{current_context}/g, currentContext);
+
+    const guidance = await getMoxusFeedbackImpl(guidancePrompt, 'moxus_specialized_worldbuilding_guidance');
+    return guidance;
+  } catch (error) {
+    console.error('[MoxusService] Error in getNodeEditionGuidance:', error);
+    return '';
+  }
+};
+
+export const getSpecializedMoxusGuidance = async (callType: string, currentContext: string): Promise<string> => {
+  if (callType === 'chat_text_generation') {
+    return await getChatTextGuidance(currentContext);
+  } else if (callType === 'node_edition_json') {
+    return await getNodeEditionGuidance(currentContext);
+  } else {
+    // For unrecognized call types, return general memory
+    return moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+  }
+};
+
+export const recordManualNodeEdit = (originalNode: any, editedNode: any, editContext: string) => {
+  // Add manual node edit analysis task
+  setTimeout(() => {
+    addTask('manualNodeEditAnalysis', {
+      originalNode,
+      editedNode,
+      editContext,
+      timestamp: new Date()
+    });
+  }, 100);
+};
+
+// Handle manual node edit analysis
+const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
+  if (!getMoxusFeedbackImpl) {
+    console.warn('[MoxusService] getMoxusFeedbackImpl not available for manual node edit analysis');
+    return;
+  }
+
+  try {
+    const assistantNodesContent = getAssistantNodesContent();
+    const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+    const currentManualEditMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdit || DEFAULT_MEMORY.NODE_EDIT;
+
+    const prompts = AllPrompts as { moxus_prompts: { moxus_feedback_on_manual_node_edit: string } };
+    let analysisPrompt = prompts.moxus_prompts.moxus_feedback_on_manual_node_edit;
+    
+    analysisPrompt = analysisPrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
+    analysisPrompt = analysisPrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
+    analysisPrompt = analysisPrompt.replace(/{original_node}/g, JSON.stringify(task.data.originalNode, null, 2));
+    analysisPrompt = analysisPrompt.replace(/{user_changes}/g, JSON.stringify(task.data.editedNode, null, 2));
+    analysisPrompt = analysisPrompt.replace(/{edit_context}/g, task.data.editContext);
+    analysisPrompt = analysisPrompt.replace(/{current_manual_edit_memory}/g, currentManualEditMemory);
+
+    const learningResponse = await getMoxusFeedbackImpl(analysisPrompt, 'moxus_feedback_on_manual_node_edit');
+    
+    // Process the learning response
+    try {
+      const parsedLearning = JSON.parse(learningResponse);
+      
+      // Update manual edit memory
+      if (parsedLearning.memory_update_diffs) {
+        let updatedMemory = currentManualEditMemory;
+        if (parsedLearning.memory_update_diffs.rpl !== undefined) {
+          updatedMemory = parsedLearning.memory_update_diffs.rpl;
+        } else if (parsedLearning.memory_update_diffs.df && Array.isArray(parsedLearning.memory_update_diffs.df)) {
+          updatedMemory = applyDiffs(currentManualEditMemory, parsedLearning.memory_update_diffs.df);
+        }
+        moxusStructuredMemory.featureSpecificMemory.nodeEdit = updatedMemory;
+      }
+      
+      // Update general memory with consciousness evolution
+      if (parsedLearning.consciousness_evolution) {
+        moxusStructuredMemory.GeneralMemory = currentGeneralMemory + '\n\n' + parsedLearning.consciousness_evolution;
+      }
+      
+      saveMemory();
+    } catch (error) {
+      console.error('[MoxusService] Error parsing manual edit learning response:', error);
+      // Fallback: append raw response to memory
+      moxusStructuredMemory.featureSpecificMemory.nodeEdit += '\n\n' + learningResponse;
+      saveMemory();
+    }
+  } catch (error) {
+    console.error('[MoxusService] Error in handleManualNodeEditAnalysis:', error);
+  }
+};
+
 export const moxusService = {
   initialize,
   addTask,
@@ -1051,5 +1202,9 @@ export const moxusService = {
     console.log('Structured Memory:', moxusStructuredMemory);
     console.log('JSON representation:', getLLMCallsMemoryJSON());
   },
-  getMoxusPersonalityContext
+  getMoxusPersonalityContext,
+  getChatTextGuidance,
+  getNodeEditionGuidance,
+  getSpecializedMoxusGuidance,
+  recordManualNodeEdit
 };

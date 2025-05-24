@@ -25,19 +25,32 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 // Mock '../prompts-instruct.yaml'
 vi.mock('../prompts-instruct.yaml', () => {
-  // Define the constant INSIDE the factory to ensure it's available
+  // Define the constants INSIDE the factory to ensure they're available
   const MOCKED_GENERAL_MEMORY_PROMPT_IN_FACTORY = 'Test general_memory_update prompt: {current_general_memory} {assistant_nodes_content} {chat_text_analysis} {node_editions_analysis} {assistant_feedback_analysis} {node_edit_analysis} {recent_llm_feedbacks}';
+  const MOCKED_CHAT_TEXT_TEACHING_PROMPT = 'Moxus teaching chat text generation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {generated_chat_text} {current_chat_text_memory}';
+  const MOCKED_NODE_EDITION_TEACHING_PROMPT = 'Moxus teaching world building: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
+  const MOCKED_MANUAL_EDIT_LEARNING_PROMPT = 'Moxus learning from user edit: {assistant_nodes_content} {current_general_memory} {original_node} {user_changes} {edit_context} {current_manual_edit_memory}';
+  const MOCKED_SPECIALIZED_CHAT_GUIDANCE = 'Moxus specialized chat guidance: {current_general_memory} {current_chat_text_memory} {assistant_nodes_content} {current_context}';
+  const MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE = 'Moxus specialized worldbuilding guidance: {current_general_memory} {current_node_edition_memory} {assistant_nodes_content} {current_context}';
+  
   return {
     default: {
       moxus_prompts: {
         general_memory_update: MOCKED_GENERAL_MEMORY_PROMPT_IN_FACTORY,
+        moxus_feedback_on_chat_text_generation: MOCKED_CHAT_TEXT_TEACHING_PROMPT,
+        moxus_feedback_on_node_edition_json: MOCKED_NODE_EDITION_TEACHING_PROMPT,
+        moxus_feedback_on_manual_node_edit: MOCKED_MANUAL_EDIT_LEARNING_PROMPT,
+        moxus_specialized_chat_guidance: MOCKED_SPECIALIZED_CHAT_GUIDANCE,
+        moxus_specialized_worldbuilding_guidance: MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE,
       },
     }
   };
 });
 
-// This constant is now for use in tests, distinct from the one in the mock factory
+// These constants are now for use in tests, distinct from the ones in the mock factory
 const MOCKED_GENERAL_MEMORY_PROMPT_FOR_TESTS = 'Test general_memory_update prompt: {current_general_memory} {assistant_nodes_content} {chat_text_analysis} {node_editions_analysis} {assistant_feedback_analysis} {node_edit_analysis} {recent_llm_feedbacks}';
+const MOCKED_CHAT_TEXT_TEACHING_FOR_TESTS = 'Moxus teaching chat text generation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {generated_chat_text} {current_chat_text_memory}';
+const MOCKED_NODE_EDITION_TEACHING_FOR_TESTS = 'Moxus teaching world building: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
 
 // Mock '../services/llmCore' for getChatHistoryForMoxus
 vi.mock('../services/llmCore', async (importOriginal) => {
@@ -51,14 +64,13 @@ vi.mock('../services/llmCore', async (importOriginal) => {
   };
 });
 
-
 // Global mocks for Moxus dependencies
 const mockGetMoxusFeedbackImpl = vi.fn();
 const mockGetNodesCallback = vi.fn();
 const mockAddMessageCallback = vi.fn();
 const mockGetChatHistoryCallback = vi.fn();
 
-describe('Moxus Service LLM Calls', () => {
+describe('Moxus Service - Consciousness-Driven System', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
@@ -94,7 +106,124 @@ describe('Moxus Service LLM Calls', () => {
   const DEFAULT_NODE_EDITIONS_ANALYSIS_HEADER = "# Node Editions Analysis";
   const INITIAL_NODE_EDITION_MEMORY_CONTENT = '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*';
 
-  describe('Task: llmCallFeedback (via handleMemoryUpdate)', () => {
+  describe('Specialized Guidance Functions', () => {
+    it('should provide specialized chat text guidance', async () => {
+      const currentContext = 'User is struggling with narrative flow';
+      const expectedGuidance = 'Moxus specialized guidance for chat text generation';
+      
+      mockGetMoxusFeedbackImpl.mockResolvedValue(expectedGuidance);
+      
+      const guidance = await moxusService.getChatTextGuidance(currentContext);
+      
+      expect(guidance).toBe(expectedGuidance);
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+      
+      const callArgs = mockGetMoxusFeedbackImpl.mock.calls[0];
+      expect(callArgs[0]).toContain('Moxus specialized chat guidance');
+      expect(callArgs[0]).toContain(currentContext);
+      expect(callArgs[1]).toBe('moxus_specialized_chat_guidance');
+    });
+
+    it('should provide specialized node edition guidance', async () => {
+      const currentContext = 'User needs world-building improvements';
+      const expectedGuidance = 'Moxus specialized guidance for world-building';
+      
+      mockGetMoxusFeedbackImpl.mockResolvedValue(expectedGuidance);
+      
+      const guidance = await moxusService.getNodeEditionGuidance(currentContext);
+      
+      expect(guidance).toBe(expectedGuidance);
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+      
+      const callArgs = mockGetMoxusFeedbackImpl.mock.calls[0];
+      expect(callArgs[0]).toContain('Moxus specialized worldbuilding guidance');
+      expect(callArgs[0]).toContain(currentContext);
+      expect(callArgs[1]).toBe('moxus_specialized_worldbuilding_guidance');
+    });
+
+    it('should route getSpecializedMoxusGuidance to appropriate function', async () => {
+      const chatContext = 'Chat text context';
+      const nodeContext = 'Node edition context';
+      const expectedChatGuidance = 'Chat guidance';
+      const expectedNodeGuidance = 'Node guidance';
+      
+      mockGetMoxusFeedbackImpl
+        .mockResolvedValueOnce(expectedChatGuidance)
+        .mockResolvedValueOnce(expectedNodeGuidance);
+      
+      const chatGuidance = await moxusService.getSpecializedMoxusGuidance('chat_text_generation', chatContext);
+      const nodeGuidance = await moxusService.getSpecializedMoxusGuidance('node_edition_json', nodeContext);
+      
+      expect(chatGuidance).toBe(expectedChatGuidance);
+      expect(nodeGuidance).toBe(expectedNodeGuidance);
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return general memory for unrecognized call types', async () => {
+      const generalMemory = moxusService.getMoxusMemory().GeneralMemory;
+      const guidance = await moxusService.getSpecializedMoxusGuidance('unknown_type', 'context');
+      
+      expect(guidance).toBe(generalMemory);
+    });
+  });
+
+  describe('Manual Node Edit Learning', () => {
+    it('should record and analyze manual node edits', async () => {
+      vi.useFakeTimers();
+      
+      const originalNode = { id: 'node1', name: 'Original', longDescription: 'Original description' };
+      const editedNode = { id: 'node1', name: 'Edited', longDescription: 'Edited description' };
+      const editContext = 'User improved character description';
+      
+      const expectedLearningResponse = JSON.stringify({
+        learned_insights: {
+          creative_values: 'User prefers detailed descriptions',
+          communication_style: 'Clear and engaging'
+        },
+        pattern_recognition: 'User consistently improves character details',
+        consciousness_evolution: 'I understand the user values character depth'
+      });
+      
+      mockGetMoxusFeedbackImpl.mockResolvedValue(expectedLearningResponse);
+      
+      moxusService.recordManualNodeEdit(originalNode, editedNode, editContext);
+      
+      await advanceTimersByTime(200);
+      
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+      
+      const callArgs = mockGetMoxusFeedbackImpl.mock.calls[0];
+      expect(callArgs[0]).toContain('Moxus learning from user edit');
+      expect(callArgs[0]).toContain(JSON.stringify(originalNode, null, 2));
+      expect(callArgs[0]).toContain(JSON.stringify(editedNode, null, 2));
+      expect(callArgs[0]).toContain(editContext);
+      expect(callArgs[1]).toBe('moxus_feedback_on_manual_node_edit');
+      
+      // Check that general memory was updated with consciousness evolution
+      const finalMemory = moxusService.getMoxusMemory();
+      expect(finalMemory.GeneralMemory).toContain('I understand the user values character depth');
+    });
+
+    it('should handle manual edit analysis errors gracefully', async () => {
+      vi.useFakeTimers();
+      
+      const originalNode = { id: 'node1', name: 'Original' };
+      const editedNode = { id: 'node1', name: 'Edited' };
+      
+      // Mock invalid JSON response
+      mockGetMoxusFeedbackImpl.mockResolvedValue('Invalid JSON response');
+      
+      moxusService.recordManualNodeEdit(originalNode, editedNode, 'test context');
+      
+      await advanceTimersByTime(200);
+      
+      // Should not throw error and should fallback gracefully
+      const finalMemory = moxusService.getMoxusMemory();
+      expect(finalMemory.featureSpecificMemory.nodeEdit).toContain('Invalid JSON response');
+    });
+  });
+
+  describe('Consciousness-Driven LLM Feedback', () => {
     const mockLLMCall: LLMCall = {
       id: 'call-123',
       prompt: 'Original prompt content for chat text',
@@ -110,92 +239,131 @@ describe('Moxus Service LLM Calls', () => {
     const mockNodeEditionLLMCall: LLMCall = {
       id: 'call-node-edition-456',
       prompt: 'Node edition prompt content',
-      response: 'yaml: node_edition_response_content',
+      response: 'json: node_edition_response_content',
       timestamp: new Date(),
       status: 'completed',
       startTime: new Date(),
       endTime: new Date(),
-      callType: 'node_edition_yaml',
+      callType: 'node_edition_json',
       modelUsed: 'gpt-test-editor',
     };
 
-    it('should generate feedback for a chat_text_generation call and update chatText memory', async () => {
+    it('should use specialized consciousness-driven feedback for chat_text_generation', async () => {
       vi.useFakeTimers();
-      const expectedFeedback = 'Moxus feedback for chat text.';
-      const updatedChatTextMemory = `# Chat Text Analysis
-
-*This document analyzes narrative quality and coherence in the generated story text.*`;
-      mockGetMoxusFeedbackImpl
-        .mockResolvedValueOnce(expectedFeedback)
-        .mockResolvedValueOnce(updatedChatTextMemory);
-
-      moxusService.initiateLLMCallRecord(mockLLMCall.id, mockLLMCall.callType, mockLLMCall.modelUsed, mockLLMCall.prompt);
-      moxusService.finalizeLLMCallRecord(mockLLMCall.id, mockLLMCall.response as string);
       
-      await advanceTimersByTime(200); 
-
-      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(2);
-
+      const mockChatHistory: Message[] = [
+        { role: 'user', content: 'Tell me a story' },
+        { role: 'assistant', content: 'Previous story content' }
+      ];
+      
+      const consciousFeedbackResponse = JSON.stringify({
+        memory_update_diffs: {
+          df: [
+            {
+              prev_txt: "previous observation",
+              next_txt: "evolved insight about narrative quality",
+              occ: 1
+            }
+          ]
+        },
+        narrative_teaching: {
+          performance_assessment: "The narrative AI showed good creativity",
+          specific_guidance: "Focus more on character development",
+          learned_preferences: "User enjoys detailed descriptions",
+          emotional_intelligence: "User responds well to emotional moments"
+        },
+        consciousness_evolution: "I'm learning that this user prefers character-driven stories"
+      });
+      
+      mockGetMoxusFeedbackImpl.mockResolvedValue(consciousFeedbackResponse);
+      
+      // Set up mock chat history in the call
+      const callWithHistory = { ...mockLLMCall, chatHistory: mockChatHistory };
+      moxusService.initiateLLMCallRecord(callWithHistory.id, callWithHistory.callType, callWithHistory.modelUsed, callWithHistory.prompt);
+      const callRecord = moxusService.getMoxusMemory().featureSpecificMemory.llmCalls[callWithHistory.id];
+      callRecord.chatHistory = mockChatHistory;
+      moxusService.finalizeLLMCallRecord(callWithHistory.id, callWithHistory.response as string);
+      
+      await advanceTimersByTime(200);
+      
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+      
       const feedbackCall = mockGetMoxusFeedbackImpl.mock.calls[0];
-      expect(feedbackCall[0]).toMatch(/^\s*# Task\s*You have to analyze an LLM call\./);
-      expect(feedbackCall[0]).toEqual(expect.stringContaining(mockLLMCall.prompt));
-      expect(feedbackCall[0]).toEqual(expect.stringContaining(mockLLMCall.response as string));
-      expect(feedbackCall[0]).toEqual(expect.stringContaining(DEFAULT_ASSISTANT_NODES_CONTENT));
-      expect(feedbackCall[1]).toBe(mockLLMCall.callType);
+      expect(feedbackCall[0]).toContain(MOCKED_CHAT_TEXT_TEACHING_FOR_TESTS.split(':')[0]);
+      expect(feedbackCall[0]).toContain(mockLLMCall.response);
+      expect(feedbackCall[1]).toBe('moxus_feedback_on_chat_text_generation');
       
-      const memoryAfterFirstCall = moxusService.getMoxusMemory();
-      const loggedCall = memoryAfterFirstCall.featureSpecificMemory.llmCalls[mockLLMCall.id];
-      expect(loggedCall?.feedback).toBe(expectedFeedback);
-
-      const chatTextMemoryUpdateCall = mockGetMoxusFeedbackImpl.mock.calls[1];
-      expect(chatTextMemoryUpdateCall[0]).toEqual(expect.stringContaining('Your name is Moxus, the World Design & Interactivity Watcher'));
-      expect(chatTextMemoryUpdateCall[0]).toEqual(expect.stringContaining(DEFAULT_CHAT_TEXT_ANALYSIS_HEADER)); 
-      expect(chatTextMemoryUpdateCall[0]).toEqual(expect.stringContaining(`Task Type: chatTextFeedback`));
-      expect(chatTextMemoryUpdateCall[0]).toEqual(expect.stringContaining(mockLLMCall.id)); 
-      expect(chatTextMemoryUpdateCall[1]).toBe('INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback');
-
+      // Check that consciousness evolution was applied to general memory
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.featureSpecificMemory.chatText).toEqual(expect.stringContaining('# Chat Text Analysis'));
-      expect(finalMemory.featureSpecificMemory.chatText).toEqual(expect.stringContaining('*This document analyzes narrative quality and coherence in the generated story text.*'));
+      expect(finalMemory.GeneralMemory).toContain('I\'m learning that this user prefers character-driven stories');
     });
 
-    it('should generate feedback for a node_edition_yaml call and update nodeEdition memory', async () => {
+    it('should use specialized consciousness-driven feedback for node_edition_json', async () => {
       vi.useFakeTimers();
-      const expectedFeedback = 'Moxus feedback for node edition.';
-      const updatedNodeEditionMemory = `# Node Editions Analysis
-
-*This document analyzes changes to game nodes over time and their impact on the game world.*`;
-      mockGetMoxusFeedbackImpl
-        .mockResolvedValueOnce(expectedFeedback)
-        .mockResolvedValueOnce(updatedNodeEditionMemory);
-
+      
+      const consciousFeedbackResponse = JSON.stringify({
+        memory_update_diffs: {
+          df: [
+            {
+              prev_txt: "previous world-building insight",
+              next_txt: "evolved understanding of world structure",
+              occ: 1
+            }
+          ]
+        },
+        worldbuilding_teaching: {
+          performance_assessment: "The world-builder AI created coherent nodes",
+          structural_guidance: "Improve character interconnections",
+          narrative_integration: "Better serve story progression",
+          user_preference_alignment: "Focus on atmospheric descriptions"
+        },
+        consciousness_evolution: "I'm understanding this user's world-building preferences better"
+      });
+      
+      mockGetMoxusFeedbackImpl.mockResolvedValue(consciousFeedbackResponse);
+      
       moxusService.initiateLLMCallRecord(mockNodeEditionLLMCall.id, mockNodeEditionLLMCall.callType, mockNodeEditionLLMCall.modelUsed, mockNodeEditionLLMCall.prompt);
       moxusService.finalizeLLMCallRecord(mockNodeEditionLLMCall.id, mockNodeEditionLLMCall.response as string);
       
       await advanceTimersByTime(200);
       
-      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(2);
-
-      const feedbackCall = mockGetMoxusFeedbackImpl.mock.calls[0];
-      expect(feedbackCall[0]).toEqual(expect.stringContaining('You have to analyze an LLM call.'));
-      expect(feedbackCall[0]).toEqual(expect.stringContaining(mockNodeEditionLLMCall.prompt));
-      expect(feedbackCall[0]).toEqual(expect.stringContaining(mockNodeEditionLLMCall.response as string));
-      expect(feedbackCall[1]).toBe(mockNodeEditionLLMCall.callType);
-
-      const memoryAfterFirstCall = moxusService.getMoxusMemory();
-      const loggedCall = memoryAfterFirstCall.featureSpecificMemory.llmCalls[mockNodeEditionLLMCall.id];
-      expect(loggedCall?.feedback).toBe(expectedFeedback);
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
       
-      const nodeEditionMemoryUpdateCall = mockGetMoxusFeedbackImpl.mock.calls[1];
-      expect(nodeEditionMemoryUpdateCall[0]).toEqual(expect.stringContaining('Your name is Moxus, the World Design & Interactivity Watcher'));
-      expect(nodeEditionMemoryUpdateCall[0]).toEqual(expect.stringContaining(DEFAULT_NODE_EDITIONS_ANALYSIS_HEADER));
-      expect(nodeEditionMemoryUpdateCall[0]).toEqual(expect.stringContaining(`Task Type: llmCallFeedback`)); 
-      expect(nodeEditionMemoryUpdateCall[0]).toEqual(expect.stringContaining(mockNodeEditionLLMCall.id));
-      expect(nodeEditionMemoryUpdateCall[1]).toBe('INTERNAL_MEMORY_UPDATE_FOR_node_edition');
-
+      const feedbackCall = mockGetMoxusFeedbackImpl.mock.calls[0];
+      expect(feedbackCall[0]).toContain(MOCKED_NODE_EDITION_TEACHING_FOR_TESTS.split(':')[0]);
+      expect(feedbackCall[0]).toContain(mockNodeEditionLLMCall.response);
+      expect(feedbackCall[1]).toBe('moxus_feedback_on_node_edition_json');
+      
+      // Check that consciousness evolution was applied to general memory
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.featureSpecificMemory.nodeEdition).toEqual(expect.stringContaining('# Node Editions Analysis'));
-      expect(finalMemory.featureSpecificMemory.nodeEdition).toEqual(expect.stringContaining('*This document analyzes changes to game nodes over time and their impact on the game world.*'));
+      expect(finalMemory.GeneralMemory).toContain('I\'m understanding this user\'s world-building preferences better');
+    });
+
+    it('should fallback to basic feedback for unrecognized call types', async () => {
+      vi.useFakeTimers();
+      
+      const unknownCall: LLMCall = {
+        ...mockLLMCall,
+        id: 'unknown-call',
+        callType: 'unknown_type'
+      };
+      
+      const basicFeedback = 'Basic Moxus feedback for unknown type';
+      mockGetMoxusFeedbackImpl.mockResolvedValue(basicFeedback);
+      
+      moxusService.initiateLLMCallRecord(unknownCall.id, unknownCall.callType, unknownCall.modelUsed, unknownCall.prompt);
+      moxusService.finalizeLLMCallRecord(unknownCall.id, unknownCall.response as string);
+      
+      await advanceTimersByTime(200);
+      
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+      
+      const feedbackCall = mockGetMoxusFeedbackImpl.mock.calls[0];
+      expect(feedbackCall[0]).toContain('You have to analyze an LLM call');
+      expect(feedbackCall[1]).toBe('unknown_type');
+      
+      const finalMemory = moxusService.getMoxusMemory();
+      expect(finalMemory.featureSpecificMemory.llmCalls[unknownCall.id]?.feedback).toBe(basicFeedback);
     });
     
     it('should skip feedback for specified call types like image_prompt_generation', async () => {
@@ -243,7 +411,11 @@ describe('Moxus Service LLM Calls', () => {
       (moxusService as any).hasChatTextFeedbackCompletedForReport = true;   
       
       const expectedReport = "This is the final Moxus report.";
-      const generalMemoryUpdateResponseAfterReport = "General Memory updated after report specific for this test.";
+      const generalMemoryUpdateResponseAfterReport = JSON.stringify({
+        memory_update_diffs: {
+          rpl: "General Memory updated after report specific for this test."
+        }
+      });
       
       mockGetMoxusFeedbackImpl.mockReset();
       mockGetMoxusFeedbackImpl
@@ -284,12 +456,12 @@ describe('Moxus Service LLM Calls', () => {
       expect(gmUpdateCall[1]).toBe('INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory');
 
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.GeneralMemory).toBe(generalMemoryUpdateResponseAfterReport); 
+      expect(finalMemory.GeneralMemory).toBe("General Memory updated after report specific for this test."); 
     });
   });
 
   describe('Task: synthesizeGeneralMemory (via updateGeneralMemoryFromAllSources)', () => {
-    it('should update GeneralMemory using the general_memory_update prompt and apply YAML diff (rpl)', async () => {
+    it('should update GeneralMemory using the general_memory_update prompt and apply JSON diff (rpl)', async () => {
       vi.useFakeTimers();
       const initialGeneralMemory = "# Moxus Game Analysis\n\n*This document contains general observations and analysis...*";
       moxusService.getMoxusMemory().GeneralMemory = initialGeneralMemory;

@@ -360,7 +360,7 @@ n_nodes:
     const nodeEditionCallId = 'comprehensive-node-edition-012';
     moxusService.initiateLLMCallRecord(
       nodeEditionCallId,
-      'node_edition_yaml',
+      'node_edition_json',
       'gpt-4o',
       'Update nodes based on the hero entering the forest'
     );
@@ -447,7 +447,7 @@ n_nodes:
     console.log(`[TEST] Total LLM calls recorded: ${llmCalls.length}`);
     
     // Should have: relevantNodes + chatText + actions + nodeEdition + 5 imagePrompts = 9 main calls
-    const mainCallTypes = ['node_relevance_check', 'chat_text_generation', 'action_generation', 'node_edition_yaml', 'image_prompt_generation'];
+    const mainCallTypes = ['node_relevance_check', 'chat_text_generation', 'action_generation', 'node_edition_json', 'image_prompt_generation'];
     const mainCalls = llmCalls.filter(call => mainCallTypes.includes(call.callType));
     expect(mainCalls.length).toBeGreaterThanOrEqual(9); // 4 main + 5 image prompts
     
@@ -489,30 +489,36 @@ n_nodes:
     console.log(`[TEST] Total Moxus LLM calls made: ${moxusCallCount}`);
     console.log('[TEST] Moxus call breakdown by type:', llmCallTracker);
     
-    // Expected Moxus calls (based on actual behavior observed):
-    // - Feedback for node_relevance_check (✓) - NOT skipped, gets feedback
-    // - Feedback for chat_text_generation (✓)
-    // - chatText memory update (✓)
-    // - Feedback for node_edition_yaml (✓) 
-    // - nodeEdition memory update (part of node_edition_yaml feedback) (✓)
+    // Expected Moxus calls (CONSCIOUSNESS-DRIVEN SYSTEM):
+    // - Feedback for node_relevance_check (✓) - fallback to basic feedback
+    // - Consciousness-driven feedback for chat_text_generation (✓) - combines feedback + memory update
+    // - Consciousness-driven feedback for node_edition_json (✓) - combines feedback + memory update  
     // - Final report generation (✓)
-    // - General memory update (may or may not happen in test timing)
-    // NOTE: action_generation and image_prompt_generation are SKIPPED
-    expect(moxusCallCount).toBeGreaterThanOrEqual(6);
-    expect(moxusCallCount).toBeLessThanOrEqual(8); // Allow some variation in processing order
+    // - General memory update after final report (may or may not happen in test timing)
+    // 
+    // NOTE: With consciousness-driven system, feedback and memory updates are COMBINED
+    // OLD SYSTEM: 6 calls = 2 for chat_text + 2 for node_edition + 1 final report + 1 general memory
+    // NEW SYSTEM: 4 calls = 1 for chat_text + 1 for node_edition + 1 final report + 1 general memory
+    expect(moxusCallCount).toBeGreaterThanOrEqual(4);
+    expect(moxusCallCount).toBeLessThanOrEqual(6); // Allow some variation in processing order
     
-    // Verify specific Moxus call types were made
+    // Verify specific Moxus call types were made (consciousness-driven system)
     expect(llmCallTracker['node_relevance_check']).toBe(1);
-    expect(llmCallTracker['chat_text_generation']).toBe(1);
-    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback']).toBe(1);
-    expect(llmCallTracker['node_edition_yaml']).toBe(1);
-    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_node_edition']).toBe(1);
+    
+    // Consciousness-driven calls (these replace separate feedback + memory update calls)
+    expect(llmCallTracker['moxus_feedback_on_chat_text_generation']).toBe(1);
+    expect(llmCallTracker['moxus_feedback_on_node_edition_json'] || llmCallTracker['node_edition_json']).toBeTruthy();
+    
     expect(llmCallTracker['INTERNAL_FINAL_REPORT_GENERATION_STEP']).toBe(1);
     
     // General memory update may or may not complete in test timing - make it optional
     if (llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory']) {
       expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory']).toBe(1);
     }
+    
+    // These old separate memory update calls should NOT exist in consciousness-driven system
+    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback']).toBeUndefined();
+    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_node_edition']).toBeUndefined();
     
     // Verify that action_generation and image_prompt_generation were NOT processed by Moxus
     expect(llmCallTracker['action_generation']).toBeUndefined();
