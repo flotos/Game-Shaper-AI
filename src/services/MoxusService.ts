@@ -96,6 +96,9 @@ const createDefaultMemoryStructure = (): MoxusMemoryStructure => ({
 // Storage key
 const MOXUS_STRUCTURED_MEMORY_KEY = 'moxusStructuredMemory';
 
+// Memory update mutex to prevent race conditions
+let memoryUpdateMutex = Promise.resolve();
+
 // Initialize memory structure
 let moxusStructuredMemory = createDefaultMemoryStructure();
 let taskQueue: MoxusTask[] = [];
@@ -453,8 +456,6 @@ const getAssistantNodesContent = (): string => {
       .join('\\n\\n---\\n\\n');
 };
 
-
-
 // Asynchronous function to process the queue
 const processQueue = async () => {
   let didLaunchOrProcessTaskThisCycle = false;
@@ -688,37 +689,41 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       
       // Store consciousness evolution for later consolidation (don't append directly)
       if (parsedResponse.consciousness_evolution) {
-        moxusStructuredMemory.pendingConsciousnessEvolution = 
-          (moxusStructuredMemory.pendingConsciousnessEvolution || [])
-          .concat(parsedResponse.consciousness_evolution);
-        console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
+        await atomicMemoryUpdate(() => {
+          moxusStructuredMemory.pendingConsciousnessEvolution = 
+            (moxusStructuredMemory.pendingConsciousnessEvolution || [])
+            .concat(parsedResponse.consciousness_evolution);
+          console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
+        });
       }
       
-      // Handle memory updates for assistantFeedback
+      // Handle memory updates for assistantFeedback using atomic updates
       if (parsedResponse.memory_update_diffs) {
-        let updatedMemory = currentAssistantFeedbackMemory;
-        if (parsedResponse.memory_update_diffs.rpl !== undefined) {
-          updatedMemory = parsedResponse.memory_update_diffs.rpl;
-        } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
-          // Filter diffs to only include those that target content in assistantFeedback memory
-          const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
-            if (!diff.prev_txt) return true; // Allow append operations
-            const found = updatedMemory.includes(diff.prev_txt);
-            if (!found) {
-              console.warn(`[MoxusService] Skipping assistantFeedback diff that targets content not found in assistantFeedback memory: "${diff.prev_txt.substring(0, 100)}..."`);
+        await atomicMemoryUpdate(() => {
+          let updatedMemory = moxusStructuredMemory.featureSpecificMemory.assistantFeedback;
+          if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+            updatedMemory = parsedResponse.memory_update_diffs.rpl;
+          } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+            // Filter diffs to only include those that target content in assistantFeedback memory
+            const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
+              if (!diff.prev_txt) return true; // Allow append operations
+              const found = updatedMemory.includes(diff.prev_txt);
+              if (!found) {
+                console.warn(`[MoxusService] Skipping assistantFeedback diff that targets content not found in assistantFeedback memory: "${diff.prev_txt.substring(0, 100)}..."`);
+              }
+              return found;
+            });
+            
+            if (validDiffs.length > 0) {
+              updatedMemory = applyDiffs(updatedMemory, validDiffs);
+              console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedResponse.memory_update_diffs.df.length} diffs to assistantFeedback memory.`);
+            } else {
+              console.warn('[MoxusService] No valid diffs found for assistantFeedback memory. All diffs target content not in assistantFeedback memory.');
             }
-            return found;
-          });
-          
-          if (validDiffs.length > 0) {
-            updatedMemory = applyDiffs(updatedMemory, validDiffs);
-            console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedResponse.memory_update_diffs.df.length} diffs to assistantFeedback memory.`);
-          } else {
-            console.warn('[MoxusService] No valid diffs found for assistantFeedback memory. All diffs target content not in assistantFeedback memory.');
           }
-        }
-        moxusStructuredMemory.featureSpecificMemory.assistantFeedback = updatedMemory;
-        console.log(`[MoxusService] Updated assistantFeedback memory document via consciousness-driven feedback for task ${task.id}.`);
+          moxusStructuredMemory.featureSpecificMemory.assistantFeedback = updatedMemory;
+          console.log(`[MoxusService] Updated assistantFeedback memory document via consciousness-driven feedback for task ${task.id}.`);
+        });
       }
       
       // Store teaching insights for future guidance use
@@ -731,13 +736,13 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         ].filter(Boolean).join('\n\n');
         
         if (guidanceText.trim()) {
-          moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
-          moxusStructuredMemory.cachedGuidance.assistantGuidance = guidanceText;
-          console.log(`[MoxusService] Cached assistant teaching insights for future guidance.`);
+          await atomicMemoryUpdate(() => {
+            moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
+            moxusStructuredMemory.cachedGuidance.assistantGuidance = guidanceText;
+            console.log(`[MoxusService] Cached assistant teaching insights for future guidance.`);
+          });
         }
       }
-      
-      saveMemory();
     } catch (error) {
       console.error('[MoxusService] Error processing consciousness feedback for assistantFeedback:', error);
       // Fallback to storing raw feedback
@@ -788,6 +793,9 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         promptType = 'moxus_feedback_on_chat_text_generation';
       } else if (task.type === 'llmCallFeedback' && originalCallTypeForFeedback === 'node_edition_json') {
         // Use consciousness-driven node edition teaching prompt
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Starting node_edition_json feedback for task ${task.id}`);
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Call ID: ${task.data.id}`);
+        
         feedbackPrompt = loadedPrompts.moxus_prompts.moxus_feedback_on_node_edition_json;
         
         const currentNodeEditionMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition || DEFAULT_MEMORY.NODE_EDITION;
@@ -795,6 +803,10 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           getFormattedChatHistoryStringForMoxus(task.data.chatHistory, 10) : 
           "(No recent interaction context available)";
         const allNodesContext = getNodesCallback().map(node => `ID: ${node.id}, Name: ${node.name}, Type: ${node.type}`).join('\n');
+        
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Current nodeEdition memory length: ${currentNodeEditionMemory.length}`);
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Current nodeEdition memory preview: "${currentNodeEditionMemory.substring(0, 200)}..."`);
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Full nodeEdition memory being sent to LLM: "${currentNodeEditionMemory}"`);
         
         feedbackPrompt = formatPrompt(feedbackPrompt, {
           assistant_nodes_content: assistantNodesContent,
@@ -805,6 +817,9 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           current_node_edition_memory: currentNodeEditionMemory
         });
         
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Formatted prompt length: ${feedbackPrompt.length}`);
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Prompt contains JSON instruction: ${feedbackPrompt.toLowerCase().includes('json')}`);
+        
         promptType = 'moxus_feedback_on_node_edition_json';
       } else {
         // Fallback to generic feedback for other types
@@ -813,7 +828,12 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       }
       
       if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
+      
+      console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: About to call LLM for feedback with promptType: ${promptType}`);
       const feedback = await getMoxusFeedbackImpl(feedbackPrompt, promptType);
+      console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Received LLM feedback, length: ${feedback.length}`);
+      console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Feedback preview: "${feedback.substring(0, 300)}..."`);
+      
       const truncatedFeedback = feedback.length > TRUNCATE_LENGTH ? feedback.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : feedback;
       if (moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
          moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = truncatedFeedback;
@@ -823,71 +843,108 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       
       // Process consciousness-driven feedback if it's a specialized prompt
       if (promptType === 'moxus_feedback_on_chat_text_generation' || promptType === 'moxus_feedback_on_node_edition_json') {
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Processing consciousness feedback for promptType: ${promptType}`);
+        
         try {
           const parsedResponse = safeJsonParse(feedback);
+          console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: JSON parsing successful: ${!!parsedResponse}`);
+          console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Has memory_update_diffs: ${!!parsedResponse?.memory_update_diffs}`);
+          
+          if (parsedResponse?.memory_update_diffs) {
+            console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: memory_update_diffs structure:`, JSON.stringify(parsedResponse.memory_update_diffs, null, 2));
+          }
           
           // Store consciousness evolution for later consolidation (don't append directly)
           if (parsedResponse.consciousness_evolution) {
-            moxusStructuredMemory.pendingConsciousnessEvolution = 
-              (moxusStructuredMemory.pendingConsciousnessEvolution || [])
-              .concat(parsedResponse.consciousness_evolution);
-            console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
+            await atomicMemoryUpdate(() => {
+              moxusStructuredMemory.pendingConsciousnessEvolution = 
+                (moxusStructuredMemory.pendingConsciousnessEvolution || [])
+                .concat(parsedResponse.consciousness_evolution);
+              console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
+            });
           }
           
-          // Handle memory updates for specific feedback types
+          // Handle memory updates for specific feedback types using atomic updates
           if (parsedResponse.memory_update_diffs) {
             if (task.type === 'chatTextFeedback') {
-              let updatedMemory = moxusStructuredMemory.featureSpecificMemory.chatText;
-              if (parsedResponse.memory_update_diffs.rpl !== undefined) {
-                updatedMemory = parsedResponse.memory_update_diffs.rpl;
-              } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
-                // Filter diffs to only include those that target content in chatText memory
-                const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
-                  if (!diff.prev_txt) return true; // Allow append operations
-                  const found = updatedMemory.includes(diff.prev_txt);
-                  if (!found) {
-                    console.warn(`[MoxusService] Skipping chatText diff that targets content not found in chatText memory: "${diff.prev_txt.substring(0, 100)}..."`);
+              await atomicMemoryUpdate(() => {
+                let updatedMemory = moxusStructuredMemory.featureSpecificMemory.chatText;
+                if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+                  updatedMemory = parsedResponse.memory_update_diffs.rpl;
+                } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+                  // Filter diffs to only include those that target content in chatText memory
+                  const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
+                    if (!diff.prev_txt) return true; // Allow append operations
+                    const found = updatedMemory.includes(diff.prev_txt);
+                    if (!found) {
+                      console.warn(`[MoxusService] Skipping chatText diff that targets content not found in chatText memory: "${diff.prev_txt.substring(0, 100)}..."`);
+                    }
+                    return found;
+                  });
+                  
+                  if (validDiffs.length > 0) {
+                    updatedMemory = applyDiffs(updatedMemory, validDiffs);
+                    console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedResponse.memory_update_diffs.df.length} diffs to chatText memory.`);
+                  } else {
+                    console.warn('[MoxusService] No valid diffs found for chatText memory. All diffs target content not in chatText memory.');
                   }
-                  return found;
-                });
-                
-                if (validDiffs.length > 0) {
-                  updatedMemory = applyDiffs(updatedMemory, validDiffs);
-                  console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedResponse.memory_update_diffs.df.length} diffs to chatText memory.`);
-                } else {
-                  console.warn('[MoxusService] No valid diffs found for chatText memory. All diffs target content not in chatText memory.');
                 }
-              }
-              moxusStructuredMemory.featureSpecificMemory.chatText = updatedMemory;
-              console.log(`[MoxusService] Updated chatText memory document via consciousness-driven feedback for task ${task.id}.`);
+                moxusStructuredMemory.featureSpecificMemory.chatText = updatedMemory;
+              });
             } else if (task.type === 'llmCallFeedback' && task.data?.callType === 'node_edition_json') {
-              let updatedMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
-              if (parsedResponse.memory_update_diffs.rpl !== undefined) {
-                updatedMemory = parsedResponse.memory_update_diffs.rpl;
-              } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
-                // Filter diffs to only include those that target content in nodeEdition memory
-                const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
-                  if (!diff.prev_txt) return true; // Allow append operations
-                  const found = updatedMemory.includes(diff.prev_txt);
-                  if (!found) {
-                    console.warn(`[MoxusService] Skipping nodeEdition diff that targets content not found in nodeEdition memory: "${diff.prev_txt.substring(0, 100)}..."`);
+              
+              await atomicMemoryUpdate(() => {
+                let updatedMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition;                
+                if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+                  updatedMemory = parsedResponse.memory_update_diffs.rpl;
+                } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+                  
+                  // Filter diffs to only include those that target content in nodeEdition memory
+                  const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
+                    if (!diff.prev_txt) {
+                      console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Allowing append operation (empty prev_txt)`);
+                      return true; // Allow append operations
+                    }
+                    const found = updatedMemory.includes(diff.prev_txt);
+                    if (!found) {                      
+                      // Check for partial matches to help debug
+                      const firstLine = diff.prev_txt.split('\n')[0];
+                      
+                      // Try normalized comparison
+                      const normalizedMemory = updatedMemory.replace(/\r\n/g, '\n').trim();
+                      const normalizedExpected = diff.prev_txt.replace(/\r\n/g, '\n').trim();
+                      if (normalizedMemory.includes(normalizedExpected)) {
+                        return true; // Allow this diff with normalization
+                      }
+                    }
+                    return found;
+                  });
+                  
+                  if (validDiffs.length > 0) {
+                    const beforeLength = updatedMemory.length;
+                    updatedMemory = applyDiffs(updatedMemory, validDiffs);
+                    const afterLength = updatedMemory.length;
+                  } else {
+                    console.warn('[MoxusService] No valid diffs found for nodeEdition memory. All diffs target content not in nodeEdition memory.');
                   }
-                  return found;
-                });
-                
-                if (validDiffs.length > 0) {
-                  updatedMemory = applyDiffs(updatedMemory, validDiffs);
-                  console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedResponse.memory_update_diffs.df.length} diffs to nodeEdition memory.`);
                 } else {
-                  console.warn('[MoxusService] No valid diffs found for nodeEdition memory. All diffs target content not in nodeEdition memory.');
+                  console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: No rpl or df found in memory_update_diffs`);
                 }
-              }
-              moxusStructuredMemory.featureSpecificMemory.nodeEdition = updatedMemory;
-              console.log(`[MoxusService] Updated nodeEdition memory document via consciousness-driven feedback for task ${task.id}.`);
+                
+                moxusStructuredMemory.featureSpecificMemory.nodeEdition = updatedMemory;
+                console.log(`[MoxusService] Updated nodeEdition memory document via consciousness-driven feedback for task ${task.id}.`);
+              });
+              
+              console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Completed atomic update for nodeEdition memory`);
+              
+              // Verify the memory was actually updated
+              const finalMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
+              console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Post-atomic-update memory length: ${finalMemory.length}`);
+              console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Post-atomic-update memory preview: "${finalMemory.substring(0, 200)}..."`);
             }
           }
           
-          // Store teaching insights for future guidance use
+          // Store teaching insights for future guidance use using atomic updates
           if (parsedResponse.narrative_teaching && task.type === 'chatTextFeedback') {
             const guidanceText = [
               parsedResponse.narrative_teaching.performance_assessment,
@@ -897,9 +954,11 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
             ].filter(Boolean).join('\n\n');
             
             if (guidanceText.trim()) {
-              moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
-              moxusStructuredMemory.cachedGuidance.chatTextGuidance = guidanceText;
-              console.log(`[MoxusService] Cached narrative teaching insights for future guidance.`);
+              await atomicMemoryUpdate(() => {
+                moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
+                moxusStructuredMemory.cachedGuidance.chatTextGuidance = guidanceText;
+                console.log(`[MoxusService] Cached narrative teaching insights for future guidance.`);
+              });
             }
           }
           
@@ -912,13 +971,13 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
             ].filter(Boolean).join('\n\n');
             
             if (guidanceText.trim()) {
-              moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
-              moxusStructuredMemory.cachedGuidance.nodeEditionGuidance = guidanceText;
-              console.log(`[MoxusService] Cached worldbuilding teaching insights for future guidance.`);
+              await atomicMemoryUpdate(() => {
+                moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
+                moxusStructuredMemory.cachedGuidance.nodeEditionGuidance = guidanceText;
+                console.log(`[MoxusService] Cached worldbuilding teaching insights for future guidance.`);
+              });
             }
           }
-          
-          saveMemory();
           
           // Check if we should trigger consciousness consolidation
           const shouldTriggerConsolidation = shouldTriggerConsciousnessConsolidation();
@@ -931,6 +990,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           }
         } catch (error) {
           console.error('[MoxusService] Error processing consciousness feedback:', error);
+          console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Error in consciousness feedback processing: ${error}`);
           // Fallback processing already handled by storing raw feedback above
         }
       }
@@ -1071,8 +1131,6 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   try {
     const parsedJson = safeJsonParse(contentToParse) as any;
     let finalGeneralMemory = currentGeneralMemorySnapshot;
-
-
 
     if (parsedJson && parsedJson.memory_update_diffs) {
       if (parsedJson.memory_update_diffs.rpl !== undefined) {
@@ -1311,6 +1369,36 @@ const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
   } catch (error) {
     console.error('[MoxusService] Error in handleManualNodeEditAnalysis:', error);
   }
+};
+
+// Atomic memory update function to prevent race conditions
+const atomicMemoryUpdate = async (updateFunction: () => void | Promise<void>): Promise<void> => {
+  return memoryUpdateMutex = memoryUpdateMutex.then(async () => {
+    try {
+      // Only reload memory from localStorage in non-test environments
+      // In test environments, we want to preserve the in-memory state
+      if (!(import.meta.env && import.meta.env.VITEST)) {
+        const beforeReload = moxusStructuredMemory.featureSpecificMemory.nodeEdition.length;
+        loadMemory();
+        const afterReload = moxusStructuredMemory.featureSpecificMemory.nodeEdition.length;
+        console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Memory reloaded from localStorage - nodeEdition length: ${beforeReload} -> ${afterReload}`);
+        if (beforeReload !== afterReload) {
+          console.warn(`[MoxusService] 🔍 NODEDIT-DEBUG: Memory changed during reload! This could cause diff mismatches.`);
+        }
+      }
+      
+      // Apply the update
+      await updateFunction();
+      
+      // Save the updated memory
+      saveMemory();
+      
+      console.log('[MoxusService] Atomic memory update completed successfully');
+    } catch (error) {
+      console.error('[MoxusService] Error in atomic memory update:', error);
+      throw error;
+    }
+  });
 };
 
 export const moxusService = {
