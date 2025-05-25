@@ -258,7 +258,12 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
     (trimmedCallType && trimmedCallType.startsWith('moxus_feedback_on_')) || 
     (trimmedCallType && trimmedCallType.startsWith('moxus_specialized_')) ||
     (trimmedCallType && trimmedCallType.startsWith('INTERNAL_MEMORY_UPDATE_FOR_')) ||
-    (trimmedCallType && trimmedCallType.startsWith('moxus_update_') && trimmedCallType.endsWith('_memory'));
+    (trimmedCallType && trimmedCallType.startsWith('moxus_update_') && trimmedCallType.endsWith('_memory')) ||
+    trimmedCallType === 'story_refocus_event' ||
+    trimmedCallType === 'chat_reset_event' ||
+    trimmedCallType === 'assistant_message_edit_event' ||
+    trimmedCallType === 'chat_regenerate_event' ||
+    trimmedCallType === 'chat_input_regenerate_event';
   if (!isMoxusInternalProcessingCall) {
     addFeedbackTasksForCall(call);
   } else {
@@ -320,6 +325,14 @@ export const recordInternalSystemEvent = (eventId: string, eventPrompt: string, 
   emitLLMLogUpdate(); 
   console.log(`[MoxusService] Recorded internal system event: ${eventId} (${eventType})`);
 
+  // Check if this is a system event that should not generate feedback tasks
+  const isSystemEventThatSkipsFeedback = 
+    eventType === 'story_refocus_event' ||
+    eventType === 'chat_reset_event' ||
+    eventType === 'assistant_message_edit_event' ||
+    eventType === 'chat_regenerate_event' ||
+    eventType === 'chat_input_regenerate_event';
+
   if (eventType === "chat_reset_event" && eventContextData?.previousChatHistory) {
     console.log(`[MoxusService] Chat reset event detected. Queueing updateGeneralMemory task with previous chat history.`);
     const previousChatHistoryString = getFormattedChatHistoryStringForMoxus(eventContextData.previousChatHistory, 20); // Use more turns for this analysis
@@ -332,9 +345,11 @@ export const recordInternalSystemEvent = (eventId: string, eventPrompt: string, 
       }, 
       previousChatHistoryString 
     });
-  } else {
-    // Default behavior for other system events (or if history is missing for chat_reset_event for some reason)
+  } else if (!isSystemEventThatSkipsFeedback) {
+    // Only generate feedback tasks for non-system events
     addFeedbackTasksForCall(eventCallForLog);
+  } else {
+    console.log(`[MoxusService] Skipping feedback task generation for system event type: ${eventType}`);
   }
 };
 

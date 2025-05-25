@@ -953,4 +953,76 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       localStorageMock.setItem = originalSetItem;
     });
   });
+
+  describe('System Event Handling', () => {
+    it('should not generate feedback tasks for story_refocus_event to prevent infinite loops', () => {
+      vi.useFakeTimers();
+      
+      // Record a story_refocus_event
+      moxusService.recordInternalSystemEvent(
+        'test-refocus-123',
+        'System Event: Story refocus triggered by user.',
+        'Chat history cleared. New starting point: The adventure begins...',
+        'story_refocus_event'
+      );
+      
+      // Advance timers to allow any potential task processing
+      vi.advanceTimersByTime(200);
+      
+      // Verify that no feedback tasks were generated
+      const memory = moxusService.getMoxusMemory();
+      const llmCalls = Object.values(memory.featureSpecificMemory.llmCalls);
+      
+      // Should only have the original story_refocus_event call, no feedback calls
+      expect(llmCalls).toHaveLength(1);
+      expect(llmCalls[0].callType).toBe('story_refocus_event');
+      expect(llmCalls[0].id).toBe('test-refocus-123');
+      
+      // Verify no feedback tasks were added to the queue
+      expect(moxusService.getPendingTaskCount()).toBe(0);
+      
+      vi.useRealTimers();
+    });
+
+    it('should not generate feedback tasks for other system event types', () => {
+      vi.useFakeTimers();
+      
+      const systemEventTypes = [
+        'chat_reset_event',
+        'assistant_message_edit_event', 
+        'chat_regenerate_event',
+        'chat_input_regenerate_event'
+      ];
+      
+      systemEventTypes.forEach((eventType, index) => {
+        moxusService.recordInternalSystemEvent(
+          `test-${eventType}-${index}`,
+          `System Event: ${eventType} triggered.`,
+          'System event response.',
+          eventType
+        );
+      });
+      
+      // Advance timers to allow any potential task processing
+      vi.advanceTimersByTime(200);
+      
+      // Verify that no feedback tasks were generated for any system events
+      const memory = moxusService.getMoxusMemory();
+      const llmCalls = Object.values(memory.featureSpecificMemory.llmCalls);
+      
+      // Should only have the original system event calls, no feedback calls
+      expect(llmCalls).toHaveLength(systemEventTypes.length);
+      
+      systemEventTypes.forEach((eventType, index) => {
+        const call = llmCalls.find(call => call.id === `test-${eventType}-${index}`);
+        expect(call).toBeDefined();
+        expect(call?.callType).toBe(eventType);
+      });
+      
+      // Verify no feedback tasks were added to the queue
+      expect(moxusService.getPendingTaskCount()).toBe(0);
+      
+      vi.useRealTimers();
+    });
+  });
 }); 
