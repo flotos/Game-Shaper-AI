@@ -346,7 +346,7 @@ export const getResponse = async (
           messages: messages,
           stream: stream,
           temperature: 0.2,
-          frequency_penalty: 0.5,
+          frequency_penalty: 1,
         };
 
         if (responseFormat) {

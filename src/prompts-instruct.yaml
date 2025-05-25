@@ -988,7 +988,7 @@ moxus_prompts:
     - What has been applied from your previous recommendations and what still needs work
     
     ## OUTPUT REQUIREMENTS
-    - Keep it to 1-2 paragraphs maximum
+    - Keep it to 1-2 paragraphs maximum focused on helping the Narrative AI improve. Don't repeat yourself from the previous final report analysis. If it didn't change much the narration, find other issues or wording.
     - Use minimal markdown formatting
     - Be direct and actionable
     - Show your personality and emotional state based on compliance
