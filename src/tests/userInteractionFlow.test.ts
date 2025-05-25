@@ -592,7 +592,7 @@ n_nodes:
     await advanceTimersByTime(500);
     
     // 7. Verify assistantFeedback was processed with the correct call type
-    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_assistantFeedback']).toBe(1);
+    expect(llmCallTracker['moxus_feedback_on_assistant_feedback']).toBe(1);
     
     // 8. Verify the assistantFeedback memory was updated
     const memory = moxusService.getMoxusMemory();
@@ -665,6 +665,23 @@ n_nodes:
     mockGetMoxusFeedbackImpl.mockImplementation((prompt, callType) => {
       console.log(`[TEST] MockGetMoxusFeedback called with callType: ${callType}`);
       llmCallTracker[callType] = (llmCallTracker[callType] || 0) + 1;
+      
+      // Return proper JSON format for consciousness-driven prompts
+      if (callType === 'moxus_feedback_on_assistant_feedback') {
+        return Promise.resolve(JSON.stringify({
+          memory_update_diffs: {
+            rpl: `# Assistant Interactions Analysis\n\nMoxus feedback response for ${callType}`
+          },
+          assistant_teaching: {
+            performance_assessment: "Good assistant performance",
+            interaction_guidance: "Continue this approach",
+            solution_quality_notes: "Quality is acceptable",
+            user_experience_insights: "User experience was positive"
+          },
+          consciousness_evolution: "Learning about assistant interactions"
+        }));
+      }
+      
       return Promise.resolve('Moxus feedback response for ' + callType);
     });
     
@@ -814,14 +831,14 @@ n_nodes:
     
     // Expected Moxus calls for assistant feature:
     // - Feedback for node_creation_from_prompt (✓) - standard LLM call feedback
-    // - AssistantFeedback memory update (✓) - INTERNAL_MEMORY_UPDATE_FOR_assistantFeedback
+    // - AssistantFeedback consciousness-driven analysis (✓) - moxus_feedback_on_assistant_feedback
     // - (optional) Additional memory updates or reports depending on timing
     expect(moxusCallCount).toBeGreaterThanOrEqual(2);
     expect(moxusCallCount).toBeLessThanOrEqual(5); // Allow some variation
     
     // Verify specific Moxus call types were made
     expect(llmCallTracker['node_creation_from_prompt']).toBe(1); // Standard feedback for the main call
-    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_assistantFeedback']).toBe(1); // Assistant feedback task processing
+    expect(llmCallTracker['moxus_feedback_on_assistant_feedback']).toBe(1); // Assistant feedback consciousness-driven analysis
     
     // Verify that image_prompt_generation was NOT processed by Moxus
     expect(llmCallTracker['image_prompt_generation']).toBeUndefined();

@@ -27,9 +27,9 @@ describe('LLM Core - Interface and YAML Validation', () => {
         'moxus_feedback_on_chat_text_generation',
         'moxus_feedback_on_node_edition_json',
         'moxus_feedback_on_manual_node_edit',
+        'moxus_feedback_on_assistant_feedback',
         
-        'general_memory_update',
-        'memory_section_update'
+        'general_memory_update'
       ];
 
       expectedMoxusPrompts.forEach(promptKey => {
@@ -158,7 +158,15 @@ describe('LLM Core - Interface and YAML Validation', () => {
           '{current_general_memory}',
           '{chat_text_analysis}',
           '{node_editions_analysis}',
-          '{recent_llm_feedbacks}'
+          '{assistant_feedback_analysis}',
+          '{node_edit_analysis}'
+        ],
+        moxus_feedback_on_assistant_feedback: [
+          '{assistant_nodes_content}',
+          '{current_general_memory}',
+          '{user_query}',
+          '{assistant_result}',
+          '{current_assistant_feedback_memory}'
         ]
       };
 
