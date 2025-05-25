@@ -8,9 +8,9 @@ function removeMarkdownWrapping(jsonString: string): string {
   
   // Handle multiple variations of markdown code blocks
   const patterns = [
-    /^```json\s*\n?/,
-    /^```JSON\s*\n?/,
-    /^```\s*json\s*\n?/,
+    /^```json\s*\n?/i,
+    /^```JSON\s*\n?/i,
+    /^```\s*json\s*\n?/i,
     /^```\s*\n?/
   ];
   
@@ -22,11 +22,10 @@ function removeMarkdownWrapping(jsonString: string): string {
   }
   
   // Remove trailing code block markers more aggressively
+  // Look for ``` followed by any content (including newlines) until end of string
   const endPatterns = [
-    /\n```\s*$/,
-    /```\s*$/,
-    /\n```[^`]*$/,
-    /```[^`]*$/
+    /\n```[\s\S]*$/,
+    /```[\s\S]*$/
   ];
   
   for (const pattern of endPatterns) {
@@ -55,11 +54,82 @@ function fixUnquotedPropertyNames(jsonString: string): string {
 }
 
 /**
+ * Extracts the first complete JSON object from a string that might contain trailing content
+ */
+function extractFirstCompleteJson(jsonString: string): string {
+  let processed = jsonString.trim();
+  
+  // Find the first opening brace or bracket
+  const firstBrace = processed.indexOf('{');
+  const firstBracket = processed.indexOf('[');
+  
+  let startIndex = -1;
+  let isObject = true;
+  
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    startIndex = firstBrace;
+    isObject = true;
+  } else if (firstBracket !== -1) {
+    startIndex = firstBracket;
+    isObject = false;
+  }
+  
+  if (startIndex === -1) {
+    return processed; // No JSON structure found
+  }
+  
+  // Track braces/brackets to find the end of the JSON
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  
+  for (let i = startIndex; i < processed.length; i++) {
+    const char = processed[i];
+    
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (inString) {
+      continue;
+    }
+    
+    if ((isObject && char === '{') || (!isObject && char === '[')) {
+      depth++;
+    } else if ((isObject && char === '}') || (!isObject && char === ']')) {
+      depth--;
+      
+      if (depth === 0) {
+        // Found the end of the JSON object/array
+        return processed.substring(startIndex, i + 1);
+      }
+    }
+  }
+  
+  // If we didn't find a complete JSON, return the original
+  return processed;
+}
+
+/**
  * Pre-processes common LLM JSON errors before attempting repair
  */
 function preProcessBrokenJson(jsonString: string): string {
   // First remove markdown wrapping
   let processed = removeMarkdownWrapping(jsonString);
+  
+  // Try to extract just the JSON part if there's trailing content
+  processed = extractFirstCompleteJson(processed);
   
   // Fix unquoted property names
   processed = fixUnquotedPropertyNames(processed);
