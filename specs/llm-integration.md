@@ -18,35 +18,35 @@ Game Shaper AI uses multiple Large Language Models working in concert to create 
 - **Call Type**: `chat_text_generation`
 - **Purpose**: Generate narrative response to user input
 - **Mode**: Streaming for real-time display
-- **Context**: Relevant nodes + last 5 interactions + Moxus feedback
+- **Context**: Relevant nodes + last 5 interactions + cached Moxus guidance
 - **Output**: Narrative text stream
 - **Function**: `generateChatText()`
 
 #### 3. Action Generation (Parallel)
 - **Call Type**: `action_generation`
 - **Purpose**: Suggest possible next user actions
-- **Context**: Generated narrative + nodes + Moxus feedback
+- **Context**: Generated narrative + nodes + cached Moxus guidance
 - **Output**: Array of 2 suggested actions
 - **Function**: `generateActions()`
 
 #### 4. Node Edition Generation (Parallel)
 - **Call Type**: `node_edition_json`
 - **Purpose**: Update game state based on story progression
-- **Context**: Generated narrative + current nodes + Moxus feedback
+- **Context**: Generated narrative + current nodes + cached Moxus guidance
 - **Output**: JSON with node create/update/delete operations
 - **Function**: `generateNodeEdition()`
 
 ### Background Moxus Flow (Asynchronous)
 
-#### 5. Chat Text Feedback
+#### 5. Chat Text Feedback (Optimized)
 - **Call Type**: `moxus_feedback_on_chat_text_generation`
-- **Purpose**: Evaluate quality of generated narrative
+- **Purpose**: Evaluate quality of generated narrative AND cache teaching insights
 - **Context**: Last 2 interactions + chat text
-- **Output**: Critical analysis and suggestions
+- **Output**: Critical analysis, suggestions, and cached guidance for future use
 
-#### 6. Node Edition Feedback
+#### 6. Node Edition Feedback (Optimized)
 - **Call Type**: `moxus_feedback_on_node_edition_json`
-- **Purpose**: Evaluate proposed node changes
+- **Purpose**: Evaluate proposed node changes AND cache teaching insights
 - **Context**: Last 2 interactions + node operations + all nodes
 - **Output**: Analysis of node consistency and coherence
 

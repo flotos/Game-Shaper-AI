@@ -27,8 +27,7 @@ describe('LLM Core - Interface and YAML Validation', () => {
         'moxus_feedback_on_chat_text_generation',
         'moxus_feedback_on_node_edition_json',
         'moxus_feedback_on_manual_node_edit',
-        'moxus_specialized_chat_guidance',
-        'moxus_specialized_worldbuilding_guidance',
+        
         'general_memory_update',
         'memory_section_update'
       ];

@@ -135,22 +135,21 @@ Periodic Consciousness Synthesis:
 
 **User**: "Continue the story"
 
-### Main Application Calls (3-6 calls)
-1. **LLM Call #1**: `moxus_specialized_chat_guidance` → Get narrative guidance
-2. **LLM Call #2**: `chat_text_generation` → Generate story (enhanced with guidance)
-3. **LLM Call #3**: `action_generation` → Generate user actions
-4. **LLM Call #4**: `moxus_specialized_worldbuilding_guidance` → Get world-building guidance  
-5. **LLM Call #5**: `node_edition_json` → Update game world (enhanced with guidance)
+### Main Application Calls (3 calls - OPTIMIZED)
+1. **LLM Call #1**: `chat_text_generation` → Generate story (enhanced with cached guidance)
+2. **LLM Call #2**: `action_generation` → Generate user actions
+3. **LLM Call #3**: `node_edition_json` → Update game world (enhanced with cached guidance)
 
-### Moxus Learning Calls (2-3 calls)
-6. **LLM Call #6**: `moxus_feedback_on_chat_text_generation` → Evaluate story + update chatText memory
-7. **LLM Call #7**: `moxus_feedback_on_node_edition_json` → Evaluate world changes + update nodeEdition memory
+### Moxus Learning Calls (2 calls - ENHANCED)
+4. **LLM Call #4**: `moxus_feedback_on_chat_text_generation` → Evaluate story + update chatText memory + cache teaching insights
+5. **LLM Call #5**: `moxus_feedback_on_node_edition_json` → Evaluate world changes + update nodeEdition memory + cache teaching insights
 
 ### Periodic Synthesis (1-2 calls)
-8. **LLM Call #8**: `moxus_final_report` → Generate user-facing analysis (when conditions met)
-9. **LLM Call #9**: `general_memory_update` → Synthesize consciousness (when conditions met)
+6. **LLM Call #6**: `moxus_final_report` → Generate user-facing analysis (when conditions met)
+7. **LLM Call #7**: `general_memory_update` → Synthesize consciousness (when conditions met)
 
-**Total**: 5-9 LLM calls per user interaction (depending on parallel execution and synthesis timing)
+**Total**: 3-7 LLM calls per user interaction (reduced from 5-9 through optimization)
+**Reduction**: 2 fewer calls per interaction by caching teaching insights instead of making separate guidance calls
 
 This multi-call architecture enables Moxus to maintain consciousness-driven teaching while keeping each call focused and efficient.
 
@@ -216,16 +215,8 @@ moxus_prompts:
     Focus: Learn creative values, quality standards, user vision
     Output: Consciousness evolution insights + pattern recognition
 
-  # Real-time guidance injection
-  moxus_specialized_chat_guidance: |
-    Provide consciousness-driven guidance for narrative generation.
-    Context: {current_consciousness} + {specific_context}
-    Output: Contextual teaching for immediate narrative decisions
-
-  moxus_specialized_worldbuilding_guidance: |
-    Provide consciousness-driven guidance for world-building decisions.
-    Context: {current_consciousness} + {structural_context}
-    Output: Contextual teaching for immediate world-building decisions
+  # Optimized cached guidance system (no longer uses separate prompts)
+  # Teaching insights are now cached from feedback analysis and reused
 ```
 
 ## Implementation Integration Points
@@ -237,15 +228,15 @@ moxus_prompts:
 - **Cross-domain pattern recognition** for consciousness evolution
 
 ### LLM Call Integration  
-**Teaching Injection During Generation**:
+**Optimized Teaching Injection During Generation**:
 ```typescript
-// Before narrative generation
+// Before narrative generation (no LLM call needed)
 const chatGuidance = await getChatTextGuidance(currentContext);
-// Inject guidance into narrative AI generation prompt
+// Returns cached teaching insights from recent feedback analysis
 
-// Before world-building generation  
+// Before world-building generation (no LLM call needed)
 const nodeGuidance = await getNodeEditionGuidance(currentContext);
-// Inject guidance into world-builder AI generation prompt
+// Returns cached teaching insights from recent feedback analysis
 ```
 
 **Learning Capture After User Actions**:

@@ -209,7 +209,18 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
     'generateNodeEdition (JSON)', 
     responsePayload, 
     (jsonString) => {
-      const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
+      // More comprehensive JSON cleaning
+      let cleanedJsonString = jsonString.trim();
+      
+      // Remove various markdown patterns
+      cleanedJsonString = cleanedJsonString
+        .replace(/^```json\s*\n?/i, '')
+        .replace(/^```\s*json\s*\n?/i, '')
+        .replace(/^```\s*\n?/, '')
+        .replace(/\n?```\s*$/g, '')
+        .replace(/```\s*$/g, '')
+        .trim();
+      
       const parsedFromJson = safeJsonParse(cleanedJsonString);
 
       if (parsedFromJson && typeof parsedFromJson === 'object') {
@@ -269,7 +280,18 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
     'generateNodesFromPrompt', 
     responsePayload, 
     (jsonString) => {
-      const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
+      // More comprehensive JSON cleaning
+      let cleanedJsonString = jsonString.trim();
+      
+      // Remove various markdown patterns
+      cleanedJsonString = cleanedJsonString
+        .replace(/^```json\s*\n?/i, '')
+        .replace(/^```\s*json\s*\n?/i, '')
+        .replace(/^```\s*\n?/, '')
+        .replace(/\n?```\s*$/g, '')
+        .replace(/```\s*$/g, '')
+        .trim();
+      
       const parsedFromJson = safeJsonParse(cleanedJsonString);
 
       const result: any = {};

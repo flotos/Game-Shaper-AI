@@ -6,21 +6,34 @@ import { jsonrepair } from 'jsonrepair';
 function removeMarkdownWrapping(jsonString: string): string {
   let cleaned = jsonString.trim();
   
-  // Remove ```json at the start and ``` at the end
-  if (cleaned.startsWith('```json\n') || cleaned.startsWith('```json ')) {
-    cleaned = cleaned.substring(7);
-  } else if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.substring(7);
-  } else if (cleaned.startsWith('```')) {
-    // Handle generic ``` wrapping without language specification
-    cleaned = cleaned.substring(3);
+  // Handle multiple variations of markdown code blocks
+  const patterns = [
+    /^```json\s*\n?/,
+    /^```JSON\s*\n?/,
+    /^```\s*json\s*\n?/,
+    /^```\s*\n?/
+  ];
+  
+  for (const pattern of patterns) {
+    if (pattern.test(cleaned)) {
+      cleaned = cleaned.replace(pattern, '');
+      break;
+    }
   }
   
-  // Remove trailing ```
-  if (cleaned.endsWith('\n```')) {
-    cleaned = cleaned.substring(0, cleaned.length - 4);
-  } else if (cleaned.endsWith('```')) {
-    cleaned = cleaned.substring(0, cleaned.length - 3);
+  // Remove trailing code block markers more aggressively
+  const endPatterns = [
+    /\n```\s*$/,
+    /```\s*$/,
+    /\n```[^`]*$/,
+    /```[^`]*$/
+  ];
+  
+  for (const pattern of endPatterns) {
+    if (pattern.test(cleaned)) {
+      cleaned = cleaned.replace(pattern, '');
+      break;
+    }
   }
   
   return cleaned.trim();
@@ -62,25 +75,44 @@ function preProcessBrokenJson(jsonString: string): string {
   // Fix incomplete property assignments with missing values
   processed = processed.replace(/"([^"]+)":\s*,/g, '"$1": null,');
   processed = processed.replace(/"([^"]+)":\s*$/g, '"$1": null');
+  processed = processed.replace(/"([^"]+)":\s*$/gm, '"$1": null');
   
   // Fix empty properties in objects
   processed = processed.replace(/":\s*"",?/g, '": null,');
   
   // Fix missing quotes around string values that clearly should be strings
-  // This handles cases like: "key": value without quotes where value contains spaces or special chars
   processed = processed.replace(/"([^"]+)":\s*([^",}\]\s][^",}\]]*[^",}\]\s])\s*([,}\]])/g, (match, key, value, terminator) => {
-    // Don't quote if it looks like a number, boolean, or null
     if (/^(true|false|null|\d+\.?\d*)$/.test(value.trim())) {
       return match;
     }
-    // Don't quote if it's already an object or array
     if (value.trim().startsWith('{') || value.trim().startsWith('[')) {
       return match;
     }
     return '"' + key + '": "' + value.trim() + '"' + terminator;
   });
   
-  // Fix objects that end abruptly
+  // Fix incomplete nested objects that might be cut off
+  processed = processed.replace(/("([^"]+)":\s*{[^}]*?)$/g, (match, prefix) => {
+    // If we have an opening brace but no closing, add a closing brace
+    if ((prefix.match(/{/g) || []).length > (prefix.match(/}/g) || []).length) {
+      return prefix + '}';
+    }
+    return match;
+  });
+  
+  // Handle truncated strings that end abruptly
+  processed = processed.replace(/("([^"]+)":\s*"[^"]*?)$/g, (match, prefix) => {
+    // If we have an incomplete string value, close it
+    if (!prefix.endsWith('"')) {
+      return prefix + '"';
+    }
+    return match;
+  });
+  
+  // Fix objects that end with just a property name and colon (common truncation)
+  processed = processed.replace(/("([^"]+)":\s*)$/g, '"$2": null');
+  
+  // Fix objects that end abruptly with a comma
   if (processed.trim().endsWith(',')) {
     processed = processed.trim().slice(0, -1);
   }
@@ -109,33 +141,51 @@ function preProcessBrokenJson(jsonString: string): string {
  * @throws Error if the JSON cannot be parsed even after repair attempt
  */
 export function safeJsonParse(jsonString: string): any {
+  if (!jsonString || typeof jsonString !== 'string') {
+    throw new Error('Invalid input: jsonString must be a non-empty string');
+  }
+  
   try {
     // First try standard JSON.parse
     return JSON.parse(jsonString);
   } catch (initialError) {
+    console.warn('Initial JSON parse failed, attempting repair...', initialError instanceof Error ? initialError.message : String(initialError));
+    
     try {
       // Pre-process common LLM JSON errors
       const preprocessedJson = preProcessBrokenJson(jsonString);
       
       try {
         // Try parsing after pre-processing
+        console.log('JSON successfully repaired with preprocessing');
         return JSON.parse(preprocessedJson);
       } catch (preProcessError) {
         // If that fails, try to repair the JSON using jsonrepair
+        console.warn('Preprocessing failed, attempting jsonrepair...', preProcessError instanceof Error ? preProcessError.message : String(preProcessError));
+        
         const repairedJson = jsonrepair(preprocessedJson);
         
-        // Log that repair was necessary
-        console.log('JSON required repair before parsing');
-        
+        console.log('JSON required jsonrepair library for successful parsing');
         return JSON.parse(repairedJson);
       }
     } catch (repairError) {
-      // If repair also fails, throw with better error message
+      // If repair also fails, provide comprehensive error information
       const errorMessage = repairError instanceof Error ? repairError.message : String(repairError);
       console.error('Failed to parse JSON even after repair attempt:', errorMessage);
       
-      // Log the problematic JSON for debugging
-      console.error('Original JSON:', JSON.stringify(jsonString.substring(0, 100) + '...'));
+      // Log more context for debugging
+      const truncatedOriginal = jsonString.length > 500 ? jsonString.substring(0, 500) + '...[truncated]' : jsonString;
+      console.error('Original JSON (first 500 chars):', truncatedOriginal);
+      
+      // Try to identify the error position if available
+      const positionMatch = errorMessage.match(/position (\d+)/i);
+      if (positionMatch) {
+        const position = parseInt(positionMatch[1]);
+        const contextStart = Math.max(0, position - 50);
+        const contextEnd = Math.min(jsonString.length, position + 50);
+        const context = jsonString.substring(contextStart, contextEnd);
+        console.error(`Context around error position ${position}:`, context);
+      }
       
       throw new Error(`Failed to parse JSON: ${errorMessage}`);
     }

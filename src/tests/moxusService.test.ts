@@ -32,9 +32,8 @@ vi.mock('../prompts-instruct.yaml', () => {
   const MOCKED_NODE_EDITION_TEACHING_PROMPT = 'moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
   const MOCKED_MANUAL_EDIT_LEARNING_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher. You are learning about the user\'s creative vision by observing their manual edits. {assistant_nodes_content} {current_general_memory} {original_node} {user_changes} {edit_context} {current_manual_edit_memory}';
   const MOCKED_GENERIC_MEMORY_UPDATE_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {current_general_memory} {existing_memory} {task_type} {task_data} {formatted_chat_history}';
-  const MOCKED_SPECIALIZED_CHAT_GUIDANCE = 'Moxus specialized chat guidance: {current_general_memory} {current_chat_text_memory} {assistant_nodes_content} {current_context}';
-  const MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE = 'Moxus specialized worldbuilding guidance: {current_general_memory} {current_node_edition_memory} {assistant_nodes_content} {current_context}';
   const MOCKED_FINAL_REPORT_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {chat_history_context} {general_memory} {chat_text_analysis} {node_editions_analysis}';
+  const MOCKED_DIFF_PROMPT = 'Test diff prompt instructions for JSON memory updates using rpl and df formats';
   
   return {
     default: {
@@ -44,9 +43,10 @@ vi.mock('../prompts-instruct.yaml', () => {
         moxus_feedback_on_node_edition_json: MOCKED_NODE_EDITION_TEACHING_PROMPT,
         moxus_feedback_on_manual_node_edit: MOCKED_MANUAL_EDIT_LEARNING_PROMPT,
         memory_section_update: MOCKED_GENERIC_MEMORY_UPDATE_PROMPT,
-        moxus_specialized_chat_guidance: MOCKED_SPECIALIZED_CHAT_GUIDANCE,
-        moxus_specialized_worldbuilding_guidance: MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE,
         moxus_final_report: MOCKED_FINAL_REPORT_PROMPT,
+      },
+      utils: {
+        diffPrompt: MOCKED_DIFF_PROMPT,
       },
     }
   };
@@ -66,6 +66,20 @@ vi.mock('../services/llmCore', async (importOriginal) => {
     getChatHistoryForMoxus: vi.fn((chatHistory: Message[], numTurns: number): Message[] => {
       return chatHistory.slice(-numTurns).filter(msg => msg.role === 'user' || msg.role === 'assistant');
     }),
+    // Mock loadedPrompts to provide the required structure for tests
+    loadedPrompts: {
+      moxus_prompts: {
+        general_memory_update: 'Test general_memory_update prompt: {current_general_memory} {assistant_nodes_content} {chat_text_analysis} {node_editions_analysis} {assistant_feedback_analysis} {node_edit_analysis} {recent_llm_feedbacks}',
+        moxus_feedback_on_chat_text_generation: 'moxus_feedback_on_chat_text_generation: Teaching the Narrative AI about chat text generation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {generated_chat_text} {current_chat_text_memory}',
+        moxus_feedback_on_node_edition_json: 'moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}',
+        moxus_feedback_on_manual_node_edit: 'Your name is Moxus, the World Design & Interactivity Watcher. You are learning about the user\'s creative vision by observing their manual edits. {assistant_nodes_content} {current_general_memory} {original_node} {user_changes} {edit_context} {current_manual_edit_memory}',
+        memory_section_update: 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {current_general_memory} {existing_memory} {task_type} {task_data} {formatted_chat_history}',
+        moxus_final_report: 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {chat_history_context} {general_memory} {chat_text_analysis} {node_editions_analysis}',
+      },
+      utils: {
+        diffPrompt: 'Test diff prompt instructions for JSON memory updates using rpl and df formats',
+      },
+    },
   };
 });
 
@@ -116,57 +130,72 @@ describe('Moxus Service - Consciousness-Driven System', () => {
   const MOCKED_NODE_EDITION_TEACHING_FOR_TESTS = "moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation";
   const MOCKED_GENERAL_MEMORY_PROMPT_FOR_TESTS = "Test general_memory_update prompt";
 
-  describe('Specialized Guidance Functions', () => {
-    it('should provide specialized chat text guidance', async () => {
+  describe('Cached Guidance Functions', () => {
+    it('should return cached narrative guidance when available', async () => {
       const currentContext = 'User is struggling with narrative flow';
-      const expectedGuidance = 'Moxus specialized guidance for chat text generation';
+      const cachedGuidance = 'Cached narrative teaching insights about pacing and character development';
       
-      mockGetMoxusFeedbackImpl.mockResolvedValue(expectedGuidance);
+      // Set up cached guidance
+      const memory = moxusService.getMoxusMemory();
+      memory.cachedGuidance = { chatTextGuidance: cachedGuidance };
+      moxusService.setMoxusMemory(memory);
       
       const guidance = await moxusService.getChatTextGuidance(currentContext);
       
-      expect(guidance).toBe(expectedGuidance);
-      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
-      
-      const callArgs = mockGetMoxusFeedbackImpl.mock.calls[0];
-      expect(callArgs[0]).toContain('Moxus specialized chat guidance');
-      expect(callArgs[0]).toContain(currentContext);
-      expect(callArgs[1]).toBe('moxus_specialized_chat_guidance');
+      expect(guidance).toBe(cachedGuidance);
+      expect(mockGetMoxusFeedbackImpl).not.toHaveBeenCalled();
     });
 
-    it('should provide specialized node edition guidance', async () => {
-      const currentContext = 'User needs world-building improvements';
-      const expectedGuidance = 'Moxus specialized guidance for world-building';
+    it('should fallback to general memory when no cached chat guidance available', async () => {
+      const currentContext = 'User needs narrative help';
+      const generalMemory = moxusService.getMoxusMemory().GeneralMemory;
       
-      mockGetMoxusFeedbackImpl.mockResolvedValue(expectedGuidance);
+      // Clear cached guidance
+      const memory = moxusService.getMoxusMemory();
+      memory.cachedGuidance = {};
+      moxusService.setMoxusMemory(memory);
+      
+      const guidance = await moxusService.getChatTextGuidance(currentContext);
+      
+      expect(guidance).toBe(generalMemory);
+      expect(mockGetMoxusFeedbackImpl).not.toHaveBeenCalled();
+    });
+
+    it('should return cached worldbuilding guidance when available', async () => {
+      const currentContext = 'User needs world-building improvements';
+      const cachedGuidance = 'Cached worldbuilding insights about structural coherence';
+      
+      // Set up cached guidance
+      const memory = moxusService.getMoxusMemory();
+      memory.cachedGuidance = { nodeEditionGuidance: cachedGuidance };
+      moxusService.setMoxusMemory(memory);
       
       const guidance = await moxusService.getNodeEditionGuidance(currentContext);
       
-      expect(guidance).toBe(expectedGuidance);
-      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
-      
-      const callArgs = mockGetMoxusFeedbackImpl.mock.calls[0];
-      expect(callArgs[0]).toContain('Moxus specialized worldbuilding guidance');
-      expect(callArgs[0]).toContain(currentContext);
-      expect(callArgs[1]).toBe('moxus_specialized_worldbuilding_guidance');
+      expect(guidance).toBe(cachedGuidance);
+      expect(mockGetMoxusFeedbackImpl).not.toHaveBeenCalled();
     });
 
-    it('should route getSpecializedMoxusGuidance to appropriate function', async () => {
+    it('should route getSpecializedMoxusGuidance to appropriate cached function', async () => {
       const chatContext = 'Chat text context';
       const nodeContext = 'Node edition context';
-      const expectedChatGuidance = 'Chat guidance';
-      const expectedNodeGuidance = 'Node guidance';
+      const cachedChatGuidance = 'Cached chat guidance';
+      const cachedNodeGuidance = 'Cached node guidance';
       
-      mockGetMoxusFeedbackImpl
-        .mockResolvedValueOnce(expectedChatGuidance)
-        .mockResolvedValueOnce(expectedNodeGuidance);
+      // Set up cached guidance
+      const memory = moxusService.getMoxusMemory();
+      memory.cachedGuidance = { 
+        chatTextGuidance: cachedChatGuidance,
+        nodeEditionGuidance: cachedNodeGuidance 
+      };
+      moxusService.setMoxusMemory(memory);
       
       const chatGuidance = await moxusService.getSpecializedMoxusGuidance('chat_text_generation', chatContext);
       const nodeGuidance = await moxusService.getSpecializedMoxusGuidance('node_edition_json', nodeContext);
       
-      expect(chatGuidance).toBe(expectedChatGuidance);
-      expect(nodeGuidance).toBe(expectedNodeGuidance);
-      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(2);
+      expect(chatGuidance).toBe(cachedChatGuidance);
+      expect(nodeGuidance).toBe(cachedNodeGuidance);
+      expect(mockGetMoxusFeedbackImpl).not.toHaveBeenCalled();
     });
 
     it('should return general memory for unrecognized call types', async () => {
@@ -322,6 +351,9 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       // Check that consciousness evolution was applied to general memory
       const finalMemory = moxusService.getMoxusMemory();
       expect(finalMemory.GeneralMemory).toContain('I\'m learning that this user prefers character-driven stories');
+      
+      // Check that narrative teaching insights were cached for future guidance
+      expect(finalMemory.cachedGuidance?.chatTextGuidance).toContain('Focus more on character development');
     });
 
     it('should use specialized consciousness-driven feedback for node_edition_json', async () => {
@@ -363,6 +395,9 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       // Check that consciousness evolution was applied to general memory
       const finalMemory = moxusService.getMoxusMemory();
       expect(finalMemory.GeneralMemory).toContain('I\'m understanding this user\'s world-building preferences better');
+      
+      // Check that worldbuilding teaching insights were cached for future guidance
+      expect(finalMemory.cachedGuidance?.nodeEditionGuidance).toContain('Improve character interconnections');
     });
 
     it('should fallback to basic feedback for unrecognized call types', async () => {
@@ -678,37 +713,7 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       });
     });
 
-    it('should validate specialized guidance prompts contain required placeholders', () => {
-      const chatGuidancePrompt = ActualAllPromptsYaml.moxus_prompts?.moxus_specialized_chat_guidance;
-      const worldbuildingGuidancePrompt = ActualAllPromptsYaml.moxus_prompts?.moxus_specialized_worldbuilding_guidance;
-      
-      // Skip test if prompts are not available
-      if (!chatGuidancePrompt || !worldbuildingGuidancePrompt) {
-        console.warn('Skipping specialized guidance prompt test - prompts not available');
-        return;
-      }
-      
-      // Type assert after null checks
-      const validChatGuidancePrompt = chatGuidancePrompt as string;
-      const validWorldbuildingGuidancePrompt = worldbuildingGuidancePrompt as string;
-      
-      const requiredGuidancePlaceholders = [
-        '{current_general_memory}',
-        '{assistant_nodes_content}',
-        '{current_context}'
-      ];
-      
-      requiredGuidancePlaceholders.forEach(placeholder => {
-        expect(validChatGuidancePrompt).toContain(placeholder);
-        expect(validWorldbuildingGuidancePrompt).toContain(placeholder);
-      });
-      
-      // Chat guidance should have chat-specific placeholder
-      expect(validChatGuidancePrompt).toContain('{current_chat_text_memory}');
-      
-      // Worldbuilding guidance should have node-specific placeholder
-      expect(validWorldbuildingGuidancePrompt).toContain('{current_node_edition_memory}');
-    });
+
   });
 
   describe('JSON Response Structure Validation', () => {

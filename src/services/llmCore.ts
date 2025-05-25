@@ -9,8 +9,6 @@ export interface PromptsConfig {
     moxus_feedback_on_chat_text_generation: string;
     moxus_feedback_on_node_edition_json: string;
     moxus_feedback_on_manual_node_edit: string;
-    moxus_specialized_chat_guidance: string;
-    moxus_specialized_worldbuilding_guidance: string;
     general_memory_update: string;
     memory_section_update: string;
   };

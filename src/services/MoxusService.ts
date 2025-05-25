@@ -1,8 +1,7 @@
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
-import { getChatHistoryForMoxus } from './llmCore';
+import { getChatHistoryForMoxus, loadedPrompts } from './llmCore';
 import { safeJsonParse } from '../utils/jsonUtils';
-import AllPrompts from '../prompts-instruct.yaml';
 
 // Avoid circular dependency by forward declaring the function type
 type GetMoxusFeedbackFn = (promptContent: string, originalCallType?: string) => Promise<string>;
@@ -63,7 +62,11 @@ interface MoxusMemoryStructure {
     assistantFeedback: string;
     nodeEdit: string;
     llmCalls: LLMCallsMemoryMap;
-  }
+  };
+  cachedGuidance?: {
+    chatTextGuidance?: string;
+    nodeEditionGuidance?: string;
+  };
 }
 
 // Default memory content templates
@@ -84,7 +87,8 @@ const createDefaultMemoryStructure = (): MoxusMemoryStructure => ({
     assistantFeedback: DEFAULT_MEMORY.ASSISTANT_FEEDBACK,
     nodeEdit: DEFAULT_MEMORY.NODE_EDIT,
     llmCalls: {}
-  }
+  },
+  cachedGuidance: {}
 });
 
 // Storage key
@@ -163,7 +167,8 @@ const loadMemory = () => {
           assistantFeedback: parsedMemory.featureSpecificMemory?.assistantFeedback || DEFAULT_MEMORY.ASSISTANT_FEEDBACK,
           nodeEdit: parsedMemory.featureSpecificMemory?.nodeEdit || DEFAULT_MEMORY.NODE_EDIT,
           llmCalls: parsedMemory.featureSpecificMemory?.llmCalls || {}
-        }
+        },
+        cachedGuidance: parsedMemory.cachedGuidance || {}
       };
       if (moxusStructuredMemory.featureSpecificMemory.llmCalls) {
         const migratedCalls: LLMCallsMemoryMap = {};
@@ -460,8 +465,7 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   }
   
   // Use the memory section update prompt that ensures JSON diff output
-  const prompts = AllPrompts as { moxus_prompts: { memory_section_update: string } };
-  let updatePrompt = prompts.moxus_prompts.memory_section_update;
+  let updatePrompt = loadedPrompts.moxus_prompts.memory_section_update;
   
   updatePrompt = updatePrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
   updatePrompt = updatePrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
@@ -469,6 +473,7 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
   updatePrompt = updatePrompt.replace(/{task_type}/g, task.type);
   updatePrompt = updatePrompt.replace(/{task_data}/g, JSON.stringify(safeTaskData, null, 2));
   updatePrompt = updatePrompt.replace(/{formatted_chat_history}/g, formattedChatHistory);
+  updatePrompt = updatePrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
   
   return updatePrompt;
 };
@@ -621,8 +626,7 @@ const handleFinalReport = async (task: MoxusTask) => {
   const chatHistoryContextString = task.data?.chatHistoryContext || "(Chat history context not available for this report)";
 
   // STEP 1: Generate the final report using prompt from YAML
-  const prompts = AllPrompts as { moxus_prompts: { moxus_final_report?: string } };
-  let promptContent = prompts.moxus_prompts.moxus_final_report || `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
+  let promptContent = (loadedPrompts.moxus_prompts as any).moxus_final_report || `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
   Generate a brief, concise, and straight-to-the-point critical analysis based on your accumulated memory documents and the recent chat context below.
   {assistant_nodes_content}
@@ -703,8 +707,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       // Use consciousness-driven prompts for specific call types
       if (task.type === 'chatTextFeedback' && originalCallTypeForFeedback === 'chat_text_generation') {
         // Use consciousness-driven chat text teaching prompt
-        const prompts = AllPrompts as { moxus_prompts: { moxus_feedback_on_chat_text_generation: string } };
-        feedbackPrompt = prompts.moxus_prompts.moxus_feedback_on_chat_text_generation;
+        feedbackPrompt = loadedPrompts.moxus_prompts.moxus_feedback_on_chat_text_generation;
         
         const currentChatTextMemory = moxusStructuredMemory.featureSpecificMemory.chatText || DEFAULT_MEMORY.CHAT_TEXT;
         const recentChatHistory = task.data.chatHistory ? 
@@ -716,12 +719,12 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         feedbackPrompt = feedbackPrompt.replace(/{recent_chat_history}/g, recentChatHistory);
         feedbackPrompt = feedbackPrompt.replace(/{generated_chat_text}/g, task.data.response || '');
         feedbackPrompt = feedbackPrompt.replace(/{current_chat_text_memory}/g, currentChatTextMemory);
+        feedbackPrompt = feedbackPrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
         
         promptType = 'moxus_feedback_on_chat_text_generation';
       } else if (task.type === 'llmCallFeedback' && originalCallTypeForFeedback === 'node_edition_json') {
         // Use consciousness-driven node edition teaching prompt
-        const prompts = AllPrompts as { moxus_prompts: { moxus_feedback_on_node_edition_json: string } };
-        feedbackPrompt = prompts.moxus_prompts.moxus_feedback_on_node_edition_json;
+        feedbackPrompt = loadedPrompts.moxus_prompts.moxus_feedback_on_node_edition_json;
         
         const currentNodeEditionMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition || DEFAULT_MEMORY.NODE_EDITION;
         const recentChatHistory = task.data.chatHistory ? 
@@ -735,6 +738,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         feedbackPrompt = feedbackPrompt.replace(/{node_edition_response}/g, task.data.response || '');
         feedbackPrompt = feedbackPrompt.replace(/{all_nodes_context}/g, allNodesContext);
         feedbackPrompt = feedbackPrompt.replace(/{current_node_edition_memory}/g, currentNodeEditionMemory);
+        feedbackPrompt = feedbackPrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
         
         promptType = 'moxus_feedback_on_node_edition_json';
       } else {
@@ -783,6 +787,37 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
               }
               moxusStructuredMemory.featureSpecificMemory.nodeEdition = updatedMemory;
               console.log(`[MoxusService] Updated nodeEdition memory document via consciousness-driven feedback for task ${task.id}.`);
+            }
+          }
+          
+          // Store teaching insights for future guidance use
+          if (parsedResponse.narrative_teaching && task.type === 'chatTextFeedback') {
+            const guidanceText = [
+              parsedResponse.narrative_teaching.performance_assessment,
+              parsedResponse.narrative_teaching.specific_guidance,
+              parsedResponse.narrative_teaching.learned_preferences,
+              parsedResponse.narrative_teaching.emotional_intelligence
+            ].filter(Boolean).join('\n\n');
+            
+            if (guidanceText.trim()) {
+              moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
+              moxusStructuredMemory.cachedGuidance.chatTextGuidance = guidanceText;
+              console.log(`[MoxusService] Cached narrative teaching insights for future guidance.`);
+            }
+          }
+          
+          if (parsedResponse.worldbuilding_teaching && task.type === 'llmCallFeedback' && task.data?.callType === 'node_edition_json') {
+            const guidanceText = [
+              parsedResponse.worldbuilding_teaching.performance_assessment,
+              parsedResponse.worldbuilding_teaching.structural_guidance,
+              parsedResponse.worldbuilding_teaching.narrative_integration,
+              parsedResponse.worldbuilding_teaching.user_preference_alignment
+            ].filter(Boolean).join('\n\n');
+            
+            if (guidanceText.trim()) {
+              moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
+              moxusStructuredMemory.cachedGuidance.nodeEditionGuidance = guidanceText;
+              console.log(`[MoxusService] Cached worldbuilding teaching insights for future guidance.`);
             }
           }
           
@@ -1052,8 +1087,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
     const assistantFeedbackMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.assistantFeedback);
     const nodeEditMemory = truncateText(moxusStructuredMemory.featureSpecificMemory.nodeEdit);
 
-    const prompts = AllPrompts as { moxus_prompts: { general_memory_update: string } };
-    updatePromptTemplate = prompts.moxus_prompts.general_memory_update;
+    updatePromptTemplate = loadedPrompts.moxus_prompts.general_memory_update;
 
     promptData = {
       assistant_nodes_content: truncateText(assistantNodesContent),
@@ -1069,6 +1103,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
     for (const key in promptData) {
       updatePrompt = updatePrompt.replace(new RegExp(`\\{${key}\\}`, 'g'), promptData[key]);
     }
+    updatePrompt = updatePrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
   }
   
   if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
@@ -1188,59 +1223,33 @@ export const clearLLMLogEntries = (): void => {
   console.log('[MoxusService] LLM log entries cleared.');
 };
 
-// Enhanced specialized guidance functions for consciousness-driven teaching
+// Enhanced specialized guidance functions using cached teaching insights
 export const getChatTextGuidance = async (currentContext: string): Promise<string> => {
-  if (!getMoxusFeedbackImpl) {
-    console.warn('[MoxusService] getMoxusFeedbackImpl not available for specialized guidance');
-    return '';
+  // Return cached guidance from recent feedback analysis, or fallback to general memory
+  const cachedGuidance = moxusStructuredMemory.cachedGuidance?.chatTextGuidance;
+  if (cachedGuidance && cachedGuidance.trim()) {
+    console.log('[MoxusService] Using cached narrative teaching insights for guidance');
+    return cachedGuidance;
   }
-
-  try {
-    const assistantNodesContent = getAssistantNodesContent();
-    const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
-    const currentChatTextMemory = moxusStructuredMemory.featureSpecificMemory.chatText || DEFAULT_MEMORY.CHAT_TEXT;
-
-    const prompts = AllPrompts as { moxus_prompts: { moxus_specialized_chat_guidance: string } };
-    let guidancePrompt = prompts.moxus_prompts.moxus_specialized_chat_guidance;
-    
-    guidancePrompt = guidancePrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
-    guidancePrompt = guidancePrompt.replace(/{current_chat_text_memory}/g, currentChatTextMemory);
-    guidancePrompt = guidancePrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
-    guidancePrompt = guidancePrompt.replace(/{current_context}/g, currentContext);
-
-    const guidance = await getMoxusFeedbackImpl(guidancePrompt, 'moxus_specialized_chat_guidance');
-    return guidance;
-  } catch (error) {
-    console.error('[MoxusService] Error in getChatTextGuidance:', error);
-    return '';
-  }
+  
+  // Fallback to general memory if no cached guidance available
+  const fallbackGuidance = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+  console.log('[MoxusService] No cached narrative guidance available, using general memory fallback');
+  return fallbackGuidance;
 };
 
 export const getNodeEditionGuidance = async (currentContext: string): Promise<string> => {
-  if (!getMoxusFeedbackImpl) {
-    console.warn('[MoxusService] getMoxusFeedbackImpl not available for specialized guidance');
-    return '';
+  // Return cached guidance from recent feedback analysis, or fallback to general memory
+  const cachedGuidance = moxusStructuredMemory.cachedGuidance?.nodeEditionGuidance;
+  if (cachedGuidance && cachedGuidance.trim()) {
+    console.log('[MoxusService] Using cached worldbuilding teaching insights for guidance');
+    return cachedGuidance;
   }
-
-  try {
-    const assistantNodesContent = getAssistantNodesContent();
-    const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
-    const currentNodeEditionMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition || DEFAULT_MEMORY.NODE_EDITION;
-
-    const prompts = AllPrompts as { moxus_prompts: { moxus_specialized_worldbuilding_guidance: string } };
-    let guidancePrompt = prompts.moxus_prompts.moxus_specialized_worldbuilding_guidance;
-    
-    guidancePrompt = guidancePrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
-    guidancePrompt = guidancePrompt.replace(/{current_node_edition_memory}/g, currentNodeEditionMemory);
-    guidancePrompt = guidancePrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
-    guidancePrompt = guidancePrompt.replace(/{current_context}/g, currentContext);
-
-    const guidance = await getMoxusFeedbackImpl(guidancePrompt, 'moxus_specialized_worldbuilding_guidance');
-    return guidance;
-  } catch (error) {
-    console.error('[MoxusService] Error in getNodeEditionGuidance:', error);
-    return '';
-  }
+  
+  // Fallback to general memory if no cached guidance available
+  const fallbackGuidance = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+  console.log('[MoxusService] No cached worldbuilding guidance available, using general memory fallback');
+  return fallbackGuidance;
 };
 
 export const getSpecializedMoxusGuidance = async (callType: string, currentContext: string): Promise<string> => {
@@ -1278,8 +1287,7 @@ const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
     const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
     const currentManualEditMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdit || DEFAULT_MEMORY.NODE_EDIT;
 
-    const prompts = AllPrompts as { moxus_prompts: { moxus_feedback_on_manual_node_edit: string } };
-    let analysisPrompt = prompts.moxus_prompts.moxus_feedback_on_manual_node_edit;
+    let analysisPrompt = loadedPrompts.moxus_prompts.moxus_feedback_on_manual_node_edit;
     
     analysisPrompt = analysisPrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
     analysisPrompt = analysisPrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
@@ -1287,6 +1295,7 @@ const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
     analysisPrompt = analysisPrompt.replace(/{user_changes}/g, JSON.stringify(task.data.editedNode, null, 2));
     analysisPrompt = analysisPrompt.replace(/{edit_context}/g, task.data.editContext);
     analysisPrompt = analysisPrompt.replace(/{current_manual_edit_memory}/g, currentManualEditMemory);
+    analysisPrompt = analysisPrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
 
     const learningResponse = await getMoxusFeedbackImpl(analysisPrompt, 'moxus_feedback_on_manual_node_edit');
     
@@ -1364,7 +1373,8 @@ export const moxusService = {
           assistantFeedback: importedMemory.featureSpecificMemory?.assistantFeedback || DEFAULT_MEMORY.ASSISTANT_FEEDBACK,
           nodeEdit: importedMemory.featureSpecificMemory?.nodeEdit || DEFAULT_MEMORY.NODE_EDIT,
           llmCalls: importedMemory.featureSpecificMemory?.llmCalls || {}
-        }
+        },
+        cachedGuidance: importedMemory.cachedGuidance || {}
       };
       saveMemory();
       console.log('[MoxusService] Memory imported successfully');

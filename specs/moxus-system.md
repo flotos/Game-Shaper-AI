@@ -202,21 +202,26 @@ Focus: User creative values, quality standards, vision understanding
 Output: Consciousness evolution insights + pattern recognition
 ```
 
-### Specialized Guidance Prompts
+### Cached Guidance System
 
-#### Active Chat Guidance (`moxus_specialized_chat_guidance`)
-```yaml
-Purpose: Provide real-time teaching for narrative generation
-Context: Current consciousness + specific generation context
-Output: Contextual guidance for immediate narrative decisions
+#### Optimized Guidance Architecture
+Instead of making separate LLM calls for specialized guidance, Moxus now uses cached teaching insights from recent feedback analysis:
+
+```typescript
+// Previous: 2 separate LLM calls per interaction
+getChatTextGuidance() → makes LLM call → returns guidance
+getNodeEditionGuidance() → makes LLM call → returns guidance
+
+// Optimized: Use cached insights from feedback analysis
+getChatTextGuidance() → returns cached narrative_teaching insights
+getNodeEditionGuidance() → returns cached worldbuilding_teaching insights
 ```
 
-#### Active World-Building Guidance (`moxus_specialized_worldbuilding_guidance`)
-```yaml
-Purpose: Provide real-time teaching for world-building decisions
-Context: Current consciousness + specific structural context  
-Output: Contextual guidance for immediate world-building decisions
-```
+#### Benefits
+- **Reduced LLM calls**: Eliminates 2 redundant calls per user interaction
+- **Improved performance**: Lower latency and cost
+- **Better consistency**: Guidance is directly derived from actual analysis
+- **Maintained quality**: Same teaching quality with cached recent insights
 
 ## Technical Implementation
 
