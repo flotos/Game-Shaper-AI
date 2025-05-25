@@ -119,13 +119,13 @@ describe('LLM Core - Interface and YAML Validation', () => {
 
     it('should validate key placeholders exist in node operation prompts', () => {
       const promptPlaceholderMap = {
-        get_relevant_nodes: ['{nodes_description}', '{string_history}'],
-        generate_chat_text: ['{user_input}', '{string_history}', '{nodes_description}', '{last_moxus_report_section}'],
-        generate_actions: ['{nodes_description}', '{formatted_chat_text}', '{user_input}', '{last_moxus_report_section}'],
-        generate_node_edition: ['{think_mode}', '{nodes_description}', '{formatted_chat_history}', '{user_input}', '{last_moxus_report_section}'],
-        generate_nodes_from_prompt: ['{user_prompt}', '{nodes_description}', '{moxus_context_string}'],
-        sort_nodes_by_relevance: ['{string_history}', '{nodes_description}', '{last_moxus_report_section}'],
-        refocus_story: ['{past_chat_history}', '{nodes_description}']
+        get_relevant_nodes: ['{utils.wrappers.current_nodes}', '{utils.wrappers.recent_chat_history}'],
+        generate_chat_text: ['{utils.wrappers.user_input}', '{utils.wrappers.recent_chat_history}', '{utils.wrappers.current_nodes}', '{utils.wrappers.moxus_report_section}'],
+        generate_actions: ['{utils.wrappers.current_nodes}', '{formatted_chat_text}', '{utils.wrappers.user_input}', '{utils.wrappers.moxus_report_section}'],
+        generate_node_edition: ['{think_mode}', '{utils.wrappers.current_nodes_sorted}', '{formatted_chat_history}', '{utils.wrappers.user_input}', '{utils.wrappers.moxus_report_section}'],
+        generate_nodes_from_prompt: ['{user_prompt}', '{utils.wrappers.current_nodes}', '{moxus_context_string}'],
+        sort_nodes_by_relevance: ['{utils.wrappers.recent_chat_history}', '{utils.wrappers.current_nodes}', '{utils.wrappers.moxus_report_section}'],
+        refocus_story: ['{past_chat_history}', '{utils.wrappers.current_nodes}']
       };
 
       Object.entries(promptPlaceholderMap).forEach(([promptKey, placeholders]) => {
@@ -139,19 +139,19 @@ describe('LLM Core - Interface and YAML Validation', () => {
     it('should validate key placeholders exist in moxus consciousness prompts', () => {
       const moxusPromptPlaceholderMap = {
         moxus_feedback_on_chat_text_generation: [
-          '{assistant_nodes_content}',
-          '{current_general_memory}',
-          '{recent_chat_history}',
-          '{generated_chat_text}',
-          '{current_chat_text_memory}'
+          '{utils.wrappers.base_personality}',
+          '{utils.wrappers.current_consciousness}',
+          '{utils.wrappers.recent_chat_context}',
+          '{utils.wrappers.generated_chat_text}',
+          '{utils.wrappers.teaching_notes_chat}'
         ],
         moxus_feedback_on_node_edition_json: [
-          '{assistant_nodes_content}',
-          '{current_general_memory}',
-          '{recent_chat_history}',
-          '{node_edition_response}',
-          '{all_nodes_context}',
-          '{current_node_edition_memory}'
+          '{utils.wrappers.base_personality}',
+          '{utils.wrappers.current_consciousness}',
+          '{utils.wrappers.recent_chat_context}',
+          '{utils.wrappers.node_edition_response}',
+          '{utils.wrappers.all_nodes_context}',
+          '{utils.wrappers.teaching_notes_nodes}'
         ],
         general_memory_update: [
           '{assistant_nodes_content}',
@@ -162,11 +162,10 @@ describe('LLM Core - Interface and YAML Validation', () => {
           '{node_edit_analysis}'
         ],
         moxus_feedback_on_assistant_feedback: [
-          '{assistant_nodes_content}',
-          '{current_general_memory}',
-          '{user_query}',
-          '{assistant_result}',
-          '{current_assistant_feedback_memory}'
+          '{utils.wrappers.base_personality}',
+          '{utils.wrappers.current_consciousness}',
+          '{utils.wrappers.assistant_interaction}',
+          '{utils.wrappers.teaching_notes_assistant}'
         ]
       };
 
@@ -243,16 +242,16 @@ describe('LLM Core - Interface and YAML Validation', () => {
       // Test with a real prompt that has placeholders
       const relevantNodesPrompt = ActualPromptsYaml.node_operations.get_relevant_nodes;
       const replacements = {
-        nodes_description: 'Test nodes',
-        string_history: 'Test history'
+        'utils.wrappers.current_nodes': 'Test nodes',
+        'utils.wrappers.recent_chat_history': 'Test history'
       };
 
       const result = formatPrompt(relevantNodesPrompt, replacements);
       
       expect(result).toContain('Test nodes');
       expect(result).toContain('Test history');
-      expect(result).not.toContain('{nodes_description}');
-      expect(result).not.toContain('{string_history}');
+      expect(result).not.toContain('{utils.wrappers.current_nodes}');
+      expect(result).not.toContain('{utils.wrappers.recent_chat_history}');
     });
   });
 

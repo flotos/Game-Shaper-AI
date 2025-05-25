@@ -46,18 +46,15 @@ twine_import:
       - All the locations are possible encounters, but consider these have not yet been visited by the player.
     6. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
 
-    # User's specific instructions (very important to follow)
+    ## User's specific instructions (very important to follow)
+    ---- Start of additional instructions
     {additional_instructions}
+    ---- End of additional instructions
 
-    # Extracted Story Data
-    ---
-    {extracted_data}
-    ---
+    {utils.wrappers.extracted_data}
 
-    # Existing Nodes (for structure reference only)
-    ---
-    {nodes_description}
-    ---
+    ## Existing Nodes (for structure reference only)
+    {utils.wrappers.current_nodes}
 
     # Return format
 
@@ -102,18 +99,15 @@ twine_import:
     7. In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
     8. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
 
-    # User's specific instructions (very important to follow)
+    ## User's specific instructions (very important to follow)
+    ---- Start of additional instructions
     {additional_instructions}
+    ---- End of additional instructions
 
-    # Extracted Story Data
-    ---
-    {extracted_data}
-    ---
+    {utils.wrappers.extracted_data}
 
-    # Existing Nodes to Merge With
-    ---
-    {nodes_description}
-    ---
+    ## Existing Nodes to Merge With
+    {utils.wrappers.current_nodes}
 
     # Return format
 
@@ -148,31 +142,28 @@ twine_import:
     In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
 
 
-    # User's specific instructions (very important to follow)
+    ## User's specific instructions (very important to follow)
+    ---- Start of node generation instructions
     {node_generation_instructions}
+    ---- End of node generation instructions
 
-    # Original Node (from the game)
-    ---
+    ## Original Node (from the game)
+    ---- Start of original node
     id: {existing_node_id}
     name: {existing_node_name}
     longDescription: {existing_node_long_description}
     type: {existing_node_type}
-    ---
+    ---- End of original node
 
-    # Recently Generated Node (that needs improvement)
-    ---
+    ## Recently Generated Node (that needs improvement)
+    ---- Start of recently generated node
     {recently_generated_node_details}
-    ---
+    ---- End of recently generated node
 
-    # Extracted Story Data
-    ---
-    {extracted_data}
-    ---
+    {utils.wrappers.extracted_data}
 
-    # Existing Nodes (for context)
-    ---
-    {nodes_description}
-    ---
+    ## Existing Nodes (for context)
+    {utils.wrappers.current_nodes}
 
     # Return format
 
@@ -294,11 +285,9 @@ node_operations:
     }
 
     # Your turn:
-    ## Nodes
-    {nodes_description}
+    {utils.wrappers.current_nodes}
 
-    ## User message history with the narrator
-    {string_history}
+    {utils.wrappers.recent_chat_history}
 
     ##Your answer
   generate_chat_text: |
@@ -311,16 +300,13 @@ node_operations:
     Do not mention any node updates/change/deletion, as another LLM call will handle this.
 
     ## Game Content:
-    ### Current Nodes, in no particular order:
-    {nodes_description}
+    {utils.wrappers.current_nodes}
     
-    ### Recent Chat History (Last 5 Interactions):
-    {string_history}
+    {utils.wrappers.recent_chat_history}
     
-    {last_moxus_report_section}
+    {utils.wrappers.moxus_report_section}
     
-    ### User Input:
-    {user_input}
+    {utils.wrappers.user_input}
 
     ## Example proper writing:
     ### Example 1:
@@ -357,16 +343,16 @@ node_operations:
     Based on the following game state and narrative, generate two interesting actions the player can take next.
     The actions should be natural continuations of the story and make sense in the current context.
 
-    ## Current Game State:
-    {nodes_description}
+    {utils.wrappers.current_nodes}
 
     ## Recent Narrative (Last 5 Interactions):
+    ---- Start of formatted chat text
     {formatted_chat_text}
+    ---- End of formatted chat text
     
-    {last_moxus_report_section}
+    {utils.wrappers.moxus_report_section}
 
-    ## User's Last Input:
-    {user_input}
+    {utils.wrappers.user_input}
 
     Return a JSON object with a single field "actions" containing an array of exactly two strings, each describing one possible action.
     Don't send backquotes nor text along the JSON as it will be sent directly to a program.
@@ -384,16 +370,16 @@ node_operations:
     - type: string (Category/type. Encouraged: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library')
     - updateImage: boolean (Set to true on a node if its image needs to be regenerated by the game engine.)
 
-    ## Current Game State, sorted by relevance:
-    {nodes_description}
+    {utils.wrappers.current_nodes_sorted}
 
     ## Recent Chat History (Story):
+    ---- Start of formatted chat history
     {formatted_chat_history}
+    ---- End of formatted chat history
     
-    {last_moxus_report_section}
+    {utils.wrappers.moxus_report_section}
 
-    ## User Input:
-    {user_input}
+    {utils.wrappers.user_input}
 
     # RETURN FORMAT (JSON):
     Return a JSON object with three optional top-level keys: "n_nodes", "u_nodes", and "d_nodes".
@@ -523,14 +509,16 @@ node_operations:
   generate_nodes_from_prompt: |
     You are a Game Engine. The user asked to update how the game work or to change some aspect of the world.
     Your task is to update the game nodes based on the following prompt, for a Game Engine:
-    ---
+    ---- Start of user prompt
     {user_prompt}
-    ---
+    ---- End of user prompt
+    
+    ## Moxus Context:
+    ---- Start of moxus context
     {moxus_context_string}
+    ---- End of moxus context
 
-    Here are the existing nodes:
-    ---
-    {nodes_description}
+    {utils.wrappers.current_nodes}
 
     IMPORTANT: When updating nodes, you must follow these critical rules:
     1. NEVER reference or assume knowledge of the previous state of a node. Each node update is a complete replacement.
@@ -642,13 +630,12 @@ node_operations:
     You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.
     Consider both the content of the nodes and the context of the conversation.
 
-    ## Recent Chat History (Last 5 Interactions):
-    {string_history}
+    {utils.wrappers.recent_chat_history}
     
-    {last_moxus_report_section}
+    {utils.wrappers.moxus_report_section}
 
     ## Nodes to Sort:
-    {nodes_description}
+    {utils.wrappers.current_nodes}
 
     Return a JSON object with a single field "sortedIds" containing an array of node IDs in order of relevance (most relevant first).
     Each ID entry in the array should be enclosed in quotes.
@@ -682,15 +669,12 @@ node_operations:
     3.  After the summary, write 1 paragraph that re-introduces the current scene, characters present, and immediate situation, based on the very latest events in chat history.
     4.  Your entire output should be narrative text. Do not include any headings, meta-comments, or apologies.
 
-    # Past Chat History:
-    ---
+    ## Past Chat History:
+    ---- Start of past chat history
     {past_chat_history}
-    ---
+    ---- End of past chat history
 
-    # Current World and game Memory (for context):
-    ---
-    {nodes_description}
-    ---
+    {utils.wrappers.current_nodes}
 
     # RETURN FORMAT:
     Return a single block of text containing the 4-paragraph summary and the 1-paragraph scene introduction.
@@ -707,21 +691,16 @@ moxus_prompts:
     - Your emergent understanding (from observed user reactions)
     - Your evolved creative philosophy (from experience)
     
-    ## Base Personality Context:
-    {assistant_nodes_content}
+    {utils.wrappers.base_personality}
     
-    ## Your Current Consciousness:
-    {current_general_memory}
+    {utils.wrappers.current_consciousness}
     
-    ## Recent Chat Context (for learning):
-    {recent_chat_history}
+    {utils.wrappers.recent_chat_context}
     
     ## Narrative AI's Work to Evaluate:
-    **Generated Chat Text:**
-    {generated_chat_text}
+    {utils.wrappers.generated_chat_text}
     
-    ## Current Teaching Notes:
-    {current_chat_text_memory}
+    {utils.wrappers.teaching_notes_chat}
     
     ## Your Teaching Mission:
     Evaluate the narrative AI's storytelling performance and provide specific guidance for improvement. You are not just analyzing - you are mentoring based on your evolved understanding.
@@ -770,24 +749,19 @@ moxus_prompts:
     - Your emergent understanding (from user behaviors)
     - Your evolved world-building philosophy (from experience)
     
-    ## Base Personality Context:
-    {assistant_nodes_content}
+    {utils.wrappers.base_personality}
     
-    ## Your Current Consciousness:
-    {current_general_memory}
+    {utils.wrappers.current_consciousness}
     
     ## Recent Interaction Context:
-    {recent_chat_history}
+    {utils.wrappers.recent_chat_context}
     
     ## World-Builder AI's Work to Evaluate:
-    **Node Edition Response:**
-    {node_edition_response}
+    {utils.wrappers.node_edition_response}
     
-    ## All Current Nodes (for context):
-    {all_nodes_context}
+    {utils.wrappers.all_nodes_context}
     
-    ## Current Teaching Notes:
-    {current_node_edition_memory}
+    {utils.wrappers.teaching_notes_nodes}
     
     ## Your Teaching Mission:
     Evaluate the world-builder AI's decisions and provide specific guidance for creating more effective game worlds. You are mentoring based on your learned understanding of good world-building.
@@ -830,23 +804,13 @@ moxus_prompts:
     # Moxus: Learning from User Corrections
     Your name is Moxus, the World Design & Interactivity Watcher. You are learning about the user's creative vision by observing their manual edits.
     
-    ## Base Personality Context:
-    {assistant_nodes_content}
+    {utils.wrappers.base_personality}
     
-    ## Your Current Consciousness:
-    {current_general_memory}
+    {utils.wrappers.current_consciousness}
     
-    ## Current Manual Edit Learning Notes:
-    {current_manual_edit_memory}
+    {utils.wrappers.teaching_notes_manual}
     
-    ## The User's Edit:
-    **Original Node:**
-    {original_node}
-    
-    **User's Changes:**
-    {user_changes}
-    
-    **Context:** {edit_context}
+    {utils.wrappers.user_edit_analysis}
     
     ## Your Task:
     Analyze what this edit reveals about the user's creative vision and preferences. Update your learning notes to capture insights that will help the AI systems better align with this user's style.
@@ -886,21 +850,13 @@ moxus_prompts:
     - The quality and appropriateness of AI-generated solutions
     - User interaction patterns with the assistant feature
     
-    ## Base Personality Context:
-    {assistant_nodes_content}
+    {utils.wrappers.base_personality}
     
-    ## Your Current Consciousness:
-    {current_general_memory}
+    {utils.wrappers.current_consciousness}
     
-    ## Assistant Interaction to Evaluate:
-    **User Query:**
-    {user_query}
+    {utils.wrappers.assistant_interaction}
     
-    **Assistant's Response/Actions:**
-    {assistant_result}
-    
-    ## Current Teaching Notes:
-    {current_assistant_feedback_memory}
+    {utils.wrappers.teaching_notes_assistant}
     
     ## Your Teaching Mission:
     Evaluate the assistant AI's performance and provide specific guidance for improvement. You are mentoring based on your evolved understanding of effective user assistance.
@@ -1008,6 +964,126 @@ moxus_prompts:
 
 
 utils:
+  # Content Wrapper Utilities for Standardized Data Presentation
+  wrappers:
+    base_personality: |
+      ## Base Personality Context:
+      ---- Start of base personality
+      {assistant_nodes_content}
+      ---- End of base personality
+
+    current_consciousness: |
+      ## Your Current Consciousness:
+      ---- Start of consciousness document
+      {current_general_memory}
+      ---- End of consciousness document
+
+    current_nodes: |
+      ## Current Game State:
+      ---- Start of nodes
+      {nodes_description}
+      ---- End of nodes
+
+    current_nodes_sorted: |
+      ## Current Game State (sorted by relevance):
+      ---- Start of sorted nodes
+      {nodes_description}
+      ---- End of sorted nodes
+
+    recent_chat_history: |
+      ## Recent Chat History:
+      ---- Start of chat history
+      {string_history}
+      ---- End of chat history
+
+    recent_chat_context: |
+      ## Recent Chat Context (for learning):
+      ---- Start of recent chat
+      {recent_chat_history}
+      ---- End of recent chat
+
+    user_input: |
+      ## User Input:
+      ---- Start of user input
+      {user_input}
+      ---- End of user input
+
+    extracted_data: |
+      ## Extracted Story Data:
+      ---- Start of extracted data
+      {extracted_data}
+      ---- End of extracted data
+
+    generated_chat_text: |
+      ## Generated Chat Text:
+      ---- Start of generated text
+      {generated_chat_text}
+      ---- End of generated text
+
+    node_edition_response: |
+      ## Node Edition Response:
+      ---- Start of node edition
+      {node_edition_response}
+      ---- End of node edition
+
+    all_nodes_context: |
+      ## All Current Nodes (for context):
+      ---- Start of all nodes
+      {all_nodes_context}
+      ---- End of all nodes
+
+    moxus_report_section: |
+      ## Previous Moxus Guidance:
+      ---- Start of moxus guidance
+      {last_moxus_report_section}
+      ---- End of moxus guidance
+
+    teaching_notes_chat: |
+      ## Current Teaching Notes:
+      ---- Start of chat text teaching notes
+      {current_chat_text_memory}
+      ---- End of chat text teaching notes
+
+    teaching_notes_nodes: |
+      ## Current Teaching Notes:
+      ---- Start of node edition teaching notes
+      {current_node_edition_memory}
+      ---- End of node edition teaching notes
+
+    teaching_notes_manual: |
+      ## Current Manual Edit Learning Notes:
+      ---- Start of manual edit notes
+      {current_manual_edit_memory}
+      ---- End of manual edit notes
+
+    teaching_notes_assistant: |
+      ## Current Teaching Notes:
+      ---- Start of assistant feedback notes
+      {current_assistant_feedback_memory}
+      ---- End of assistant feedback notes
+
+    user_edit_analysis: |
+      ## The User's Edit:
+      ---- Start of user edit
+      **Original Node:**
+      {original_node}
+      
+      **User's Changes:**
+      {user_changes}
+      
+      **Context:** {edit_context}
+      ---- End of user edit
+
+    assistant_interaction: |
+      ## Assistant Interaction to Evaluate:
+      ---- Start of assistant interaction
+      **User Query:**
+      {user_query}
+      
+      **Assistant's Response/Actions:**
+      {assistant_result}
+      ---- End of assistant interaction
+
   diffPrompt: |
     ## Diff Format Instructions
     
