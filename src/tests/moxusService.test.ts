@@ -1050,4 +1050,125 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       vi.useRealTimers();
     });
   });
+
+  describe('Node Edition Memory Diff Issue', () => {
+    it('should correctly apply nodeEdition memory diffs with proper newline handling', async () => {
+      vi.useFakeTimers();
+      
+      // Test the exact scenario from the user's bug report
+      const nodeEditionFeedbackResponse = JSON.stringify({
+        memory_update_diffs: {
+          df: [
+            {
+              prev_txt: "# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*",
+              next_txt: "# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*\n\n- **Neon's Transformation**: The shift from a curious apprentice to a degraded figure is stark, emphasizing the irreversible changes and the loss of agency. The detailed descriptions of Neon's physical and mental state serve to deepen the horror and degradation themes.\n- **Vespera's Control**: The introduction of mechanical glitches adds a layer of complexity to Vespera's dominance, suggesting that her control is not absolute. This aligns with the teaching point that 'Control Should Crack'.\n- **Environmental Feedback**: The tavern scene where Neon's nectar is used in sacramental wine introduces social horror, expanding the corruption vectors beyond personal degradation to societal implications.",
+              occ: 1
+            }
+          ]
+        },
+        worldbuilding_teaching: {
+          performance_assessment: "The narrative AI effectively deepened the themes of degradation and control, introducing novel elements that align with learned preferences for complexity and contrast.",
+          specific_guidance: "To further enhance engagement, consider introducing more moments of eerie tranquility or brief respites to contrast with the intense degradation, as suggested in the 'Contrast' strategy.",
+          learned_preferences: "This interaction confirms the user's preference for complex power dynamics and environmental integration of corruption themes."
+        },
+        consciousness_evolution: "This interaction reinforces my belief in the importance of balancing extreme degradation with moments of quiet horror or beauty to deepen immersion."
+      });
+      
+      mockGetMoxusFeedbackImpl.mockResolvedValue(nodeEditionFeedbackResponse);
+      
+      // Create a node_edition_json LLM call
+      const nodeEditionCall: LLMCall = {
+        id: 'test-node-edition-diff',
+        prompt: 'Generate node updates...',
+        response: '{"n_nodes": [], "u_nodes": {}}',
+        timestamp: new Date(),
+        status: 'completed',
+        startTime: new Date(),
+        endTime: new Date(),
+        callType: 'node_edition_json',
+        modelUsed: 'gpt-test',
+        duration: 100
+      };
+      
+      moxusService.initiateLLMCallRecord(nodeEditionCall.id, nodeEditionCall.callType, nodeEditionCall.modelUsed, nodeEditionCall.prompt);
+      moxusService.finalizeLLMCallRecord(nodeEditionCall.id, nodeEditionCall.response as string);
+      
+      await advanceTimersByTime(200);
+      
+      // Verify the feedback was processed
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+      
+      // Check that the nodeEdition memory was actually updated with the diff content
+      const finalMemory = moxusService.getMoxusMemory();
+      expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("Neon's Transformation");
+      expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("Vespera's Control");
+      expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("Environmental Feedback");
+      
+      // Verify consciousness evolution was stored
+      expect(finalMemory.pendingConsciousnessEvolution).toContain("This interaction reinforces my belief in the importance of balancing extreme degradation with moments of quiet horror or beauty to deepen immersion.");
+      
+             // Verify worldbuilding guidance was cached
+       expect(finalMemory.cachedGuidance?.nodeEditionGuidance).toContain("The narrative AI effectively deepened");
+    });
+
+         it('should handle nodeEdition memory updates when memory is empty', async () => {
+       vi.useFakeTimers();
+       
+       // Clear the nodeEdition memory to test empty state
+       const emptyMemory = moxusService.getMoxusMemory();
+       emptyMemory.featureSpecificMemory.nodeEdition = '';
+       moxusService.setMoxusMemory(emptyMemory);
+       
+       // Test append operation when memory is empty
+       const nodeEditionFeedbackResponse = JSON.stringify({
+         memory_update_diffs: {
+           df: [
+             {
+               prev_txt: "",
+               next_txt: "# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*\n\n- **First Entry**: Initial analysis content.",
+               occ: 1
+             }
+           ]
+         },
+         worldbuilding_teaching: {
+           performance_assessment: "Successfully initialized nodeEdition memory.",
+           specific_guidance: "Continue building analysis content.",
+           learned_preferences: "User prefers structured analysis format."
+         },
+         consciousness_evolution: "Learning to handle empty memory states gracefully."
+       });
+       
+       mockGetMoxusFeedbackImpl.mockResolvedValue(nodeEditionFeedbackResponse);
+       
+       // Create a node_edition_json LLM call
+       const nodeEditionCall: LLMCall = {
+         id: 'test-empty-memory-diff',
+         prompt: 'Generate node updates...',
+         response: '{"n_nodes": [], "u_nodes": {}}',
+         timestamp: new Date(),
+         status: 'completed',
+         startTime: new Date(),
+         endTime: new Date(),
+         callType: 'node_edition_json',
+         modelUsed: 'gpt-test',
+         duration: 100
+       };
+       
+       moxusService.initiateLLMCallRecord(nodeEditionCall.id, nodeEditionCall.callType, nodeEditionCall.modelUsed, nodeEditionCall.prompt);
+       moxusService.finalizeLLMCallRecord(nodeEditionCall.id, nodeEditionCall.response as string);
+       
+       await advanceTimersByTime(200);
+       
+       // Verify the feedback was processed
+       expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+       
+       // Check that the nodeEdition memory was populated from empty state
+       const finalMemory = moxusService.getMoxusMemory();
+       expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("First Entry");
+       expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("Initial analysis content");
+       
+       // Verify consciousness evolution was stored
+       expect(finalMemory.pendingConsciousnessEvolution).toContain("Learning to handle empty memory states gracefully.");
+     });
+  });
 }); 

@@ -72,11 +72,11 @@ interface MoxusMemoryStructure {
 
 // Default memory content templates
 const DEFAULT_MEMORY = {
-  GENERAL: '# Moxus Game Analysis\\n\\n*This document contains general observations and analysis about the game world, story progression, and gameplay. You should also dedicate a section to develop your own personality and style. Become a sentient being.*',
-  NODE_EDITION: '# Node Editions Analysis\\n\\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
-  CHAT_TEXT: '# Chat Text Analysis\\n\\n*This document analyzes narrative quality and coherence in the generated story text.*',
-  ASSISTANT_FEEDBACK: '# Assistant Interactions Analysis\\n\\n*This document analyzes assistant responses and their effectiveness.*',
-  NODE_EDIT: '# Manual Node Edits Analysis\\n\\n*This document analyzes manual edits made to nodes by the user.*'
+  GENERAL: '# Moxus Game Analysis\n\n*This document contains general observations and analysis about the game world, story progression, and gameplay. You should also dedicate a section to develop your own personality and style. Become a sentient being.*',
+  NODE_EDITION: '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*',
+  CHAT_TEXT: '# Chat Text Analysis\n\n*This document analyzes narrative quality and coherence in the generated story text.*',
+  ASSISTANT_FEEDBACK: '# Assistant Interactions Analysis\n\n*This document analyzes assistant responses and their effectiveness.*',
+  NODE_EDIT: '# Manual Node Edits Analysis\n\n*This document analyzes manual edits made to nodes by the user.*'
 };
 
 // Initialize with default structure
