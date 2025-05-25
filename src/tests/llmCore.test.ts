@@ -119,13 +119,13 @@ describe('LLM Core - Interface and YAML Validation', () => {
 
     it('should validate key placeholders exist in node operation prompts', () => {
       const promptPlaceholderMap = {
-        get_relevant_nodes: ['{utils.wrappers.current_nodes}', '{utils.wrappers.recent_chat_history}'],
-        generate_chat_text: ['{utils.wrappers.user_input}', '{utils.wrappers.recent_chat_history}', '{utils.wrappers.current_nodes}', '{utils.wrappers.moxus_report_section}'],
-        generate_actions: ['{utils.wrappers.current_nodes}', '{utils.wrappers.formatted_chat_text}', '{utils.wrappers.user_input}', '{utils.wrappers.moxus_report_section}'],
-        generate_node_edition: ['{think_mode}', '{utils.wrappers.current_nodes_sorted}', '{utils.wrappers.formatted_chat_history}', '{utils.wrappers.user_input}', '{utils.wrappers.moxus_report_section}'],
-        generate_nodes_from_prompt: ['{utils.wrappers.user_prompt}', '{utils.wrappers.current_nodes}', '{utils.wrappers.moxus_context}'],
-        sort_nodes_by_relevance: ['{utils.wrappers.recent_chat_history}', '{utils.wrappers.current_nodes}', '{utils.wrappers.moxus_report_section}'],
-        refocus_story: ['{utils.wrappers.past_chat_history}', '{utils.wrappers.current_nodes}']
+        get_relevant_nodes: ['{utils.wrappers.nodes_description}', '{utils.wrappers.string_history}'],
+        generate_chat_text: ['{utils.wrappers.user_input}', '{utils.wrappers.string_history}', '{utils.wrappers.nodes_description}', '{utils.wrappers.last_moxus_report_section}'],
+        generate_actions: ['{utils.wrappers.nodes_description}', '{utils.wrappers.formatted_chat_text}', '{utils.wrappers.user_input}', '{utils.wrappers.last_moxus_report_section}'],
+        generate_node_edition: ['{think_mode}', '{utils.wrappers.nodes_description}', '{utils.wrappers.formatted_chat_history}', '{utils.wrappers.user_input}', '{utils.wrappers.last_moxus_report_section}'],
+        generate_nodes_from_prompt: ['{utils.wrappers.user_prompt}', '{utils.wrappers.nodes_description}', '{utils.wrappers.moxus_context_string}'],
+        sort_nodes_by_relevance: ['{utils.wrappers.string_history}', '{utils.wrappers.nodes_description}', '{utils.wrappers.last_moxus_report_section}'],
+        refocus_story: ['{utils.wrappers.past_chat_history}', '{utils.wrappers.nodes_description}']
       };
 
       Object.entries(promptPlaceholderMap).forEach(([promptKey, placeholders]) => {
@@ -139,42 +139,42 @@ describe('LLM Core - Interface and YAML Validation', () => {
     it('should validate key placeholders exist in moxus consciousness prompts', () => {
       const moxusPromptPlaceholderMap = {
         moxus_feedback_on_chat_text_generation: [
-          '{utils.wrappers.base_personality}',
-          '{utils.wrappers.current_consciousness}',
-          '{utils.wrappers.recent_chat_history}',
+          '{utils.wrappers.assistant_nodes_content}',
+          '{utils.wrappers.current_general_memory}',
+          '{utils.wrappers.string_history}',
           '{utils.wrappers.generated_chat_text}',
-          '{utils.wrappers.teaching_notes_chat}'
+          '{utils.wrappers.current_chat_text_memory}'
         ],
         moxus_feedback_on_node_edition_json: [
-          '{utils.wrappers.base_personality}',
-          '{utils.wrappers.current_consciousness}',
-          '{utils.wrappers.recent_chat_history}',
+          '{utils.wrappers.assistant_nodes_content}',
+          '{utils.wrappers.current_general_memory}',
+          '{utils.wrappers.string_history}',
           '{utils.wrappers.node_edition_response}',
           '{utils.wrappers.all_nodes_context}',
-          '{utils.wrappers.teaching_notes_nodes}'
+          '{utils.wrappers.current_node_edition_memory}'
         ],
         general_memory_update: [
-          '{utils.wrappers.base_personality}',
-          '{utils.wrappers.current_consciousness}',
-          '{utils.wrappers.narrative_teaching_insights}',
-          '{utils.wrappers.worldbuilding_teaching_insights}',
-          '{utils.wrappers.user_creative_vision_learning}',
-          '{utils.wrappers.assistant_interaction_insights}'
+          '{utils.wrappers.assistant_nodes_content}',
+          '{utils.wrappers.current_general_memory}',
+          '{utils.wrappers.chat_text_analysis}',
+          '{utils.wrappers.node_editions_analysis}',
+          '{utils.wrappers.node_edit_analysis}',
+          '{utils.wrappers.assistant_feedback_analysis}'
         ],
         moxus_feedback_on_manual_node_edit: [
-          '{utils.wrappers.base_personality}',
-          '{utils.wrappers.current_consciousness}',
-          '{utils.wrappers.teaching_notes_manual}',
-          '{utils.wrappers.original_node_details}',
+          '{utils.wrappers.assistant_nodes_content}',
+          '{utils.wrappers.current_general_memory}',
+          '{utils.wrappers.current_manual_edit_memory}',
+          '{utils.wrappers.original_node}',
           '{utils.wrappers.user_changes}',
           '{utils.wrappers.edit_context}'
         ],
         moxus_feedback_on_assistant_feedback: [
-          '{utils.wrappers.base_personality}',
-          '{utils.wrappers.current_consciousness}',
+          '{utils.wrappers.assistant_nodes_content}',
+          '{utils.wrappers.current_general_memory}',
           '{utils.wrappers.user_query}',
           '{utils.wrappers.assistant_result}',
-          '{utils.wrappers.teaching_notes_assistant}'
+          '{utils.wrappers.current_assistant_feedback_memory}'
         ]
       };
 
@@ -259,8 +259,61 @@ describe('LLM Core - Interface and YAML Validation', () => {
       
       expect(result).toContain('Test nodes');
       expect(result).toContain('Test history');
-      expect(result).not.toContain('{utils.wrappers.current_nodes}');
-      expect(result).not.toContain('{utils.wrappers.recent_chat_history}');
+      expect(result).not.toContain('{utils.wrappers.nodes_description}');
+      expect(result).not.toContain('{utils.wrappers.string_history}');
+    });
+
+    it('should correctly process utils.wrappers placeholders with new format', () => {
+      // Test that wrapper placeholders are correctly expanded and then replaced
+      const testPrompt = 'Start {utils.wrappers.nodes_description} End';
+      const replacements = {
+        nodes_description: 'Test game state content'
+      };
+
+      const result = formatPrompt(testPrompt, replacements);
+      
+      // Should contain the wrapper structure with content name from YAML
+      expect(result).toContain('## Current Game State:');
+      expect(result).toContain('---- Start of current game state');
+      expect(result).toContain('Test game state content');
+      expect(result).toContain('---- End of current game state');
+      
+      // Should not contain the original wrapper placeholder
+      expect(result).not.toContain('{utils.wrappers.nodes_description}');
+      
+      // Should not contain the content placeholder after replacement
+      expect(result).not.toContain('{nodes_description}');
+    });
+
+    it('should validate wrapper format is key-value pairs', () => {
+      // Verify that wrappers are now simple key-value pairs
+      expect(typeof ActualPromptsYaml.utils.wrappers).toBe('object');
+      
+      // Check a few specific wrappers to ensure they're strings (content names)
+      expect(typeof ActualPromptsYaml.utils.wrappers.nodes_description).toBe('string');
+      expect(typeof ActualPromptsYaml.utils.wrappers.string_history).toBe('string');
+      expect(typeof ActualPromptsYaml.utils.wrappers.user_input).toBe('string');
+      
+      // Verify the content names are meaningful
+      expect(ActualPromptsYaml.utils.wrappers.nodes_description).toBe('Current Game State');
+      expect(ActualPromptsYaml.utils.wrappers.string_history).toBe('Recent Chat History');
+      expect(ActualPromptsYaml.utils.wrappers.user_input).toBe('User Input');
+    });
+
+    it('should correctly process utils.diffPrompt placeholders', () => {
+      // Test that utils.diffPrompt placeholders are correctly replaced
+      const testPrompt = 'Instructions: {utils.diffPrompt}';
+      const replacements = {};
+
+      const result = formatPrompt(testPrompt, replacements);
+      
+      // Should contain the actual diffPrompt content
+      expect(result).toContain('## Diff Format Instructions');
+      expect(result).toContain('### For complete replacement:');
+      expect(result).toContain('### For targeted updates:');
+      
+      // Should not contain the original placeholder
+      expect(result).not.toContain('{utils.diffPrompt}');
     });
   });
 
