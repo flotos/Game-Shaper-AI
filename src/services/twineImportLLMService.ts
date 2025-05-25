@@ -144,7 +144,7 @@ export const generateNodesFromExtractedData = async (
   try {
     const jsonString = typeof response === 'string' ? response : (response as any).llmResult;
     const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
-    const parsedFromJson = JSON.parse(cleanedJsonString);
+    const parsedFromJson = safeJsonParse(cleanedJsonString);
     
     if (!parsedFromJson.n_nodes || !Array.isArray(parsedFromJson.n_nodes)) {
       throw new Error('Invalid response structure: missing or invalid n_nodes array');
@@ -231,7 +231,7 @@ export const regenerateSingleNode = async (
   try {
     const jsonString = typeof response === 'string' ? response : (response as any).llmResult;
     const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
-    const parsedFromJson = JSON.parse(cleanedJsonString);
+    const parsedFromJson = safeJsonParse(cleanedJsonString);
     
     if ((!parsedFromJson.n_nodes || !Array.isArray(parsedFromJson.n_nodes)) && 
         (!parsedFromJson.u_nodes || typeof parsedFromJson.u_nodes !== 'object')) {

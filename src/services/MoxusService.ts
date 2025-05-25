@@ -1,6 +1,7 @@
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
 import { getChatHistoryForMoxus } from './llmCore';
+import { safeJsonParse } from '../utils/jsonUtils';
 import AllPrompts from '../prompts-instruct.yaml';
 
 // Avoid circular dependency by forward declaring the function type
@@ -772,7 +773,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       // Process consciousness-driven feedback if it's a specialized prompt
       if (promptType === 'moxus_feedback_on_chat_text_generation' || promptType === 'moxus_feedback_on_node_edition_json') {
         try {
-          const parsedResponse = JSON.parse(feedback);
+          const parsedResponse = safeJsonParse(feedback);
           
           // Handle consciousness evolution in general memory
           if (parsedResponse.consciousness_evolution) {
@@ -1000,7 +1001,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   let contentToParse = jsonResponse.trim();
 
   try {
-    const parsedJson = JSON.parse(contentToParse) as any;
+    const parsedJson = safeJsonParse(contentToParse) as any;
     let finalGeneralMemory = currentGeneralMemorySnapshot;
 
     if (parsedJson && parsedJson.memory_update_diffs) {
@@ -1215,7 +1216,7 @@ const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
     
     // Process the learning response
     try {
-      const parsedLearning = JSON.parse(learningResponse);
+      const parsedLearning = safeJsonParse(learningResponse);
       
       // Update manual edit memory
       if (parsedLearning.memory_update_diffs) {

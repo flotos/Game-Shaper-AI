@@ -210,7 +210,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
     responsePayload, 
     (jsonString) => {
       const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
-      const parsedFromJson = JSON.parse(cleanedJsonString);
+      const parsedFromJson = safeJsonParse(cleanedJsonString);
 
       if (parsedFromJson && typeof parsedFromJson === 'object') {
         const response: LLMNodeEditionResponse = {
@@ -270,7 +270,7 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
     responsePayload, 
     (jsonString) => {
       const cleanedJsonString = jsonString.replace(/^```json\n/, '').replace(/\n```$/, '').trim();
-      const parsedFromJson = JSON.parse(cleanedJsonString);
+      const parsedFromJson = safeJsonParse(cleanedJsonString);
 
       const result: any = {};
       

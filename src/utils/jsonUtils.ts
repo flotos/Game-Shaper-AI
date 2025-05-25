@@ -1,11 +1,58 @@
 import { jsonrepair } from 'jsonrepair';
 
 /**
+ * Removes markdown code block wrapping from JSON strings
+ */
+function removeMarkdownWrapping(jsonString: string): string {
+  let cleaned = jsonString.trim();
+  
+  // Remove ```json at the start and ``` at the end
+  if (cleaned.startsWith('```json\n') || cleaned.startsWith('```json ')) {
+    cleaned = cleaned.substring(7);
+  } else if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.substring(7);
+  } else if (cleaned.startsWith('```')) {
+    // Handle generic ``` wrapping without language specification
+    cleaned = cleaned.substring(3);
+  }
+  
+  // Remove trailing ```
+  if (cleaned.endsWith('\n```')) {
+    cleaned = cleaned.substring(0, cleaned.length - 4);
+  } else if (cleaned.endsWith('```')) {
+    cleaned = cleaned.substring(0, cleaned.length - 3);
+  }
+  
+  return cleaned.trim();
+}
+
+/**
+ * Fixes unquoted property names in JSON strings
+ */
+function fixUnquotedPropertyNames(jsonString: string): string {
+  // Match unquoted property names (word characters followed by colon)
+  // This regex looks for word characters that aren't already quoted, followed by a colon
+  return jsonString.replace(/(\s*)"?([a-zA-Z_][a-zA-Z0-9_]*)"?\s*:/g, (match, leading, propName) => {
+    // Only quote if not already quoted
+    if (match.includes('"' + propName + '"')) {
+      return match; // Already quoted
+    }
+    return leading + '"' + propName + '":';
+  });
+}
+
+/**
  * Pre-processes common LLM JSON errors before attempting repair
  */
 function preProcessBrokenJson(jsonString: string): string {
+  // First remove markdown wrapping
+  let processed = removeMarkdownWrapping(jsonString);
+  
+  // Fix unquoted property names
+  processed = fixUnquotedPropertyNames(processed);
+  
   // Remove any trailing commas in objects and arrays
-  let processed = jsonString.replace(/,(\s*[}\]])/g, '$1');
+  processed = processed.replace(/,(\s*[}\]])/g, '$1');
   
   // Fix empty key-value pairs like "" or ",,"
   processed = processed.replace(/""\s*,/g, '');
@@ -18,6 +65,20 @@ function preProcessBrokenJson(jsonString: string): string {
   
   // Fix empty properties in objects
   processed = processed.replace(/":\s*"",?/g, '": null,');
+  
+  // Fix missing quotes around string values that clearly should be strings
+  // This handles cases like: "key": value without quotes where value contains spaces or special chars
+  processed = processed.replace(/"([^"]+)":\s*([^",}\]\s][^",}\]]*[^",}\]\s])\s*([,}\]])/g, (match, key, value, terminator) => {
+    // Don't quote if it looks like a number, boolean, or null
+    if (/^(true|false|null|\d+\.?\d*)$/.test(value.trim())) {
+      return match;
+    }
+    // Don't quote if it's already an object or array
+    if (value.trim().startsWith('{') || value.trim().startsWith('[')) {
+      return match;
+    }
+    return '"' + key + '": "' + value.trim() + '"' + terminator;
+  });
   
   // Fix objects that end abruptly
   if (processed.trim().endsWith(',')) {
