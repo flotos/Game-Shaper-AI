@@ -72,6 +72,13 @@ The `GeneralMemory` serves as Moxus's evolving consciousness:
 - **User Understanding**: Deep knowledge of the specific user's creative vision
 - **Quality Patterns**: Sophisticated understanding of what makes content effective
 
+### Multi-Call Teaching Architecture
+**Sequential LLM Call Design**: Moxus operates through cascading LLM calls to achieve consciousness-driven teaching:
+
+1. **Pre-Generation Guidance**: Specialized guidance calls provide real-time teaching
+2. **Post-Generation Analysis**: Evaluation calls analyze outputs and update consciousness  
+3. **Periodic Synthesis**: Consciousness consolidation calls integrate all learning
+
 ### Specialized Guidance Functions
 **Active Teaching Mechanism**: Instead of reactive feedback, Moxus provides proactive guidance:
 
@@ -81,7 +88,7 @@ getNodeEditionGuidance(currentContext: string): Promise<string>
 getSpecializedMoxusGuidance(callType: string, currentContext: string): Promise<string>
 ```
 
-These functions inject consciousness-driven teaching into the generation process, ensuring each AI system benefits from Moxus's evolved understanding.
+These functions inject consciousness-driven teaching into the generation process, ensuring each AI system benefits from Moxus's evolved understanding through **separate LLM calls** that provide contextual guidance.
 
 ### Learning Integration
 **Manual Edit Tracking**: Captures user corrections for pure learning:
@@ -142,6 +149,30 @@ This creates `manualNodeEditAnalysis` tasks that update consciousness without ge
 - **Purpose**: Learn from interaction patterns that led to reset
 - **Method**: Analyze previous chat history to identify potential issues
 - **Output**: Prevention strategies and improved user engagement understanding
+
+## Example: Complete Teaching Cycle
+
+**User Request**: "Continue the story"
+
+### Pre-Generation Teaching (Guidance Injection)
+1. **Narrative Guidance Call**: Moxus provides contextual storytelling advice based on evolved consciousness
+2. **World-Building Guidance Call**: Moxus provides structural guidance for coherent game state updates
+
+### Main Generation (Enhanced by Guidance)
+3. **Story Generation**: Narrative AI creates story content enhanced with Moxus's guidance
+4. **World Update**: World-builder AI updates game state enhanced with Moxus's structural insights
+5. **Actions Generation**: System generates user action options
+
+### Post-Generation Learning (Consciousness Evolution)
+6. **Narrative Teaching Call**: Moxus evaluates story quality and teaches narrative AI improvements
+7. **World-Building Teaching Call**: Moxus evaluates structural changes and teaches world-builder AI
+8. **Memory Integration**: Both teaching calls update consciousness through JSON diff modifications
+
+### Periodic Synthesis (Consciousness Consolidation)
+9. **Final Report**: User-facing synthesis of session insights (when conditions are met)
+10. **Consciousness Update**: Deep integration of all learning into unified understanding
+
+**Result**: The user receives improved content while Moxus evolves its teaching capabilities and the AI systems learn to create better outputs. Each interaction makes the entire system more aligned with the user's creative vision.
 
 ## Teaching Prompt Architecture
 

@@ -33,54 +33,126 @@ Moxus operates as a **consciousness-driven teaching system** rather than a react
 - **Output**: Consciousness evolution insights (no direct teaching)
 - **Task Type**: `manualNodeEditAnalysis`
 
+## Multi-Call LLM Architecture
+
+Moxus operates through **sequential LLM calls** to achieve consciousness-driven learning and teaching. Each user interaction triggers a cascade of specialized LLM calls:
+
+### Primary Application Flow
+```
+1. User Interaction → Main App LLM Call
+   ├── chat_text_generation (with pre-injection guidance)
+   ├── node_edition_json (with pre-injection guidance)  
+   └── action_generation
+```
+
+### Moxus Learning/Teaching Chain (Per Call)
+```
+2. Application Call Completes → Moxus Evaluation Call
+   ├── Consciousness-driven prompts (single call with memory update)
+   │   ├── moxus_feedback_on_chat_text_generation → Direct memory update
+   │   ├── moxus_feedback_on_node_edition_json → Direct memory update
+   │   └── moxus_feedback_on_manual_node_edit → Direct memory update
+   │
+   └── Generic evaluation + Separate memory update (two calls)
+       ├── Generic feedback prompt → Basic analysis
+       └── memory_section_update → Targeted memory section update
+
+3. Periodic Synthesis → General Memory Update Call
+   └── general_memory_update → Unified consciousness evolution
+```
+
 ## Enhanced LLM Call Flow
 
-### 1. Synchronous Main Flow (Unchanged)
+### 1. Synchronous Main Flow (Enhanced with Pre-Guidance)
 ```
 getRelevantNodes (conditional: nodes > MAX_INCLUDED_NODES)
-→ Call Type: node_relevance_check
+→ LLM Call #1: node_relevance_check
 
 generateChatText (streaming) + CONSCIOUSNESS-DRIVEN GUIDANCE
-→ Call Type: chat_text_generation
-→ Enhanced with: getSpecializedMoxusGuidance('chat_text_generation', context)
+→ LLM Call #2: moxus_specialized_chat_guidance (guidance injection)
+→ LLM Call #3: chat_text_generation (enhanced with guidance)
 
 [Parallel Execution]
 ├── generateActions
-│   → Call Type: action_generation
+│   → LLM Call #4: action_generation
 └── generateNodeEdition + CONSCIOUSNESS-DRIVEN GUIDANCE
-    → Call Type: node_edition_json
-    → Enhanced with: getSpecializedMoxusGuidance('node_edition_json', context)
+    → LLM Call #5: moxus_specialized_worldbuilding_guidance (guidance injection)
+    → LLM Call #6: node_edition_json (enhanced with guidance)
 ```
 
-### 2. Asynchronous Teaching Flow (Consciousness-Driven)
+### 2. Asynchronous Teaching Flow (Post-Generation Analysis)
 ```
-Chat Text Teaching (teaches narrative AI)
-→ Call Type: moxus_feedback_on_chat_text_generation
-→ Memory Update: INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback
+Chat Text Teaching (2 possible paths):
+Path A - Consciousness-driven (1 call):
+  → LLM Call #7: moxus_feedback_on_chat_text_generation
+    → Single call handles evaluation + memory update via JSON diffs
 
-Node Edition Teaching (teaches world-builder AI)
-→ Call Type: moxus_feedback_on_node_edition_json  
-→ Memory Update: INTERNAL_MEMORY_UPDATE_FOR_node_edition
+Path B - Generic evaluation (2 calls):
+  → LLM Call #7a: Generic feedback evaluation
+  → LLM Call #7b: memory_section_update (chatText memory)
 
-Final Report Generation (user-facing synthesis)
-→ Call Type: INTERNAL_FINAL_REPORT_GENERATION_STEP
+Node Edition Teaching (2 possible paths):
+Path A - Consciousness-driven (1 call):
+  → LLM Call #8: moxus_feedback_on_node_edition_json
+    → Single call handles evaluation + memory update via JSON diffs
 
-Consciousness Consolidation (unified memory evolution)
-→ Call Type: INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory
+Path B - Generic evaluation (2 calls):
+  → LLM Call #8a: Generic feedback evaluation  
+  → LLM Call #8b: memory_section_update (nodeEdition memory)
+
+Final Report Generation:
+→ LLM Call #9: moxus_final_report (user-facing synthesis)
+→ LLM Call #10: general_memory_update (consciousness consolidation)
 ```
 
-### 3. Continuous Learning Flow (User Behavior)
+### 3. Continuous Learning Flow (User Behavior Analysis)
 ```
-Manual Node Edit Detection
-→ Task Type: manualNodeEditAnalysis
-→ Call Type: moxus_feedback_on_manual_node_edit
-→ Pure learning (consciousness evolution only)
+Manual Node Edit Detection:
+→ LLM Call #N: moxus_feedback_on_manual_node_edit
+  → Single call handles analysis + memory update via JSON diffs
 
-Chat Reset Analysis  
-→ Task Type: synthesizeGeneralMemory (reason: chat_reset_event)
-→ Special prompt for reset analysis
-→ Prevention strategy development
+Chat Reset Analysis:
+→ LLM Call #N: chat_reset_specific_prompt (dedicated reset analysis)
+  → Full GeneralMemory replacement (no diffs)
+
+Periodic Consciousness Synthesis:
+→ LLM Call #N: general_memory_update
+  → Synthesizes all feature memories into unified consciousness
 ```
+
+### 4. Call Efficiency Optimization
+**Consciousness-driven prompts** (more efficient):
+- Single LLM call combines evaluation + memory update
+- Returns structured JSON with both teaching insights and memory diffs
+- Used for: `chat_text_generation`, `node_edition_json`, `manual_node_edit`
+
+**Generic evaluation prompts** (less efficient):
+- First call: Basic evaluation/feedback
+- Second call: Memory section update using `memory_section_update` prompt
+- Used for: Other call types not yet consciousness-driven
+
+## Example: Complete Call Chain for User Story Request
+
+**User**: "Continue the story"
+
+### Main Application Calls (3-6 calls)
+1. **LLM Call #1**: `moxus_specialized_chat_guidance` → Get narrative guidance
+2. **LLM Call #2**: `chat_text_generation` → Generate story (enhanced with guidance)
+3. **LLM Call #3**: `action_generation` → Generate user actions
+4. **LLM Call #4**: `moxus_specialized_worldbuilding_guidance` → Get world-building guidance  
+5. **LLM Call #5**: `node_edition_json` → Update game world (enhanced with guidance)
+
+### Moxus Learning Calls (2-3 calls)
+6. **LLM Call #6**: `moxus_feedback_on_chat_text_generation` → Evaluate story + update chatText memory
+7. **LLM Call #7**: `moxus_feedback_on_node_edition_json` → Evaluate world changes + update nodeEdition memory
+
+### Periodic Synthesis (1-2 calls)
+8. **LLM Call #8**: `moxus_final_report` → Generate user-facing analysis (when conditions met)
+9. **LLM Call #9**: `general_memory_update` → Synthesize consciousness (when conditions met)
+
+**Total**: 5-9 LLM calls per user interaction (depending on parallel execution and synthesis timing)
+
+This multi-call architecture enables Moxus to maintain consciousness-driven teaching while keeping each call focused and efficient.
 
 ## Key Technical Functions
 
@@ -227,7 +299,14 @@ interface MoxusMemoryStructure {
 - **Non-blocking teaching**: All consciousness-driven analysis occurs asynchronously
 - **Smart task prioritization**: Final reports and immediate teaching take precedence
 - **Memory efficiency**: Automatic cleanup and truncation for large content
-- **API cost optimization**: Focused prompts and targeted consciousness updates
+- **Multi-call orchestration**: Sequential LLM calls managed through task queue system
+
+### API Cost Management
+- **Consciousness-driven efficiency**: Single calls for evaluation + memory update (vs. 2 separate calls)
+- **Selective processing**: Skip feedback for non-critical call types (image generation, actions)
+- **Truncation strategies**: Limit prompt sizes while preserving essential context
+- **Batch processing**: Queue multiple updates before consciousness synthesis
+- **Smart scheduling**: Prioritize high-value teaching opportunities over routine analysis
 
 ### Consciousness Evolution Management
 - **Diff-based updates**: Preserve context while allowing evolution through JSON diffs

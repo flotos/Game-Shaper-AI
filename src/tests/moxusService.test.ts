@@ -43,7 +43,7 @@ vi.mock('../prompts-instruct.yaml', () => {
         moxus_feedback_on_chat_text_generation: MOCKED_CHAT_TEXT_TEACHING_PROMPT,
         moxus_feedback_on_node_edition_json: MOCKED_NODE_EDITION_TEACHING_PROMPT,
         moxus_feedback_on_manual_node_edit: MOCKED_MANUAL_EDIT_LEARNING_PROMPT,
-        moxus_generic_memory_update: MOCKED_GENERIC_MEMORY_UPDATE_PROMPT,
+        memory_section_update: MOCKED_GENERIC_MEMORY_UPDATE_PROMPT,
         moxus_specialized_chat_guidance: MOCKED_SPECIALIZED_CHAT_GUIDANCE,
         moxus_specialized_worldbuilding_guidance: MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE,
         moxus_final_report: MOCKED_FINAL_REPORT_PROMPT,

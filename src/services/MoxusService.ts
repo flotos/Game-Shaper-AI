@@ -459,9 +459,9 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
     // This is appropriate as we don't want to stringify a potentially large chatHistory array in the prompt.
   }
   
-  // Use the new generic memory update prompt that ensures JSON diff output
-  const prompts = AllPrompts as { moxus_prompts: { moxus_generic_memory_update: string } };
-  let updatePrompt = prompts.moxus_prompts.moxus_generic_memory_update;
+  // Use the memory section update prompt that ensures JSON diff output
+  const prompts = AllPrompts as { moxus_prompts: { memory_section_update: string } };
+  let updatePrompt = prompts.moxus_prompts.memory_section_update;
   
   updatePrompt = updatePrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
   updatePrompt = updatePrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
