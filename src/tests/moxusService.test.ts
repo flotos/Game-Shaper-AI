@@ -210,9 +210,9 @@ describe('Moxus Service - Consciousness-Driven System', () => {
     it('should record and analyze manual node edits', async () => {
       vi.useFakeTimers();
       
-      const originalNode = { id: 'node1', name: 'Original', longDescription: 'Original description' };
-      const editedNode = { id: 'node1', name: 'Edited', longDescription: 'Edited description' };
-      const editContext = 'User improved character description';
+      const originalNode = { id: 'node1', name: 'Original Character', longDescription: 'A basic character' };
+      const editedNode = { id: 'node1', name: 'Enhanced Character', longDescription: 'A detailed character with rich backstory' };
+      const editContext = 'User enhanced character details';
       
       const expectedLearningResponse = JSON.stringify({
         memory_update_diffs: {
@@ -246,6 +246,67 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       // Check that nodeEdit memory was updated with learning insights
       const finalMemory = moxusService.getMoxusMemory();
       expect(finalMemory.featureSpecificMemory.nodeEdit).toContain('I understand the user values character depth');
+    });
+
+    it('should filter out base64 image data when recording manual node edits', async () => {
+      vi.useFakeTimers();
+      
+      const base64ImageData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      const originalNode = { 
+        id: 'node1', 
+        name: 'Character with Image', 
+        longDescription: 'A character with an image',
+        image: base64ImageData,
+        type: 'character'
+      };
+      const editedNode = { 
+        id: 'node1', 
+        name: 'Updated Character with Image', 
+        longDescription: 'An updated character with an image',
+        image: base64ImageData,
+        type: 'character'
+      };
+      const editContext = 'User updated character name';
+      
+      const expectedLearningResponse = JSON.stringify({
+        memory_update_diffs: {
+          df: [
+            {
+              prev_txt: "",
+              next_txt: "\n\n## User Creative Insight\nUser updated character name for clarity",
+              occ: 1
+            }
+          ]
+        },
+        user_insight: "User prefers clear character naming"
+      });
+      
+      mockGetMoxusFeedbackImpl.mockResolvedValue(expectedLearningResponse);
+      
+      moxusService.recordManualNodeEdit(originalNode, editedNode, editContext);
+      
+      await advanceTimersByTime(200);
+      
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+      
+      const callArgs = mockGetMoxusFeedbackImpl.mock.calls[0];
+      const promptContent = callArgs[0];
+      
+      // Verify that the base64 data was filtered out and replaced with placeholder
+      expect(promptContent).not.toContain(base64ImageData);
+      expect(promptContent).toContain('[IMAGE_DATA_FILTERED_FOR_ANALYSIS]');
+      
+      // Verify that other node properties are still included
+      expect(promptContent).toContain('Character with Image');
+      expect(promptContent).toContain('Updated Character with Image');
+      expect(promptContent).toContain('A character with an image');
+      expect(promptContent).toContain('character');
+      
+      expect(callArgs[1]).toBe('moxus_feedback_on_manual_node_edit');
+      
+      // Check that the analysis still works correctly
+      const finalMemory = moxusService.getMoxusMemory();
+      expect(finalMemory.featureSpecificMemory.nodeEdit).toContain('User updated character name for clarity');
     });
 
     it('should handle manual edit analysis with plain text response', async () => {

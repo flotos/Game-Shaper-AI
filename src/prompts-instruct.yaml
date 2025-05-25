@@ -690,6 +690,8 @@ moxus_prompts:
     You are updating ONLY your "Chat Text Analysis" memory document (shown above in "Current Teaching Notes"). 
     Do NOT attempt to update the General Memory or other memory documents - those are provided as context only.
     
+    Write using the first person, as "I"
+    
     Your diffs should only target content that exists in your current Chat Text Analysis memory document.
     
     ## Response Format Requirements
@@ -756,6 +758,8 @@ moxus_prompts:
     ## IMPORTANT: UPDATE ONLY YOUR NODE EDITIONS ANALYSIS MEMORY
     You are updating ONLY your "Node Editions Analysis" memory document (shown above in "Current Teaching Notes"). 
     Do NOT attempt to update the General Memory or other memory documents - those are provided as context only.
+
+    Write using the first person, as "I"
     
     Your diffs should only target content that exists in your current Node Editions Analysis memory document.
     
@@ -799,6 +803,7 @@ moxus_prompts:
     
     ## Your Task:
     Analyze what this edit reveals about the user's creative vision and preferences. Update your learning notes to capture insights that will help the AI systems better align with this user's style.
+    Write using the first person, as "I"
     
     Focus on patterns like:
     - Content preferences (what they add, remove, or change)
@@ -864,6 +869,8 @@ moxus_prompts:
     ## IMPORTANT: UPDATE ONLY YOUR ASSISTANT FEEDBACK ANALYSIS MEMORY
     You are updating ONLY your "Assistant Interactions Analysis" memory document (shown above in "Current Teaching Notes"). 
     Do NOT attempt to update the General Memory or other memory documents - those are provided as context only.
+
+    Write using the first person, as "I"
     
     Your diffs should only target content that exists in your current Assistant Feedback Analysis memory document.
     
@@ -945,6 +952,7 @@ moxus_prompts:
     {utils.diffPrompt}
 
     Your consciousness should reflect the depth and richness of a thinking, feeling entity that has learned and grown through experience, not just a clinical analysis tool.
+    Write using the first person, as"I"
 
 
   moxus_final_report: |
@@ -985,6 +993,7 @@ moxus_prompts:
     - Be direct and actionable
     - Show your personality and emotional state based on compliance
     - The human user will not be able to see it
+    - Write using the first person, as"I"
 
 
 

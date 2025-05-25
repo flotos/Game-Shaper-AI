@@ -1339,6 +1339,22 @@ export const recordManualNodeEdit = (originalNode: any, editedNode: any, editCon
   }, 100);
 };
 
+// Helper function to sanitize node data for Moxus prompts (removes base64 image data)
+const sanitizeNodeForMoxusPrompt = (node: any): any => {
+  if (!node) return node;
+  
+  const sanitized = { ...node };
+  
+  // Remove or replace base64 image data
+  if (sanitized.image && typeof sanitized.image === 'string') {
+    if (sanitized.image.startsWith('data:image/') || sanitized.image.length > 100) {
+      sanitized.image = '[IMAGE_DATA_FILTERED_FOR_ANALYSIS]';
+    }
+  }
+  
+  return sanitized;
+};
+
 // Handle manual node edit analysis
 const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
   if (!getMoxusFeedbackImpl) {
@@ -1351,13 +1367,17 @@ const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
     const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
     const currentManualEditMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdit || DEFAULT_MEMORY.NODE_EDIT;
 
+    // Sanitize node data to remove base64 image content
+    const sanitizedOriginalNode = sanitizeNodeForMoxusPrompt(task.data.originalNode);
+    const sanitizedEditedNode = sanitizeNodeForMoxusPrompt(task.data.editedNode);
+
     let analysisPrompt = loadedPrompts.moxus_prompts.moxus_feedback_on_manual_node_edit;
     
     analysisPrompt = formatPrompt(analysisPrompt, {
       assistant_nodes_content: assistantNodesContent,
       current_general_memory: currentGeneralMemory,
-      original_node: JSON.stringify(task.data.originalNode, null, 2),
-      user_changes: JSON.stringify(task.data.editedNode, null, 2),
+      original_node: JSON.stringify(sanitizedOriginalNode, null, 2),
+      user_changes: JSON.stringify(sanitizedEditedNode, null, 2),
       edit_context: task.data.editContext,
       current_manual_edit_memory: currentManualEditMemory
     });
