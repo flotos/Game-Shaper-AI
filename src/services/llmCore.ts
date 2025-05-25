@@ -9,6 +9,7 @@ export interface PromptsConfig {
     moxus_feedback_on_chat_text_generation: string;
     moxus_feedback_on_node_edition_json: string;
     moxus_feedback_on_manual_node_edit: string;
+    moxus_feedback_on_assistant_feedback: string;
     general_memory_update: string;
     memory_section_update: string;
   };
@@ -484,7 +485,30 @@ export const getMoxusFeedback = async (promptContent: string, originalCallType: 
       { role: 'user', content: promptContent }
     ];
 
-    const response = await getResponse(messages, 'gpt-4o-mini', undefined, false, undefined, undefined, originalCallType);
+    // Only use json_object for call types that use diff logic and contain "json" in the prompt
+    const callTypesRequiringJson = [
+      'moxus_feedback_on_chat_text_generation',
+      'moxus_feedback_on_node_edition_json', 
+      'moxus_feedback_on_manual_node_edit',
+      'moxus_feedback_on_assistant_feedback',
+      'INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory' // Only when using general_memory_update prompt
+    ];
+    
+    // Check if this call type requires JSON and if the prompt contains "json"
+    const requiresJsonFormat = callTypesRequiringJson.includes(originalCallType) && 
+                              promptContent.toLowerCase().includes('json');
+    
+    const responseFormat = requiresJsonFormat ? { type: 'json_object' } : undefined;
+
+    const response = await getResponse(
+      messages, 
+      'gpt-4o-mini', 
+      undefined, 
+      false, 
+      responseFormat,
+      undefined, 
+      originalCallType
+    );
     
     if (typeof response === 'string') {
       return response;
