@@ -599,38 +599,58 @@ const formatMoxusReport = (text: string): string => {
   return text;
 };
 
+// Helper function to extract previous Moxus final reports from chat history
+const extractPreviousFinalReport = (chatHistory: Message[]): { 
+  previousReport: string | null, 
+  reportAge: number
+} => {
+  // Find the most recent Moxus message (previous final report)
+  const moxusMessages = chatHistory.filter(msg => msg.role === 'moxus');
+  if (moxusMessages.length === 0) {
+    return {
+      previousReport: null,
+      reportAge: 0
+    };
+  }
+
+  const lastMoxusReport = moxusMessages[moxusMessages.length - 1];
+  const lastMoxusIndex = chatHistory.findIndex(msg => msg === lastMoxusReport);
+  const messagesSinceReport = chatHistory.length - 1 - lastMoxusIndex;
+
+  return {
+    previousReport: lastMoxusReport.content,
+    reportAge: messagesSinceReport
+  };
+};
+
+
+
 const handleFinalReport = async (task: MoxusTask) => {
   const assistantNodesContent = getAssistantNodesContent();
   const chatHistoryContextString = task.data?.chatHistoryContext || "(Chat history context not available for this report)";
+  
+  // Get full chat history for previous report analysis
+  const fullChatHistory = getChatHistoryCallback();
+  const previousReportData = extractPreviousFinalReport(fullChatHistory);
 
-  // STEP 1: Generate the final report using prompt from YAML
-  let promptContent = (loadedPrompts.moxus_prompts as any).moxus_final_report || `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
-  You monitor the story, provide guidance, and maintain consistency and quality in the game world.
-  Generate a brief, concise, and straight-to-the-point critical analysis based on your accumulated memory documents and the recent chat context below.
-  {assistant_nodes_content}
-  # CHAT HISTORY CONTEXT (Last 10 turns, if available)
-  {chat_history_context}
-  # GENERAL MEMORY
-  {general_memory}
-  # CHAT TEXT ANALYSIS
-  {chat_text_analysis}
-  # NODE EDITIONS ANALYSIS
-  {node_editions_analysis}
-  # INSTRUCTIONS
-  Create a brief, concise, and straight-to-the-point critical report focusing ONLY on problems and issues.
-  The entire report must be one paragraphs maximum to plan the guide the next "Narrative AI's" message.
-  Use minimal markdown formatting.
-  Focus exclusively on:
-  - Critical issues with story consistency or narrative quality
-  - Significant problems with world building or coherence
-  - Major character development issues
-  - Serious gameplay mechanic flaws
-  Be direct, concise, and straight to the point. Focus only on problems requiring attention, not what works well.
-  This will be displayed to the user as a Moxus critical analysis report.`;
+  console.log(`[MoxusService] Previous report found: ${!!previousReportData.previousReport}, age: ${previousReportData.reportAge} messages`);
+
+  // STEP 1: Generate the final report using enhanced prompt
+  let promptContent = (loadedPrompts.moxus_prompts as any).moxus_final_report
   
   // Replace placeholders
   promptContent = promptContent.replace(/{assistant_nodes_content}/g, assistantNodesContent || "(No assistant nodes found)");
   promptContent = promptContent.replace(/{chat_history_context}/g, chatHistoryContextString);
+  promptContent = promptContent.replace(/{previous_report_analysis}/g, 
+    previousReportData.previousReport ? 
+    `Previous Report Content:\n${previousReportData.previousReport}\n\nMessages since previous report: ${previousReportData.reportAge}` :
+    "No previous final report found in chat history."
+  );
+  promptContent = promptContent.replace(/{compliance_analysis}/g, 
+    previousReportData.previousReport ? 
+    `You have a previous report from ${previousReportData.reportAge} messages ago. Analyze what has been applied and what hasn't based on the narrative AI's subsequent responses.` :
+    "No previous final report to analyze compliance against."
+  );
   promptContent = promptContent.replace(/{general_memory}/g, moxusStructuredMemory.GeneralMemory || '(No general memory available)');
   promptContent = promptContent.replace(/{chat_text_analysis}/g, moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)');
   promptContent = promptContent.replace(/{node_editions_analysis}/g, moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)');
@@ -646,18 +666,14 @@ const handleFinalReport = async (task: MoxusTask) => {
   addMessageCallback({ role: 'moxus', content: formatMoxusReport(report) });
   
   // STEP 3: Update General Memory AFTER sending the report (as per spec)
-  // The originalCallType indicates this is part of the final report sequence,
-  // specifically the GM update that should happen *after* the chat message.
   console.log('[MoxusService] Scheduling GeneralMemory update post-final report (Task ID: ' + task.id + ')...');
-  // addTask('updateGeneralMemory', { reason: `post_final_report_generation_for_task_${task.id}`, chatHistoryContext: chatHistoryContextString });
-  // Simpler: let updateGeneralMemory handle its standard data needs if any, or rely on its synthesis of all memories.
-  // Pass the original finalReport task data in case updateGeneralMemoryFromAllSources wants to use chatHistoryContext from it.
   addTask('synthesizeGeneralMemory', { 
     reason: `post_final_report_for_task_${task.id}`, 
     originalReportTaskId: task.id,
-    // Pass along the chat history context that was used for the report itself, for consistency if GM update needs it.
-    // The addTask function will reformat it if necessary.
-    chatHistoryForGMUpdate: task.data?.chatHistoryContext ? task.data.chatHistoryContext : undefined 
+    chatHistoryForGMUpdate: task.data?.chatHistoryContext ? task.data.chatHistoryContext : undefined,
+    previousReportInfo: previousReportData.previousReport ? 
+      `Previous report was ${previousReportData.reportAge} messages ago` : 
+      "No previous report found"
   });
   console.log('[MoxusService] GeneralMemory update task queued post-final report generation (Task ID: ' + task.id + ').');
 };
@@ -1107,6 +1123,12 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
 
     updatePromptTemplate = loadedPrompts.moxus_prompts.general_memory_update;
 
+    // Add previous report context if this update is post-final-report
+    let reportContext = '';
+    if (taskData?.previousReportInfo) {
+      reportContext = `\n\n## RECENT FINAL REPORT CONTEXT\nMoxus just generated a final report.\nPrevious Report Info: ${taskData.previousReportInfo}\n\nThis provides context about the timing and presence of previous reports.`;
+    }
+
     promptData = {
       assistant_nodes_content: truncateText(assistantNodesContent),
       current_general_memory: generalMemoryForPrompt,
@@ -1115,9 +1137,9 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
       assistant_feedback_analysis: assistantFeedbackMemory || '(No assistant feedback analysis available)',
       node_edit_analysis: nodeEditMemory || '(No node edit analysis available)',
       recent_llm_feedbacks: JSON.stringify(recentFeedbacks, null, 2),
-      pending_consciousness_evolution: pendingEvolution.length > 0 
+      pending_consciousness_evolution: (pendingEvolution.length > 0 
         ? pendingEvolution.join('\n\n') 
-        : '(No pending consciousness evolution insights)'
+        : '(No pending consciousness evolution insights)') + reportContext
     };
 
     updatePrompt = formatPrompt(updatePromptTemplate, promptData);
