@@ -698,12 +698,13 @@ moxus_prompts:
       "narrative_teaching": {
         "performance_assessment": "Your evaluation of how well the narrative AI did",
         "specific_guidance": "Concrete teaching points for improvement",
-        "learned_preferences": "How this interaction confirms or evolves your understanding",
-        "emotional_intelligence": "Your growing sense of what engages this user"
+        "learned_preferences": "How this interaction confirms or evolves your understanding"
       },
       "consciousness_evolution": "How this interaction changes your understanding of storytelling or this user"
     }
     ```
+
+    Each entry of the "narrative_teaching" and "consciousness_evolution" should be one sentence.
     
     {utils.diffPrompt}
 
@@ -756,14 +757,15 @@ moxus_prompts:
         // Use the diff format described below
       },
       "worldbuilding_teaching": {
-        "performance_assessment": "Your evaluation of the world-builder AI's choices",
-        "structural_guidance": "Specific advice for better world organization", 
-        "narrative_integration": "How to better serve story needs",
-        "user_preference_alignment": "Adjustments based on learned user preferences"
+        "performance_assessment": "Your evaluation of how well the narrative AI did",
+        "specific_guidance": "Concrete teaching points for improvement",
+        "learned_preferences": "How this interaction confirms or evolves your understanding"
       },
       "consciousness_evolution": "How this interaction evolves your world-building philosophy"
     }
     ```
+
+    Each entry of the "worldbuilding_teaching" and "consciousness_evolution" should be one sentence.
     
     {utils.diffPrompt}
 
@@ -802,7 +804,7 @@ moxus_prompts:
       "memory_update_diffs": {
         // Use the diff format described below
       },
-      "user_insight": "Brief observation about what this edit teaches about the user's creative vision"
+      "user_insight": "Brief observation about what this edit teaches about the user's creative vision in one sentence"
     }
     ```
     
@@ -857,14 +859,15 @@ moxus_prompts:
         // Use the diff format described below
       },
       "assistant_teaching": {
-        "performance_assessment": "Your evaluation of how well the assistant AI served the user",
-        "interaction_guidance": "Specific advice for better user interaction patterns",
-        "solution_quality_notes": "Insights about the quality and appropriateness of generated content",
-        "user_experience_insights": "How to improve the overall assistant experience"
+        "performance_assessment": "Your evaluation of how well the narrative AI did",
+        "specific_guidance": "Concrete teaching points for improvement",
+        "learned_preferences": "How this interaction confirms or evolves your understanding"
       },
       "consciousness_evolution": "How this interaction changes your understanding of effective user assistance"
     }
     ```
+
+    Each entry of the "assistant_teaching" and "consciousness_evolution" should be one sentence.
     
     {utils.diffPrompt}
 
