@@ -984,6 +984,31 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       vi.useRealTimers();
     });
 
+    it('should not generate feedback tasks for refocus_story_generation to prevent infinite loops', () => {
+      vi.useFakeTimers();
+      
+      // Simulate a refocus_story_generation LLM call (this is what actually caused the infinite loop)
+      moxusService.initiateLLMCallRecord('test-refocus-generation-456', 'refocus_story_generation', 'gpt-4o', 'Test refocus prompt');
+      moxusService.finalizeLLMCallRecord('test-refocus-generation-456', 'Test refocus response');
+      
+      // Advance timers to allow any potential task processing
+      vi.advanceTimersByTime(200);
+      
+      // Verify that no feedback tasks were generated
+      const memory = moxusService.getMoxusMemory();
+      const llmCalls = Object.values(memory.featureSpecificMemory.llmCalls);
+      
+      // Should only have the original refocus_story_generation call, no feedback calls
+      expect(llmCalls).toHaveLength(1);
+      expect(llmCalls[0].callType).toBe('refocus_story_generation');
+      expect(llmCalls[0].id).toBe('test-refocus-generation-456');
+      
+      // Verify no feedback tasks were added to the queue
+      expect(moxusService.getPendingTaskCount()).toBe(0);
+      
+      vi.useRealTimers();
+    });
+
     it('should not generate feedback tasks for other system event types', () => {
       vi.useFakeTimers();
       

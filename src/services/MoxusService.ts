@@ -263,7 +263,8 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
     trimmedCallType === 'chat_reset_event' ||
     trimmedCallType === 'assistant_message_edit_event' ||
     trimmedCallType === 'chat_regenerate_event' ||
-    trimmedCallType === 'chat_input_regenerate_event';
+    trimmedCallType === 'chat_input_regenerate_event' ||
+    trimmedCallType === 'refocus_story_generation';
   if (!isMoxusInternalProcessingCall) {
     addFeedbackTasksForCall(call);
   } else {
