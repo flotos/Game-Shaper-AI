@@ -6,7 +6,13 @@ import { safeJsonParse } from '../utils/jsonUtils';
 // Load and parse prompts
 export interface PromptsConfig {
   moxus_prompts: {
-    moxus_feedback_system_message: string;
+    moxus_feedback_on_chat_text_generation: string;
+    moxus_feedback_on_node_edition_json: string;
+    moxus_feedback_on_manual_node_edit: string;
+    moxus_specialized_chat_guidance: string;
+    moxus_specialized_worldbuilding_guidance: string;
+    general_memory_update: string;
+    memory_section_update: string;
   };
   twine_import: {
     data_extraction: string;
@@ -27,6 +33,10 @@ export interface PromptsConfig {
     generate_nodes_from_prompt: string;
     sort_nodes_by_relevance: string;
     refocus_story: string;
+  };
+  utils: {
+    diffPrompt: string;
+    moxus_feedback_system_message: string;
   };
 }
 
@@ -150,7 +160,7 @@ export const getResponse = async (
   moxusService.initiateLLMCallRecord(callId, callType, model, originalPromptString);
 
   if (!options?.skipMoxusFeedback && !stream) {
-    const moxusFeedbackContent = formatPrompt(loadedPrompts.moxus_prompts.moxus_feedback_system_message, {
+    const moxusFeedbackContent = formatPrompt(loadedPrompts.utils.moxus_feedback_system_message, {
       moxus_llm_calls_memory_yaml: moxusService.getLLMCallsMemoryJSON()
     });
     const feedbackMessage: Message = {
