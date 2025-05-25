@@ -121,11 +121,11 @@ describe('LLM Core - Interface and YAML Validation', () => {
       const promptPlaceholderMap = {
         get_relevant_nodes: ['{utils.wrappers.current_nodes}', '{utils.wrappers.recent_chat_history}'],
         generate_chat_text: ['{utils.wrappers.user_input}', '{utils.wrappers.recent_chat_history}', '{utils.wrappers.current_nodes}', '{utils.wrappers.moxus_report_section}'],
-        generate_actions: ['{utils.wrappers.current_nodes}', '{formatted_chat_text}', '{utils.wrappers.user_input}', '{utils.wrappers.moxus_report_section}'],
-        generate_node_edition: ['{think_mode}', '{utils.wrappers.current_nodes_sorted}', '{formatted_chat_history}', '{utils.wrappers.user_input}', '{utils.wrappers.moxus_report_section}'],
-        generate_nodes_from_prompt: ['{user_prompt}', '{utils.wrappers.current_nodes}', '{moxus_context_string}'],
+        generate_actions: ['{utils.wrappers.current_nodes}', '{utils.wrappers.formatted_chat_text}', '{utils.wrappers.user_input}', '{utils.wrappers.moxus_report_section}'],
+        generate_node_edition: ['{think_mode}', '{utils.wrappers.current_nodes_sorted}', '{utils.wrappers.formatted_chat_history}', '{utils.wrappers.user_input}', '{utils.wrappers.moxus_report_section}'],
+        generate_nodes_from_prompt: ['{utils.wrappers.user_prompt}', '{utils.wrappers.current_nodes}', '{utils.wrappers.moxus_context}'],
         sort_nodes_by_relevance: ['{utils.wrappers.recent_chat_history}', '{utils.wrappers.current_nodes}', '{utils.wrappers.moxus_report_section}'],
-        refocus_story: ['{past_chat_history}', '{utils.wrappers.current_nodes}']
+        refocus_story: ['{utils.wrappers.past_chat_history}', '{utils.wrappers.current_nodes}']
       };
 
       Object.entries(promptPlaceholderMap).forEach(([promptKey, placeholders]) => {
@@ -141,30 +141,39 @@ describe('LLM Core - Interface and YAML Validation', () => {
         moxus_feedback_on_chat_text_generation: [
           '{utils.wrappers.base_personality}',
           '{utils.wrappers.current_consciousness}',
-          '{utils.wrappers.recent_chat_context}',
+          '{utils.wrappers.recent_chat_history}',
           '{utils.wrappers.generated_chat_text}',
           '{utils.wrappers.teaching_notes_chat}'
         ],
         moxus_feedback_on_node_edition_json: [
           '{utils.wrappers.base_personality}',
           '{utils.wrappers.current_consciousness}',
-          '{utils.wrappers.recent_chat_context}',
+          '{utils.wrappers.recent_chat_history}',
           '{utils.wrappers.node_edition_response}',
           '{utils.wrappers.all_nodes_context}',
           '{utils.wrappers.teaching_notes_nodes}'
         ],
         general_memory_update: [
-          '{assistant_nodes_content}',
-          '{current_general_memory}',
-          '{chat_text_analysis}',
-          '{node_editions_analysis}',
-          '{assistant_feedback_analysis}',
-          '{node_edit_analysis}'
+          '{utils.wrappers.base_personality}',
+          '{utils.wrappers.current_consciousness}',
+          '{utils.wrappers.narrative_teaching_insights}',
+          '{utils.wrappers.worldbuilding_teaching_insights}',
+          '{utils.wrappers.user_creative_vision_learning}',
+          '{utils.wrappers.assistant_interaction_insights}'
+        ],
+        moxus_feedback_on_manual_node_edit: [
+          '{utils.wrappers.base_personality}',
+          '{utils.wrappers.current_consciousness}',
+          '{utils.wrappers.teaching_notes_manual}',
+          '{utils.wrappers.original_node_details}',
+          '{utils.wrappers.user_changes}',
+          '{utils.wrappers.edit_context}'
         ],
         moxus_feedback_on_assistant_feedback: [
           '{utils.wrappers.base_personality}',
           '{utils.wrappers.current_consciousness}',
-          '{utils.wrappers.assistant_interaction}',
+          '{utils.wrappers.user_query}',
+          '{utils.wrappers.assistant_result}',
           '{utils.wrappers.teaching_notes_assistant}'
         ]
       };
@@ -242,8 +251,8 @@ describe('LLM Core - Interface and YAML Validation', () => {
       // Test with a real prompt that has placeholders
       const relevantNodesPrompt = ActualPromptsYaml.node_operations.get_relevant_nodes;
       const replacements = {
-        'utils.wrappers.current_nodes': 'Test nodes',
-        'utils.wrappers.recent_chat_history': 'Test history'
+        nodes_description: 'Test nodes',
+        string_history: 'Test history'
       };
 
       const result = formatPrompt(relevantNodesPrompt, replacements);

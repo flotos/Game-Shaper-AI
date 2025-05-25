@@ -1,6 +1,6 @@
 import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
-import { getChatHistoryForMoxus, loadedPrompts } from './llmCore';
+import { getChatHistoryForMoxus, loadedPrompts, formatPrompt } from './llmCore';
 import { safeJsonParse } from '../utils/jsonUtils';
 
 // Avoid circular dependency by forward declaring the function type
@@ -652,12 +652,13 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     // Use consciousness-driven assistant feedback teaching prompt
     let feedbackPrompt = (loadedPrompts.moxus_prompts as any).moxus_feedback_on_assistant_feedback;
     
-    feedbackPrompt = feedbackPrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
-    feedbackPrompt = feedbackPrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
-    feedbackPrompt = feedbackPrompt.replace(/{user_query}/g, task.data.query || '');
-    feedbackPrompt = feedbackPrompt.replace(/{assistant_result}/g, JSON.stringify(task.data.result, null, 2) || '');
-    feedbackPrompt = feedbackPrompt.replace(/{current_assistant_feedback_memory}/g, currentAssistantFeedbackMemory);
-    feedbackPrompt = feedbackPrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
+    feedbackPrompt = formatPrompt(feedbackPrompt, {
+      assistant_nodes_content: assistantNodesContent,
+      current_general_memory: currentGeneralMemory,
+      user_query: task.data.query || '',
+      assistant_result: JSON.stringify(task.data.result, null, 2) || '',
+      current_assistant_feedback_memory: currentAssistantFeedbackMemory
+    });
 
     if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
     const feedback = await getMoxusFeedbackImpl(feedbackPrompt, 'moxus_feedback_on_assistant_feedback');
@@ -740,12 +741,13 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           getFormattedChatHistoryStringForMoxus(task.data.chatHistory, 10) : 
           "(No chat history available)";
         
-        feedbackPrompt = feedbackPrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
-        feedbackPrompt = feedbackPrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
-        feedbackPrompt = feedbackPrompt.replace(/{recent_chat_history}/g, recentChatHistory);
-        feedbackPrompt = feedbackPrompt.replace(/{generated_chat_text}/g, task.data.response || '');
-        feedbackPrompt = feedbackPrompt.replace(/{current_chat_text_memory}/g, currentChatTextMemory);
-        feedbackPrompt = feedbackPrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
+        feedbackPrompt = formatPrompt(feedbackPrompt, {
+          assistant_nodes_content: assistantNodesContent,
+          current_general_memory: currentGeneralMemory,
+          recent_chat_history: recentChatHistory,
+          generated_chat_text: task.data.response || '',
+          current_chat_text_memory: currentChatTextMemory
+        });
         
         promptType = 'moxus_feedback_on_chat_text_generation';
       } else if (task.type === 'llmCallFeedback' && originalCallTypeForFeedback === 'node_edition_json') {
@@ -758,13 +760,14 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           "(No recent interaction context available)";
         const allNodesContext = getNodesCallback().map(node => `ID: ${node.id}, Name: ${node.name}, Type: ${node.type}`).join('\n');
         
-        feedbackPrompt = feedbackPrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
-        feedbackPrompt = feedbackPrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
-        feedbackPrompt = feedbackPrompt.replace(/{recent_chat_history}/g, recentChatHistory);
-        feedbackPrompt = feedbackPrompt.replace(/{node_edition_response}/g, task.data.response || '');
-        feedbackPrompt = feedbackPrompt.replace(/{all_nodes_context}/g, allNodesContext);
-        feedbackPrompt = feedbackPrompt.replace(/{current_node_edition_memory}/g, currentNodeEditionMemory);
-        feedbackPrompt = feedbackPrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
+        feedbackPrompt = formatPrompt(feedbackPrompt, {
+          assistant_nodes_content: assistantNodesContent,
+          current_general_memory: currentGeneralMemory,
+          recent_chat_history: recentChatHistory,
+          node_edition_response: task.data.response || '',
+          all_nodes_context: allNodesContext,
+          current_node_edition_memory: currentNodeEditionMemory
+        });
         
         promptType = 'moxus_feedback_on_node_edition_json';
       } else {
@@ -965,11 +968,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
       recent_llm_feedbacks: JSON.stringify(recentFeedbacks, null, 2)
     };
 
-    updatePrompt = updatePromptTemplate;
-    for (const key in promptData) {
-      updatePrompt = updatePrompt.replace(new RegExp(`\\{${key}\\}`, 'g'), promptData[key]);
-    }
-    updatePrompt = updatePrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
+    updatePrompt = formatPrompt(updatePromptTemplate, promptData);
   }
   
   if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
@@ -1155,13 +1154,14 @@ const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
 
     let analysisPrompt = loadedPrompts.moxus_prompts.moxus_feedback_on_manual_node_edit;
     
-    analysisPrompt = analysisPrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
-    analysisPrompt = analysisPrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
-    analysisPrompt = analysisPrompt.replace(/{original_node}/g, JSON.stringify(task.data.originalNode, null, 2));
-    analysisPrompt = analysisPrompt.replace(/{user_changes}/g, JSON.stringify(task.data.editedNode, null, 2));
-    analysisPrompt = analysisPrompt.replace(/{edit_context}/g, task.data.editContext);
-    analysisPrompt = analysisPrompt.replace(/{current_manual_edit_memory}/g, currentManualEditMemory);
-    analysisPrompt = analysisPrompt.replace(/{utils\.diffPrompt}/g, loadedPrompts.utils.diffPrompt);
+    analysisPrompt = formatPrompt(analysisPrompt, {
+      assistant_nodes_content: assistantNodesContent,
+      current_general_memory: currentGeneralMemory,
+      original_node: JSON.stringify(task.data.originalNode, null, 2),
+      user_changes: JSON.stringify(task.data.editedNode, null, 2),
+      edit_context: task.data.editContext,
+      current_manual_edit_memory: currentManualEditMemory
+    });
 
     const learningResponse = await getMoxusFeedbackImpl(analysisPrompt, 'moxus_feedback_on_manual_node_edit');
     

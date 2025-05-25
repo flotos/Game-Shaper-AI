@@ -27,7 +27,9 @@ interface NodeGridItemProps {
 }
 
 const getNodeBorderColor = (nodeType: string): string => {
-  switch (nodeType.toLowerCase()) {
+  // Ensure nodeType is a string and handle null/undefined cases
+  const safeNodeType = nodeType && typeof nodeType === 'string' ? nodeType : 'unknown';
+  switch (safeNodeType.toLowerCase()) {
     case 'assistant':
     case 'image-generation':
     case 'system':
@@ -52,7 +54,9 @@ const getNodeBorderColor = (nodeType: string): string => {
 };
 
 const getNodeBadgeColorClass = (nodeType: string): string => {
-  switch (nodeType.toLowerCase()) {
+  // Ensure nodeType is a string and handle null/undefined cases
+  const safeNodeType = nodeType && typeof nodeType === 'string' ? nodeType : 'unknown';
+  switch (safeNodeType.toLowerCase()) {
     case 'assistant':
     case 'image-generation':
     case 'system':
@@ -175,7 +179,8 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
 
   const borderColorClass = getNodeBorderColor(node.type);
   const badgeColorClass = getNodeBadgeColorClass(node.type);
-  const nodeTypeLower = node.type.toLowerCase();
+  const safeNodeType = node.type && typeof node.type === 'string' ? node.type : 'unknown';
+  const nodeTypeLower = safeNodeType.toLowerCase();
 
   let dynamicBadgeClasses = '';
   if (nodeTypeLower === 'event') {

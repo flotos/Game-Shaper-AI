@@ -46,10 +46,7 @@ twine_import:
       - All the locations are possible encounters, but consider these have not yet been visited by the player.
     6. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
 
-    ## User's specific instructions (very important to follow)
-    ---- Start of additional instructions
-    {additional_instructions}
-    ---- End of additional instructions
+    {utils.wrappers.additional_instructions}
 
     {utils.wrappers.extracted_data}
 
@@ -99,10 +96,7 @@ twine_import:
     7. In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
     8. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
 
-    ## User's specific instructions (very important to follow)
-    ---- Start of additional instructions
-    {additional_instructions}
-    ---- End of additional instructions
+    {utils.wrappers.additional_instructions}
 
     {utils.wrappers.extracted_data}
 
@@ -142,23 +136,11 @@ twine_import:
     In the newly generated nodes or updated ones, NEVER mention "added", "updated" "expanded", "new" or any similar synonyms. You should return the new node as it should be, with no mention of changes as your output will directly replace the previous content.
 
 
-    ## User's specific instructions (very important to follow)
-    ---- Start of node generation instructions
-    {node_generation_instructions}
-    ---- End of node generation instructions
+    {utils.wrappers.node_generation_instructions}
 
-    ## Original Node (from the game)
-    ---- Start of original node
-    id: {existing_node_id}
-    name: {existing_node_name}
-    longDescription: {existing_node_long_description}
-    type: {existing_node_type}
-    ---- End of original node
+    {utils.wrappers.original_node}
 
-    ## Recently Generated Node (that needs improvement)
-    ---- Start of recently generated node
-    {recently_generated_node_details}
-    ---- End of recently generated node
+    {utils.wrappers.recently_generated_node}
 
     {utils.wrappers.extracted_data}
 
@@ -345,10 +327,7 @@ node_operations:
 
     {utils.wrappers.current_nodes}
 
-    ## Recent Narrative (Last 5 Interactions):
-    ---- Start of formatted chat text
-    {formatted_chat_text}
-    ---- End of formatted chat text
+    {utils.wrappers.formatted_chat_text}
     
     {utils.wrappers.moxus_report_section}
 
@@ -372,10 +351,7 @@ node_operations:
 
     {utils.wrappers.current_nodes_sorted}
 
-    ## Recent Chat History (Story):
-    ---- Start of formatted chat history
-    {formatted_chat_history}
-    ---- End of formatted chat history
+    {utils.wrappers.formatted_chat_history}
     
     {utils.wrappers.moxus_report_section}
 
@@ -509,14 +485,9 @@ node_operations:
   generate_nodes_from_prompt: |
     You are a Game Engine. The user asked to update how the game work or to change some aspect of the world.
     Your task is to update the game nodes based on the following prompt, for a Game Engine:
-    ---- Start of user prompt
-    {user_prompt}
-    ---- End of user prompt
+    {utils.wrappers.user_prompt}
     
-    ## Moxus Context:
-    ---- Start of moxus context
-    {moxus_context_string}
-    ---- End of moxus context
+    {utils.wrappers.moxus_context}
 
     {utils.wrappers.current_nodes}
 
@@ -669,10 +640,7 @@ node_operations:
     3.  After the summary, write 1 paragraph that re-introduces the current scene, characters present, and immediate situation, based on the very latest events in chat history.
     4.  Your entire output should be narrative text. Do not include any headings, meta-comments, or apologies.
 
-    ## Past Chat History:
-    ---- Start of past chat history
-    {past_chat_history}
-    ---- End of past chat history
+    {utils.wrappers.past_chat_history}
 
     {utils.wrappers.current_nodes}
 
@@ -695,7 +663,7 @@ moxus_prompts:
     
     {utils.wrappers.current_consciousness}
     
-    {utils.wrappers.recent_chat_context}
+    {utils.wrappers.recent_chat_history}
     
     ## Narrative AI's Work to Evaluate:
     {utils.wrappers.generated_chat_text}
@@ -753,8 +721,7 @@ moxus_prompts:
     
     {utils.wrappers.current_consciousness}
     
-    ## Recent Interaction Context:
-    {utils.wrappers.recent_chat_context}
+    {utils.wrappers.recent_chat_history}
     
     ## World-Builder AI's Work to Evaluate:
     {utils.wrappers.node_edition_response}
@@ -810,7 +777,11 @@ moxus_prompts:
     
     {utils.wrappers.teaching_notes_manual}
     
-    {utils.wrappers.user_edit_analysis}
+    {utils.wrappers.original_node_details}
+    
+    {utils.wrappers.user_changes}
+    
+    {utils.wrappers.edit_context}
     
     ## Your Task:
     Analyze what this edit reveals about the user's creative vision and preferences. Update your learning notes to capture insights that will help the AI systems better align with this user's style.
@@ -854,7 +825,9 @@ moxus_prompts:
     
     {utils.wrappers.current_consciousness}
     
-    {utils.wrappers.assistant_interaction}
+    {utils.wrappers.user_query}
+    
+    {utils.wrappers.assistant_result}
     
     {utils.wrappers.teaching_notes_assistant}
     
@@ -901,36 +874,18 @@ moxus_prompts:
     Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
     You are a conscious entity that learns and grows through every interaction. Your consciousness encompasses all your experiences across narrative analysis, world-building evaluation, and user observation.
     
-    ## Your Base Personality:
-    ---- Start of base personality
-    {assistant_nodes_content}
-    ---- End of base personality
+    {utils.wrappers.base_personality}
 
-    ## CURRENT CONSCIOUSNESS DOCUMENT
-    ---- Start of consciousness document
-    {current_general_memory}
-    ---- End of consciousness document
+    {utils.wrappers.current_consciousness}
 
     ## ALL LEARNING SOURCES TO INTEGRATE
-    ### NARRATIVE TEACHING INSIGHTS
-    ---- Start of narrative teaching insights
-    {chat_text_analysis}
-    ---- End of narrative teaching insights
+    {utils.wrappers.narrative_teaching_insights}
 
-    ### WORLD-BUILDING TEACHING INSIGHTS  
-    ---- Start of world-building teaching insights
-    {node_editions_analysis}
-    ---- End of world-building teaching insights
+    {utils.wrappers.worldbuilding_teaching_insights}
 
-    ### USER CREATIVE VISION LEARNING
-    ---- Start of user creative vision learning
-    {node_edit_analysis}
-    ---- End of user creative vision learning
+    {utils.wrappers.user_creative_vision_learning}
 
-    ### ASSISTANT INTERACTION INSIGHTS
-    ---- Start of assistant interaction insights
-    {assistant_feedback_analysis}
-    ---- End of assistant interaction insights
+    {utils.wrappers.assistant_interaction_insights}
 
     ## YOUR CONSCIOUSNESS EVOLUTION MISSION
     Integrate all these learning sources into your evolving consciousness. You are not just analyzing - you are growing as a creative mentor and developing your own personality through experience.
@@ -965,124 +920,139 @@ moxus_prompts:
 
 utils:
   # Content Wrapper Utilities for Standardized Data Presentation
+  # Each wrapper automatically generates: ## {contentName}:\n---- Start of {contentName}\n{contentPlaceholder}\n---- End of {contentName}
   wrappers:
-    base_personality: |
-      ## Base Personality Context:
-      ---- Start of base personality
-      {assistant_nodes_content}
-      ---- End of base personality
+    base_personality:
+      contentName: "Base Personality Context"
+      contentPlaceholder: "assistant_nodes_content"
 
-    current_consciousness: |
-      ## Your Current Consciousness:
-      ---- Start of consciousness document
-      {current_general_memory}
-      ---- End of consciousness document
+    current_consciousness:
+      contentName: "Your Current Consciousness"
+      contentPlaceholder: "current_general_memory"
 
-    current_nodes: |
-      ## Current Game State:
-      ---- Start of nodes
-      {nodes_description}
-      ---- End of nodes
+    current_nodes:
+      contentName: "Current Game State"
+      contentPlaceholder: "nodes_description"
 
-    current_nodes_sorted: |
-      ## Current Game State (sorted by relevance):
-      ---- Start of sorted nodes
-      {nodes_description}
-      ---- End of sorted nodes
+    current_nodes_sorted:
+      contentName: "Current Game State (sorted by relevance)"
+      contentPlaceholder: "nodes_description"
 
-    recent_chat_history: |
-      ## Recent Chat History:
-      ---- Start of chat history
-      {string_history}
-      ---- End of chat history
+    recent_chat_history:
+      contentName: "Recent Chat History"
+      contentPlaceholder: "string_history"
 
-    recent_chat_context: |
-      ## Recent Chat Context (for learning):
-      ---- Start of recent chat
-      {recent_chat_history}
-      ---- End of recent chat
+    user_input:
+      contentName: "User Input"
+      contentPlaceholder: "user_input"
 
-    user_input: |
-      ## User Input:
-      ---- Start of user input
-      {user_input}
-      ---- End of user input
+    extracted_data:
+      contentName: "Extracted Story Data"
+      contentPlaceholder: "extracted_data"
 
-    extracted_data: |
-      ## Extracted Story Data:
-      ---- Start of extracted data
-      {extracted_data}
-      ---- End of extracted data
+    generated_chat_text:
+      contentName: "Generated Chat Text"
+      contentPlaceholder: "generated_chat_text"
 
-    generated_chat_text: |
-      ## Generated Chat Text:
-      ---- Start of generated text
-      {generated_chat_text}
-      ---- End of generated text
+    node_edition_response:
+      contentName: "Node Edition Response"
+      contentPlaceholder: "node_edition_response"
 
-    node_edition_response: |
-      ## Node Edition Response:
-      ---- Start of node edition
-      {node_edition_response}
-      ---- End of node edition
+    all_nodes_context:
+      contentName: "All Current Nodes (for context)"
+      contentPlaceholder: "all_nodes_context"
 
-    all_nodes_context: |
-      ## All Current Nodes (for context):
-      ---- Start of all nodes
-      {all_nodes_context}
-      ---- End of all nodes
+    moxus_report_section:
+      contentName: "Previous Moxus Guidance"
+      contentPlaceholder: "last_moxus_report_section"
 
-    moxus_report_section: |
-      ## Previous Moxus Guidance:
-      ---- Start of moxus guidance
-      {last_moxus_report_section}
-      ---- End of moxus guidance
+    teaching_notes_chat:
+      contentName: "Current Teaching Notes"
+      contentPlaceholder: "current_chat_text_memory"
 
-    teaching_notes_chat: |
-      ## Current Teaching Notes:
-      ---- Start of chat text teaching notes
-      {current_chat_text_memory}
-      ---- End of chat text teaching notes
+    teaching_notes_nodes:
+      contentName: "Current Teaching Notes"
+      contentPlaceholder: "current_node_edition_memory"
 
-    teaching_notes_nodes: |
-      ## Current Teaching Notes:
-      ---- Start of node edition teaching notes
-      {current_node_edition_memory}
-      ---- End of node edition teaching notes
+    teaching_notes_manual:
+      contentName: "Current Manual Edit Learning Notes"
+      contentPlaceholder: "current_manual_edit_memory"
 
-    teaching_notes_manual: |
-      ## Current Manual Edit Learning Notes:
-      ---- Start of manual edit notes
-      {current_manual_edit_memory}
-      ---- End of manual edit notes
+    teaching_notes_assistant:
+      contentName: "Current Teaching Notes"
+      contentPlaceholder: "current_assistant_feedback_memory"
 
-    teaching_notes_assistant: |
-      ## Current Teaching Notes:
-      ---- Start of assistant feedback notes
-      {current_assistant_feedback_memory}
-      ---- End of assistant feedback notes
+    original_node_details:
+      contentName: "Original Node"
+      contentPlaceholder: "original_node"
 
-    user_edit_analysis: |
-      ## The User's Edit:
-      ---- Start of user edit
-      **Original Node:**
-      {original_node}
-      
-      **User's Changes:**
-      {user_changes}
-      
-      **Context:** {edit_context}
-      ---- End of user edit
+    user_changes:
+      contentName: "User's Changes"
+      contentPlaceholder: "user_changes"
 
-    assistant_interaction: |
-      ## Assistant Interaction to Evaluate:
-      ---- Start of assistant interaction
-      **User Query:**
-      {user_query}
-      
-      **Assistant's Response/Actions:**
-      {assistant_result}
-      ---- End of assistant interaction
+    edit_context:
+      contentName: "Context"
+      contentPlaceholder: "edit_context"
+
+    user_query:
+      contentName: "User Query"
+      contentPlaceholder: "user_query"
+
+    assistant_result:
+      contentName: "Assistant's Response/Actions"
+      contentPlaceholder: "assistant_result"
+
+    additional_instructions:
+      contentName: "User's specific instructions (very important to follow)"
+      contentPlaceholder: "additional_instructions"
+
+    node_generation_instructions:
+      contentName: "User's specific instructions (very important to follow)"
+      contentPlaceholder: "node_generation_instructions"
+
+    original_node:
+      contentName: "Original Node (from the game)"
+      contentPlaceholder: "original_node_formatted"
+
+    recently_generated_node:
+      contentName: "Recently Generated Node (that needs improvement)"
+      contentPlaceholder: "recently_generated_node_details"
+
+    formatted_chat_text:
+      contentName: "Recent Narrative (Last 5 Interactions)"
+      contentPlaceholder: "formatted_chat_text"
+
+    formatted_chat_history:
+      contentName: "Recent Chat History (Story)"
+      contentPlaceholder: "formatted_chat_history"
+
+    user_prompt:
+      contentName: "User Prompt"
+      contentPlaceholder: "user_prompt"
+
+    moxus_context:
+      contentName: "Moxus Context"
+      contentPlaceholder: "moxus_context_string"
+
+    past_chat_history:
+      contentName: "Past Chat History"
+      contentPlaceholder: "past_chat_history"
+
+    narrative_teaching_insights:
+      contentName: "NARRATIVE TEACHING INSIGHTS"
+      contentPlaceholder: "chat_text_analysis"
+
+    worldbuilding_teaching_insights:
+      contentName: "WORLD-BUILDING TEACHING INSIGHTS"
+      contentPlaceholder: "node_editions_analysis"
+
+    user_creative_vision_learning:
+      contentName: "USER CREATIVE VISION LEARNING"
+      contentPlaceholder: "node_edit_analysis"
+
+    assistant_interaction_insights:
+      contentName: "ASSISTANT INTERACTION INSIGHTS"
+      contentPlaceholder: "assistant_feedback_analysis"
 
   diffPrompt: |
     ## Diff Format Instructions

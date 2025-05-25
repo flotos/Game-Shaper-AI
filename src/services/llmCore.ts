@@ -35,6 +35,13 @@ export interface PromptsConfig {
   utils: {
     diffPrompt: string;
     moxus_feedback_system_message: string;
+    wrappers: {
+      [key: string]: {
+        contentName: string;
+        contentPlaceholder: string;
+        customFormat?: boolean;
+      };
+    };
   };
 }
 
@@ -53,11 +60,47 @@ export { loadedPrompts };
 // Utility function to format prompts
 export function formatPrompt(promptTemplate: string, replacements: Record<string, string | undefined>): string {
   let formattedPrompt = promptTemplate;
+  
+  // First, process utils.wrappers.* placeholders - inject wrapper structure
+  const wrapperRegex = /\{utils\.wrappers\.([^}]+)\}/g;
+  let match;
+  
+  while ((match = wrapperRegex.exec(formattedPrompt)) !== null) {
+    const wrapperName = match[1];
+    const fullPlaceholder = match[0];
+    
+    // Get wrapper definition from loaded prompts
+    const wrapperDef = loadedPrompts?.utils?.wrappers?.[wrapperName];
+    
+    if (wrapperDef) {
+      const { contentName, contentPlaceholder, customFormat } = wrapperDef;
+      
+      // Create the wrapper structure with the placeholder still intact
+      let wrappedContent;
+      if (customFormat) {
+        // For custom format wrappers, just use the content placeholder as-is with basic wrapping
+        wrappedContent = `## ${contentName}:\n---- Start of ${contentName.toLowerCase()}\n{${contentPlaceholder}}\n---- End of ${contentName.toLowerCase()}`;
+      } else {
+        // Standard wrapper format
+        wrappedContent = `## ${contentName}:\n---- Start of ${contentName.toLowerCase()}\n{${contentPlaceholder}}\n---- End of ${contentName.toLowerCase()}`;
+      }
+      
+      // Replace the wrapper placeholder with the formatted structure (still containing content placeholder)
+      formattedPrompt = formattedPrompt.replace(fullPlaceholder, wrappedContent);
+    } else {
+      // If wrapper not found, leave placeholder as-is or replace with empty string
+      console.warn(`[formatPrompt] Wrapper not found: ${wrapperName}`);
+      formattedPrompt = formattedPrompt.replace(fullPlaceholder, `[Wrapper not found: ${wrapperName}]`);
+    }
+  }
+  
+  // Then, process regular placeholders (including the content placeholders from wrappers)
   for (const key in replacements) {
     const value = replacements[key];
     const replacementValue = value === undefined ? '' : String(value);
     formattedPrompt = formattedPrompt.replace(new RegExp(`\\{${key}\\}`, 'g'), replacementValue);
   }
+  
   return formattedPrompt;
 }
 
