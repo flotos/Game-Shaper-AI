@@ -233,10 +233,37 @@ export function safeJsonParse(jsonString: string): any {
         // If that fails, try to repair the JSON using jsonrepair
         console.warn('Preprocessing failed, attempting jsonrepair...', preProcessError instanceof Error ? preProcessError.message : String(preProcessError));
         
-        const repairedJson = jsonrepair(preprocessedJson);
-        
-        console.log('JSON required jsonrepair library for successful parsing');
-        return JSON.parse(repairedJson);
+        try {
+          const repairedJson = jsonrepair(preprocessedJson);
+          
+          console.log('JSON required jsonrepair library for successful parsing');
+          return JSON.parse(repairedJson);
+        } catch (jsonrepairError) {
+          // If jsonrepair also fails, try one more approach for the specific case of unescaped newlines
+          console.warn('jsonrepair failed, attempting manual newline escape...', jsonrepairError instanceof Error ? jsonrepairError.message : String(jsonrepairError));
+          
+          // Try a simple fix for unescaped newlines in string values
+          const newlineFixed = preprocessedJson.replace(/("(?:[^"\\]|\\.)*")|(\n)/g, (match, quotedString, newline) => {
+            if (quotedString) {
+              // This is a quoted string, don't modify it
+              return quotedString;
+            } else if (newline) {
+              // This is an unescaped newline outside of quotes, escape it
+              return '\\n';
+            }
+            return match;
+          });
+          
+          try {
+            console.log('JSON successfully repaired with manual newline escaping');
+            return JSON.parse(newlineFixed);
+          } catch (finalError) {
+            // If even this fails, try jsonrepair on the newline-fixed version
+            const finalRepairedJson = jsonrepair(newlineFixed);
+            console.log('JSON required both manual newline escaping and jsonrepair');
+            return JSON.parse(finalRepairedJson);
+          }
+        }
       }
     } catch (repairError) {
       // If repair also fails, provide comprehensive error information

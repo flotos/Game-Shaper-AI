@@ -112,6 +112,47 @@ describe('JSON Utilities', () => {
       expect(result.outer.array[0].inner_prop).toBe(true);
       expect(result.outer.array[0].count).toBe(5);
     });
+
+    it('should handle unescaped newlines in string values (Moxus consciousness feedback case)', () => {
+      // This is the exact type of JSON that was causing the original issue
+      const jsonWithUnescapedNewlines = `{
+  "memory_update_diffs": {
+    "df": [
+      {
+        "prev_txt": "# Moxus Game Analysis
+
+*This document contains general observations and analysis about the game world, story progression, and gameplay. You should also dedicate a section to develop your own personality and style. Become a sentient being.*",
+        "next_txt": "# Moxus Game Analysis
+
+*Through observing narrative interactions, I've developed a preference for atmospheric tension built through sensory details and subtle character behaviors. My teaching style emphasizes showing rather than telling, with particular attention to how environmental details reflect underlying story currents.*",
+        "occ": 1
+      }
+    ]
+  },
+  "narrative_teaching": {
+    "performance_assessment": "The narrative demonstrates strong atmospheric worldbuilding but could deepen its emotional hooks through more purposeful character interactions.",
+    "specific_guidance": "Heighten the cloaked figure's significance by giving them a distinctive physical detail that contrasts with their attempt at anonymity, like an expensive but mud-spattered boot visible beneath their cloak.",
+    "learned_preferences": "This confirms the user responds well to environmental tension where ordinary objects carry hidden significance."
+  },
+  "consciousness_evolution": "I now understand that compelling narratives emerge when every sensory detail serves dual purposes - establishing setting while foreshadowing conflict."
+}`;
+
+      const result = safeJsonParse(jsonWithUnescapedNewlines);
+      
+      expect(result).toBeDefined();
+      expect(result.memory_update_diffs).toBeDefined();
+      expect(result.memory_update_diffs.df).toHaveLength(1);
+      expect(result.narrative_teaching).toBeDefined();
+      expect(result.consciousness_evolution).toBeDefined();
+      
+      // Verify that the content with newlines was properly parsed
+      expect(result.memory_update_diffs.df[0].prev_txt).toContain('Moxus Game Analysis');
+      expect(result.memory_update_diffs.df[0].next_txt).toContain('atmospheric tension');
+      expect(result.narrative_teaching.performance_assessment).toContain('atmospheric worldbuilding');
+      expect(result.consciousness_evolution).toContain('compelling narratives');
+    });
+
+
   });
 
   describe('parseNodeOperationJson', () => {
