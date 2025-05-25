@@ -546,10 +546,10 @@ const processQueue = async () => {
             .finally(() => {
                 console.log(`[MoxusService] Completed task: ${task.type}${callTypeSuffix} (ID: ${task.id})`);
                 activeLLMNodeEditionYamlFeedback = null;
-                // Only set the flag if it was specifically for node_edition_yaml, as this is what final report depends on.
-                if (task.data?.callType === 'node_edition_yaml') {
+                // Set the flag for both node_edition_yaml and node_edition_json calls
+                if (task.data?.callType === 'node_edition_yaml' || task.data?.callType === 'node_edition_json') {
                     hasNodeEditionFeedbackCompletedForReport = true; 
-                    console.log('[MoxusService] LLMCallFeedback for node_edition_yaml completed, flag set for final report.');
+                    console.log(`[MoxusService] LLMCallFeedback for ${task.data.callType} completed, flag set for final report.`);
                     checkAndTriggerFinalReport();
                 }
                 triggerProcessing(); 
@@ -634,19 +634,20 @@ const handleFinalReport = async (task: MoxusTask) => {
   const assistantNodesContent = getAssistantNodesContent();
   const chatHistoryContextString = task.data?.chatHistoryContext || "(Chat history context not available for this report)";
 
-  // STEP 1: Generate the final report (MOVED GM UPDATE TO AFTER)
-  const promptContent = `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
+  // STEP 1: Generate the final report using prompt from YAML
+  const prompts = AllPrompts as { moxus_prompts: { moxus_final_report?: string } };
+  let promptContent = prompts.moxus_prompts.moxus_final_report || `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
   You monitor the story, provide guidance, and maintain consistency and quality in the game world.
   Generate a brief, concise, and straight-to-the-point critical analysis based on your accumulated memory documents and the recent chat context below.
-  ${assistantNodesContent ? `Additional features:\n  ---\n  ${assistantNodesContent}\n  ---` : ""}
+  {assistant_nodes_content}
   # CHAT HISTORY CONTEXT (Last 10 turns, if available)
-  ${chatHistoryContextString}
+  {chat_history_context}
   # GENERAL MEMORY
-  ${moxusStructuredMemory.GeneralMemory || '(No general memory available)'}
+  {general_memory}
   # CHAT TEXT ANALYSIS
-  ${moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)'}
+  {chat_text_analysis}
   # NODE EDITIONS ANALYSIS
-  ${moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)'}
+  {node_editions_analysis}
   # INSTRUCTIONS
   Create a brief, concise, and straight-to-the-point critical report focusing ONLY on problems and issues.
   The entire report must be one paragraphs maximum to plan the guide the next "Narrative AI's" message.
@@ -658,6 +659,13 @@ const handleFinalReport = async (task: MoxusTask) => {
   - Serious gameplay mechanic flaws
   Be direct, concise, and straight to the point. Focus only on problems requiring attention, not what works well.
   This will be displayed to the user as a Moxus critical analysis report.`;
+  
+  // Replace placeholders
+  promptContent = promptContent.replace(/{assistant_nodes_content}/g, assistantNodesContent || "(No assistant nodes found)");
+  promptContent = promptContent.replace(/{chat_history_context}/g, chatHistoryContextString);
+  promptContent = promptContent.replace(/{general_memory}/g, moxusStructuredMemory.GeneralMemory || '(No general memory available)');
+  promptContent = promptContent.replace(/{chat_text_analysis}/g, moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)');
+  promptContent = promptContent.replace(/{node_editions_analysis}/g, moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)');
 
   console.log(`[MoxusService] Generating final report (Task ID: ${task.id}) using current memory sources...`);
   if (!getMoxusFeedbackImpl) {
@@ -702,14 +710,101 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         moxusStructuredMemory.featureSpecificMemory.llmCalls[callId] = { id: callId, prompt: task.data.prompt || "[prompt unavailable]", response: task.data.response || "[response unavailable]", timestamp: now, status: 'completed', startTime: new Date(task.data.timestamp || now), endTime: now, callType: originalCallTypeForFeedback || 'unknown_reconstructed', modelUsed: task.data.modelUsed || 'unknown_reconstructed'};
       }
       const assistantNodesContent = getAssistantNodesContent();
-      const feedbackPrompt = `\n      # Task\n      You have to analyze an LLM call.\n\n      ${assistantNodesContent ? `## Additional features:\n      ---\n      ${assistantNodesContent}\n      ---` : ""}\n      \n      ## PROMPT:\n      ---start of prompt---\n      ${task.data.prompt}\n      ---end of prompt---\n      \n      ## RESPONSE:\n      ---start of response---\n      ${task.data.response}\n      ---end of response---\n      \n      Provide critical feedback focusing ONLY on problems with this response.\n      Focus exclusively on what could be improved, not what went well.\n      Identify specific issues with quality, relevance, coherence, or accuracy.`;
+      const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+      let feedbackPrompt: string;
+      let promptType: string;
+      
+      // Use consciousness-driven prompts for specific call types
+      if (task.type === 'chatTextFeedback' && originalCallTypeForFeedback === 'chat_text_generation') {
+        // Use consciousness-driven chat text teaching prompt
+        const prompts = AllPrompts as { moxus_prompts: { moxus_feedback_on_chat_text_generation: string } };
+        feedbackPrompt = prompts.moxus_prompts.moxus_feedback_on_chat_text_generation;
+        
+        const currentChatTextMemory = moxusStructuredMemory.featureSpecificMemory.chatText || DEFAULT_MEMORY.CHAT_TEXT;
+        const recentChatHistory = task.data.chatHistory ? 
+          getFormattedChatHistoryStringForMoxus(task.data.chatHistory, 10) : 
+          "(No chat history available)";
+        
+        feedbackPrompt = feedbackPrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
+        feedbackPrompt = feedbackPrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
+        feedbackPrompt = feedbackPrompt.replace(/{recent_chat_history}/g, recentChatHistory);
+        feedbackPrompt = feedbackPrompt.replace(/{generated_chat_text}/g, task.data.response || '');
+        feedbackPrompt = feedbackPrompt.replace(/{current_chat_text_memory}/g, currentChatTextMemory);
+        
+        promptType = 'moxus_feedback_on_chat_text_generation';
+      } else if (task.type === 'llmCallFeedback' && originalCallTypeForFeedback === 'node_edition_json') {
+        // Use consciousness-driven node edition teaching prompt
+        const prompts = AllPrompts as { moxus_prompts: { moxus_feedback_on_node_edition_json: string } };
+        feedbackPrompt = prompts.moxus_prompts.moxus_feedback_on_node_edition_json;
+        
+        const currentNodeEditionMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition || DEFAULT_MEMORY.NODE_EDITION;
+        const recentChatHistory = task.data.chatHistory ? 
+          getFormattedChatHistoryStringForMoxus(task.data.chatHistory, 10) : 
+          "(No recent interaction context available)";
+        const allNodesContext = getNodesCallback().map(node => `ID: ${node.id}, Name: ${node.name}, Type: ${node.type}`).join('\n');
+        
+        feedbackPrompt = feedbackPrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
+        feedbackPrompt = feedbackPrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
+        feedbackPrompt = feedbackPrompt.replace(/{recent_chat_history}/g, recentChatHistory);
+        feedbackPrompt = feedbackPrompt.replace(/{node_edition_response}/g, task.data.response || '');
+        feedbackPrompt = feedbackPrompt.replace(/{all_nodes_context}/g, allNodesContext);
+        feedbackPrompt = feedbackPrompt.replace(/{current_node_edition_memory}/g, currentNodeEditionMemory);
+        
+        promptType = 'moxus_feedback_on_node_edition_json';
+      } else {
+        // Fallback to generic feedback for other types
+        feedbackPrompt = `\n      # Task\n      You have to analyze an LLM call.\n\n      ${assistantNodesContent ? `## Additional features:\n      ---\n      ${assistantNodesContent}\n      ---` : ""}\n      \n      ## PROMPT:\n      ---start of prompt---\n      ${task.data.prompt}\n      ---end of prompt---\n      \n      ## RESPONSE:\n      ---start of response---\n      ${task.data.response}\n      ---end of response---\n      \n      Provide critical feedback focusing ONLY on problems with this response.\n      Focus exclusively on what could be improved, not what went well.\n      Identify specific issues with quality, relevance, coherence, or accuracy.`;
+        promptType = originalCallTypeForFeedback;
+      }
+      
       if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set.');
-      const feedback = await getMoxusFeedbackImpl(feedbackPrompt, originalCallTypeForFeedback);
+      const feedback = await getMoxusFeedbackImpl(feedbackPrompt, promptType);
       const truncatedFeedback = feedback.length > TRUNCATE_LENGTH ? feedback.substring(0, TRUNCATE_LENGTH) + "... [truncated]" : feedback;
       if (moxusStructuredMemory.featureSpecificMemory.llmCalls[callId]) {
          moxusStructuredMemory.featureSpecificMemory.llmCalls[callId].feedback = truncatedFeedback;
          saveMemory(); 
          emitLLMLogUpdate(); 
+      }
+      
+      // Process consciousness-driven feedback if it's a specialized prompt
+      if (promptType === 'moxus_feedback_on_chat_text_generation' || promptType === 'moxus_feedback_on_node_edition_json') {
+        try {
+          const parsedResponse = JSON.parse(feedback);
+          
+          // Handle consciousness evolution in general memory
+          if (parsedResponse.consciousness_evolution) {
+            const currentGeneral = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+            moxusStructuredMemory.GeneralMemory = currentGeneral + '\n\n' + parsedResponse.consciousness_evolution;
+          }
+          
+          // Handle memory updates for specific feedback types
+          if (parsedResponse.memory_update_diffs) {
+            if (task.type === 'chatTextFeedback') {
+              let updatedMemory = moxusStructuredMemory.featureSpecificMemory.chatText;
+              if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+                updatedMemory = parsedResponse.memory_update_diffs.rpl;
+              } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+                updatedMemory = applyDiffs(updatedMemory, parsedResponse.memory_update_diffs.df);
+              }
+              moxusStructuredMemory.featureSpecificMemory.chatText = updatedMemory;
+              console.log(`[MoxusService] Updated chatText memory document via consciousness-driven feedback for task ${task.id}.`);
+            } else if (task.type === 'llmCallFeedback' && task.data?.callType === 'node_edition_json') {
+              let updatedMemory = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
+              if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+                updatedMemory = parsedResponse.memory_update_diffs.rpl;
+              } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+                updatedMemory = applyDiffs(updatedMemory, parsedResponse.memory_update_diffs.df);
+              }
+              moxusStructuredMemory.featureSpecificMemory.nodeEdition = updatedMemory;
+              console.log(`[MoxusService] Updated nodeEdition memory document via consciousness-driven feedback for task ${task.id}.`);
+            }
+          }
+          
+          saveMemory();
+        } catch (error) {
+          console.error('[MoxusService] Error processing consciousness feedback:', error);
+          // Fallback processing already handled by storing raw feedback above
+        }
       }
       const processedFeedbacks = Object.values(moxusStructuredMemory.featureSpecificMemory.llmCalls).filter(c => c.feedback).length;
       const FEEDBACK_THRESHOLD_FOR_GENERAL_MEMORY_UPDATE = 5;
@@ -724,7 +819,8 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       }
 
       // If this llmCallFeedback task is for a 'node_edition_yaml' call, also update nodeEdition memory.
-      if (task.type === 'llmCallFeedback' && originalCallTypeForFeedback === 'node_edition_yaml') {
+      // Skip if consciousness-driven prompt already handled it
+      if (task.type === 'llmCallFeedback' && originalCallTypeForFeedback === 'node_edition_yaml' && promptType !== 'moxus_feedback_on_node_edition_json') {
         console.log(`[MoxusService] Task ${task.id} (llmCallFeedback for node_edition_yaml) is also updating nodeEdition memory document.`);
         const nodeEditionMemoryToUpdate = moxusStructuredMemory.featureSpecificMemory.nodeEdition;
         
@@ -759,7 +855,8 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         saveMemory();
       }
 
-      if (task.type === 'chatTextFeedback') {
+      // Update chat text memory for chatTextFeedback (only if not already handled by consciousness-driven feedback)
+      if (task.type === 'chatTextFeedback' && promptType !== 'moxus_feedback_on_chat_text_generation') {
         console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating chatText memory document.`);
         const chatTextMemoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
         const chatTextUpdatePrompt = getMemoryUpdatePrompt(task, chatTextMemoryToUpdate);

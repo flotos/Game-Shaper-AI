@@ -27,11 +27,12 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 vi.mock('../prompts-instruct.yaml', () => {
   // Define the constants INSIDE the factory to ensure they're available
   const MOCKED_GENERAL_MEMORY_PROMPT_IN_FACTORY = 'Test general_memory_update prompt: {current_general_memory} {assistant_nodes_content} {chat_text_analysis} {node_editions_analysis} {assistant_feedback_analysis} {node_edit_analysis} {recent_llm_feedbacks}';
-  const MOCKED_CHAT_TEXT_TEACHING_PROMPT = 'Moxus teaching chat text generation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {generated_chat_text} {current_chat_text_memory}';
-  const MOCKED_NODE_EDITION_TEACHING_PROMPT = 'Moxus teaching world building: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
+  const MOCKED_CHAT_TEXT_TEACHING_PROMPT = 'moxus_feedback_on_chat_text_generation: Teaching the Narrative AI about chat text generation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {generated_chat_text} {current_chat_text_memory}';
+  const MOCKED_NODE_EDITION_TEACHING_PROMPT = 'moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
   const MOCKED_MANUAL_EDIT_LEARNING_PROMPT = 'Moxus learning from user edit: {assistant_nodes_content} {current_general_memory} {original_node} {user_changes} {edit_context} {current_manual_edit_memory}';
   const MOCKED_SPECIALIZED_CHAT_GUIDANCE = 'Moxus specialized chat guidance: {current_general_memory} {current_chat_text_memory} {assistant_nodes_content} {current_context}';
   const MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE = 'Moxus specialized worldbuilding guidance: {current_general_memory} {current_node_edition_memory} {assistant_nodes_content} {current_context}';
+  const MOCKED_FINAL_REPORT_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {chat_history_context} {general_memory} {chat_text_analysis} {node_editions_analysis}';
   
   return {
     default: {
@@ -42,6 +43,7 @@ vi.mock('../prompts-instruct.yaml', () => {
         moxus_feedback_on_manual_node_edit: MOCKED_MANUAL_EDIT_LEARNING_PROMPT,
         moxus_specialized_chat_guidance: MOCKED_SPECIALIZED_CHAT_GUIDANCE,
         moxus_specialized_worldbuilding_guidance: MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE,
+        moxus_final_report: MOCKED_FINAL_REPORT_PROMPT,
       },
     }
   };
@@ -49,8 +51,8 @@ vi.mock('../prompts-instruct.yaml', () => {
 
 // These constants are now for use in tests, distinct from the ones in the mock factory
 const MOCKED_GENERAL_MEMORY_PROMPT_FOR_TESTS = 'Test general_memory_update prompt: {current_general_memory} {assistant_nodes_content} {chat_text_analysis} {node_editions_analysis} {assistant_feedback_analysis} {node_edit_analysis} {recent_llm_feedbacks}';
-const MOCKED_CHAT_TEXT_TEACHING_FOR_TESTS = 'Moxus teaching chat text generation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {generated_chat_text} {current_chat_text_memory}';
-const MOCKED_NODE_EDITION_TEACHING_FOR_TESTS = 'Moxus teaching world building: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
+const MOCKED_CHAT_TEXT_TEACHING_FOR_TESTS = 'moxus_feedback_on_chat_text_generation: Teaching the Narrative AI about chat text generation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {generated_chat_text} {current_chat_text_memory}';
+const MOCKED_NODE_EDITION_TEACHING_FOR_TESTS = 'moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
 
 // Mock '../services/llmCore' for getChatHistoryForMoxus
 vi.mock('../services/llmCore', async (importOriginal) => {
@@ -105,6 +107,11 @@ describe('Moxus Service - Consciousness-Driven System', () => {
   const DEFAULT_CHAT_TEXT_ANALYSIS_HEADER = "# Chat Text Analysis";
   const DEFAULT_NODE_EDITIONS_ANALYSIS_HEADER = "# Node Editions Analysis";
   const INITIAL_NODE_EDITION_MEMORY_CONTENT = '# Node Editions Analysis\n\n*This document analyzes changes to game nodes over time and their impact on the game world.*';
+
+  // Mock constants that tests expect
+  const MOCKED_CHAT_TEXT_TEACHING_FOR_TESTS = "moxus_feedback_on_chat_text_generation: Teaching the Narrative AI about chat text generation";
+  const MOCKED_NODE_EDITION_TEACHING_FOR_TESTS = "moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation";
+  const MOCKED_GENERAL_MEMORY_PROMPT_FOR_TESTS = "Test general_memory_update prompt";
 
   describe('Specialized Guidance Functions', () => {
     it('should provide specialized chat text guidance', async () => {
