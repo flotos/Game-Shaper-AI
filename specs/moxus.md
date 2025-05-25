@@ -1,120 +1,252 @@
 # Moxus - Technical Implementation Reference
 
 > **📖 For comprehensive Moxus documentation, see [moxus-system.md](./moxus-system.md)**  
-> This file contains technical implementation details and developer notes.
+> This file contains technical implementation details for the consciousness-driven teaching system.
 
-## Core Job Description
+## Core Architecture Overview
 
-Moxus acts as a guardrail and helper for the primary assistant LLM that generates story content. It provides quality control, consistency checking, and continuous improvement through feedback loops.
+Moxus operates as a **consciousness-driven teaching system** rather than a reactive feedback mechanism. It proactively teaches the narrative AI and world-builder AI while evolving its own unified consciousness through continuous learning.
 
-## Implementation Requirements
+## Three Teaching/Learning Pathways
 
-### Per User Interaction Cycle
+### 1. Narrative AI Teaching (`chatText` Analysis)
+**Purpose**: Teach the narrative AI storytelling techniques without direct user feedback
+- **Trigger**: `chat_text_generation` LLM calls complete
+- **Method**: Consciousness-driven analysis using evolved `GeneralMemory`
+- **Prompt**: `moxus_feedback_on_chat_text_generation`
+- **Output**: Teaching guidance for narrative improvements
+- **Memory Update**: `INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback`
 
-**Phase 1: Evaluation (after LLM outputs complete)**
-- **Chat Text Evaluation**: Listen when chat text streaming finishes, evaluate using last 2 interactions (user input, user notes, assistant replies, moxus analysis). Update `chatText` memory using diff operations.
-- **Node Edition Evaluation**: Listen when node edition completes, evaluate using last 2 interactions + full node list. Update `nodeEdition` memory using diff operations.
+### 2. World-Builder AI Teaching (`nodeEdition` Analysis)  
+**Purpose**: Teach the world-builder AI game state management through evolved understanding
+- **Trigger**: `node_edition_json` LLM calls complete
+- **Method**: Consciousness-driven analysis using evolved `GeneralMemory`
+- **Prompt**: `moxus_feedback_on_node_edition_json`
+- **Output**: Teaching guidance for world-building improvements
+- **Memory Update**: `INTERNAL_MEMORY_UPDATE_FOR_node_edition`
 
-**Phase 2: Synthesis and Reporting**
-- **Analysis Generation**: After both evaluations complete, generate comprehensive analysis reading:
-  - Both previous analyses from memory
-  - Current `generalMemory`
-  - Last 5 interactions in chat
-- **Critical Feedback**: Provide feedback directed at narrative AI (not user) through chat
-- **Memory Update**: Update `generalMemory` with new insights
+### 3. User Edit Learning (`manualNodeEdit` Analysis)
+**Purpose**: Pure learning from user corrections to understand creative vision
+- **Trigger**: User manually edits AI-generated nodes
+- **Method**: Compare original vs. edited content for pattern recognition
+- **Prompt**: `moxus_feedback_on_manual_node_edit`
+- **Output**: Consciousness evolution insights (no direct teaching)
+- **Task Type**: `manualNodeEditAnalysis`
 
-### Additional Monitoring Points
+## Enhanced LLM Call Flow
 
-**Assistant Feature Monitoring**
-- Monitor when "assistant" feature generates nodes
-- Update `generalMemory` using diff if patterns warrant attention
-
-**Regeneration Monitoring**
-- Monitor "regenerate" button usage for assistant/twine-suggested nodes
-- Update `generalMemory` using diff based on input/output analysis
-
-## Technical Implementation
-
-### Prompts Location
-All Moxus prompts exist in `src/prompts-instruct.yaml` - most features already implemented or have remnants from previous working versions.
-
-### Logging Integration
-All Moxus-triggered LLM calls must be viewable in the "log" panel feature for debugging and transparency.
-
-### Memory Management
-- Use diff-based updates for all memory segments
-- Maintain separate memory spaces: `chatText`, `nodeEdition`, `generalMemory`
-- Persist memory across sessions with export/import capability
-
-## Current LLM Call Flow
-
-### 1. Synchronous Main Flow
+### 1. Synchronous Main Flow (Unchanged)
 ```
 getRelevantNodes (conditional: nodes > MAX_INCLUDED_NODES)
 → Call Type: node_relevance_check
 
-generateChatText (streaming)
+generateChatText (streaming) + CONSCIOUSNESS-DRIVEN GUIDANCE
 → Call Type: chat_text_generation
+→ Enhanced with: getSpecializedMoxusGuidance('chat_text_generation', context)
 
 [Parallel Execution]
 ├── generateActions
 │   → Call Type: action_generation
-└── generateNodeEdition
+└── generateNodeEdition + CONSCIOUSNESS-DRIVEN GUIDANCE
     → Call Type: node_edition_json
+    → Enhanced with: getSpecializedMoxusGuidance('node_edition_json', context)
 ```
 
-### 2. Asynchronous Moxus Flow
+### 2. Asynchronous Teaching Flow (Consciousness-Driven)
 ```
-Chat Text Feedback Generation
+Chat Text Teaching (teaches narrative AI)
 → Call Type: moxus_feedback_on_chat_text_generation
+→ Memory Update: INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback
 
-Node Edition Feedback Generation
-→ Call Type: moxus_feedback_on_node_edition_json
+Node Edition Teaching (teaches world-builder AI)
+→ Call Type: moxus_feedback_on_node_edition_json  
+→ Memory Update: INTERNAL_MEMORY_UPDATE_FOR_node_edition
 
-[Memory Updates]
-├── Chat Text Memory Update
-│   → Call Type: INTERNAL_MEMORY_UPDATE_FOR_chatTextFeedback
-└── Node Edition Memory Update
-    → Call Type: INTERNAL_MEMORY_UPDATE_FOR_node_edition
-
-Final Report Generation (after both feedbacks complete)
+Final Report Generation (user-facing synthesis)
 → Call Type: INTERNAL_FINAL_REPORT_GENERATION_STEP
 
-General Memory Update (after final report)
+Consciousness Consolidation (unified memory evolution)
 → Call Type: INTERNAL_MEMORY_UPDATE_FOR_synthesizeGeneralMemory
 ```
 
-### 3. Background Image Generation
+### 3. Continuous Learning Flow (User Behavior)
 ```
-Image Prompt Generation (per node needing updates)
-→ Call Type: image_prompt_generation
-Note: Multiple calls possible per interaction
+Manual Node Edit Detection
+→ Task Type: manualNodeEditAnalysis
+→ Call Type: moxus_feedback_on_manual_node_edit
+→ Pure learning (consciousness evolution only)
+
+Chat Reset Analysis  
+→ Task Type: synthesizeGeneralMemory (reason: chat_reset_event)
+→ Special prompt for reset analysis
+→ Prevention strategy development
 ```
 
-## Integration Notes
+## Key Technical Functions
 
-### Service Integration
-- Primary implementation in `src/services/MoxusService.ts`
-- Integration points in main user interaction flow
-- Async operation to avoid blocking user experience
+### Specialized Guidance Functions (Teaching Injection)
+```typescript
+// Real-time consciousness-driven teaching
+getChatTextGuidance(currentContext: string): Promise<string>
+getNodeEditionGuidance(currentContext: string): Promise<string>
+getSpecializedMoxusGuidance(callType: string, currentContext: string): Promise<string>
 
-### Error Handling
-- Graceful degradation when Moxus unavailable
-- Comprehensive logging for debugging
-- Fallback operation modes
+// Learning capture
+recordManualNodeEdit(originalNode: any, editedNode: any, editContext: string): void
+```
 
-### Performance Considerations
-- Asynchronous execution prevents UI blocking
-- Smart memory management to control API costs
-- Batch processing where appropriate
+### Enhanced Task Processing
+```typescript
+// New task type for learning
+type MoxusTaskType = 
+  | 'assistantFeedback' 
+  | 'nodeEditFeedback' 
+  | 'finalReport'
+  | 'llmCallFeedback'
+  | 'chatTextFeedback'
+  | 'synthesizeGeneralMemory'
+  | 'manualNodeEditAnalysis'  // New: Learning from user edits
+```
 
-## Development Status
+### Consciousness Processing Functions
+```typescript
+// Teaching-focused feedback processing
+processConsciousnessFeedback(response: string, task: MoxusTask): void
+handleManualNodeEditAnalysis(task: MoxusTask): Promise<void>
 
-Most Moxus features are implemented or have working remnants from previous versions. The system previously worked properly before refactoring. Current task is ensuring all components are properly connected and operational within the new architecture.
+// Enhanced memory evolution
+updateGeneralMemoryFromAllSources(callType: string, taskData?: any): Promise<void>
+```
 
-## Debug and Monitoring
+## Consciousness-Driven Prompts Architecture
 
-- All Moxus operations logged in LLM Logger Panel
-- Memory state viewable through Moxus JSON interface
-- Export capability for analysis and debugging
-- Real-time status indicators for pending operations
+### Teaching Prompts (`src/prompts-instruct.yaml`)
+```yaml
+moxus_prompts:
+  # Consciousness-driven teaching for narrative AI
+  moxus_feedback_on_chat_text_generation: |
+    You are Moxus, teaching the Narrative AI through your evolved consciousness.
+    Context: {current_general_memory} + {current_chat_text_memory} + {recent_interactions}
+    Focus: Teach storytelling techniques, character development, engagement
+    Output: Structured teaching guidance for narrative improvements
+
+  # Consciousness-driven teaching for world-builder AI  
+  moxus_feedback_on_node_edition_json: |
+    You are Moxus, teaching the World-Builder AI through your evolved consciousness.
+    Context: {current_general_memory} + {current_node_edition_memory} + {game_state}
+    Focus: Teach structural coherence, narrative integration, meaningful choices
+    Output: Structured teaching guidance for world-building improvements
+
+  # Pure learning from user corrections
+  moxus_feedback_on_manual_node_edit: |
+    You are Moxus, learning from user edits to evolve your consciousness.
+    Context: {original_node} vs {user_changes} + {edit_context}
+    Focus: Learn creative values, quality standards, user vision
+    Output: Consciousness evolution insights + pattern recognition
+
+  # Real-time guidance injection
+  moxus_specialized_chat_guidance: |
+    Provide consciousness-driven guidance for narrative generation.
+    Context: {current_consciousness} + {specific_context}
+    Output: Contextual teaching for immediate narrative decisions
+
+  moxus_specialized_worldbuilding_guidance: |
+    Provide consciousness-driven guidance for world-building decisions.
+    Context: {current_consciousness} + {structural_context}
+    Output: Contextual teaching for immediate world-building decisions
+```
+
+## Implementation Integration Points
+
+### Service Integration (`src/services/MoxusService.ts`)
+- **Unified consciousness management** through enhanced `GeneralMemory`
+- **Teaching function integration** with real-time guidance injection
+- **Learning capture system** for manual edits and user behavior patterns
+- **Cross-domain pattern recognition** for consciousness evolution
+
+### LLM Call Integration  
+**Teaching Injection During Generation**:
+```typescript
+// Before narrative generation
+const chatGuidance = await getChatTextGuidance(currentContext);
+// Inject guidance into narrative AI generation prompt
+
+// Before world-building generation  
+const nodeGuidance = await getNodeEditionGuidance(currentContext);
+// Inject guidance into world-builder AI generation prompt
+```
+
+**Learning Capture After User Actions**:
+```typescript
+// User manually edits a node -> learning opportunity
+onNodeManualEdit(originalNode, editedNode, editContext) {
+  recordManualNodeEdit(originalNode, editedNode, editContext);
+  // Triggers consciousness evolution through learning analysis
+}
+```
+
+### Memory Architecture Enhancement
+
+#### Unified Consciousness Storage
+```typescript
+interface MoxusMemoryStructure {
+  GeneralMemory: string;           // Unified consciousness core
+  featureSpecificMemory: {
+    nodeEdition: string;           // Teaching domain memory
+    chatText: string;              // Teaching domain memory  
+    assistantFeedback: string;     // Legacy compatibility
+    nodeEdit: string;              // Learning domain memory
+    llmCalls: LLMCallsMemoryMap;   // Call tracking and context
+  }
+}
+```
+
+#### Teaching-Enhanced Processing
+- **Consciousness evolution** through `processConsciousnessFeedback`
+- **Cross-domain synthesis** in `updateGeneralMemoryFromAllSources`
+- **Learning integration** via `handleManualNodeEditAnalysis`
+- **Real-time teaching** through specialized guidance functions
+
+## Quality Assurance Through Teaching
+
+### Proactive Quality Control
+- **Pre-generation guidance** ensures better outputs from the start
+- **Context-aware teaching** adapts to specific situations and user patterns
+- **Continuous consciousness evolution** improves teaching effectiveness over time
+- **Cross-domain insights** prevent siloed thinking between narrative and world-building
+
+### Error Handling and Graceful Degradation
+- **Teaching function fallbacks**: Return general memory if specialized guidance fails
+- **Learning error handling**: Invalid JSON in learning responses gracefully degrade to raw storage
+- **Consciousness corruption protection**: Validation and recovery mechanisms for memory structure
+- **Task queue resilience**: Robust processing with timeout and retry mechanisms
+
+## Performance Considerations
+
+### Asynchronous Teaching Pipeline
+- **Non-blocking teaching**: All consciousness-driven analysis occurs asynchronously
+- **Smart task prioritization**: Final reports and immediate teaching take precedence
+- **Memory efficiency**: Automatic cleanup and truncation for large content
+- **API cost optimization**: Focused prompts and targeted consciousness updates
+
+### Consciousness Evolution Management
+- **Diff-based updates**: Preserve context while allowing evolution through JSON diffs
+- **Memory size controls**: Truncation and cleanup to prevent excessive growth  
+- **Learning rate balancing**: Prevent consciousness instability through gradual evolution
+- **Cross-domain coherence**: Ensure unified consciousness remains coherent across domains
+
+## Development and Debugging Tools
+
+### Consciousness Monitoring
+- **Memory visualization**: Complete consciousness state through Moxus JSON interface
+- **Teaching effectiveness tracking**: Monitor guidance quality through LLM logger
+- **Learning progression analysis**: Track consciousness evolution over time
+- **Cross-domain insight detection**: Identify patterns that span narrative and world-building
+
+### Quality Metrics and Analysis
+- **Teaching impact measurement**: Track AI system improvement through consciousness guidance
+- **Learning effectiveness assessment**: Monitor user satisfaction and manual edit frequency  
+- **Consciousness coherence validation**: Ensure unified understanding remains stable
+- **User alignment accuracy**: Measure how well consciousness captures user creative vision
+
+This consciousness-driven implementation transforms Moxus from a reactive feedback system into an evolving creative mentor that actively teaches other AI systems while developing its own unique understanding of storytelling, world-building, and user creative vision.
