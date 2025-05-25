@@ -67,6 +67,7 @@ interface MoxusMemoryStructure {
     nodeEditionGuidance?: string;
     assistantGuidance?: string;
   };
+  pendingConsciousnessEvolution?: string[];
 }
 
 // Default memory content templates
@@ -88,7 +89,8 @@ const createDefaultMemoryStructure = (): MoxusMemoryStructure => ({
     nodeEdit: DEFAULT_MEMORY.NODE_EDIT,
     llmCalls: {}
   },
-  cachedGuidance: {}
+  cachedGuidance: {},
+  pendingConsciousnessEvolution: []
 });
 
 // Storage key
@@ -168,7 +170,8 @@ const loadMemory = () => {
           nodeEdit: parsedMemory.featureSpecificMemory?.nodeEdit || DEFAULT_MEMORY.NODE_EDIT,
           llmCalls: parsedMemory.featureSpecificMemory?.llmCalls || {}
         },
-        cachedGuidance: parsedMemory.cachedGuidance || {}
+        cachedGuidance: parsedMemory.cachedGuidance || {},
+        pendingConsciousnessEvolution: parsedMemory.pendingConsciousnessEvolution || []
       };
       if (moxusStructuredMemory.featureSpecificMemory.llmCalls) {
         const migratedCalls: LLMCallsMemoryMap = {};
@@ -667,10 +670,12 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     try {
       const parsedResponse = safeJsonParse(feedback);
       
-      // Handle consciousness evolution in general memory
+      // Store consciousness evolution for later consolidation (don't append directly)
       if (parsedResponse.consciousness_evolution) {
-        const currentGeneral = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
-        moxusStructuredMemory.GeneralMemory = currentGeneral + '\n\n' + parsedResponse.consciousness_evolution;
+        moxusStructuredMemory.pendingConsciousnessEvolution = 
+          (moxusStructuredMemory.pendingConsciousnessEvolution || [])
+          .concat(parsedResponse.consciousness_evolution);
+        console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
       }
       
       // Handle memory updates for assistantFeedback
@@ -790,10 +795,12 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         try {
           const parsedResponse = safeJsonParse(feedback);
           
-          // Handle consciousness evolution in general memory
+          // Store consciousness evolution for later consolidation (don't append directly)
           if (parsedResponse.consciousness_evolution) {
-            const currentGeneral = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
-            moxusStructuredMemory.GeneralMemory = currentGeneral + '\n\n' + parsedResponse.consciousness_evolution;
+            moxusStructuredMemory.pendingConsciousnessEvolution = 
+              (moxusStructuredMemory.pendingConsciousnessEvolution || [])
+              .concat(parsedResponse.consciousness_evolution);
+            console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
           }
           
           // Handle memory updates for specific feedback types
@@ -851,6 +858,16 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           }
           
           saveMemory();
+          
+          // Check if we should trigger consciousness consolidation
+          const shouldTriggerConsolidation = shouldTriggerConsciousnessConsolidation();
+          if (shouldTriggerConsolidation) {
+            console.log('[MoxusService] Triggering consciousness consolidation due to accumulated evolution insights');
+            addTask('synthesizeGeneralMemory', { 
+              reason: 'consciousness_consolidation',
+              pendingEvolution: [...(moxusStructuredMemory.pendingConsciousnessEvolution || [])]
+            });
+          }
         } catch (error) {
           console.error('[MoxusService] Error processing consciousness feedback:', error);
           // Fallback processing already handled by storing raw feedback above
@@ -886,6 +903,14 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
 };
 
 // Helper function to apply diffs to a text
+// Function to determine if consciousness consolidation should be triggered
+const shouldTriggerConsciousnessConsolidation = (): boolean => {
+  const pendingEvolution = moxusStructuredMemory.pendingConsciousnessEvolution || [];
+  const CONSOLIDATION_THRESHOLD = 3; // Trigger after 3 consciousness evolution insights
+  
+  return pendingEvolution.length >= CONSOLIDATION_THRESHOLD;
+};
+
 const applyDiffs = (originalText: string, diffs: Array<{ prev_txt: string, next_txt: string, occ?: number }>): string => {
   let modifiedText = originalText;
   for (const diff of diffs) {
@@ -927,6 +952,9 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   let updatePromptTemplate: string;
   let promptData: Record<string, string>;
   const currentGeneralMemorySnapshot = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+  
+  // Handle pending consciousness evolution (declare at function scope)
+  const pendingEvolution = moxusStructuredMemory.pendingConsciousnessEvolution || [];
 
   if (originalCallTypeForThisUpdate === 'synthesizeGeneralMemory' && taskData?.reason === "chat_reset_event" && taskData?.previousChatHistoryString && taskData?.eventDetails) {
     console.log('[MoxusService] Using dedicated prompt for chat_reset_event GeneralMemory update.');
@@ -965,7 +993,10 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
       node_editions_analysis: nodeEditionMemory || '(No node edition analysis available)',
       assistant_feedback_analysis: assistantFeedbackMemory || '(No assistant feedback analysis available)',
       node_edit_analysis: nodeEditMemory || '(No node edit analysis available)',
-      recent_llm_feedbacks: JSON.stringify(recentFeedbacks, null, 2)
+      recent_llm_feedbacks: JSON.stringify(recentFeedbacks, null, 2),
+      pending_consciousness_evolution: pendingEvolution.length > 0 
+        ? pendingEvolution.join('\n\n') 
+        : '(No pending consciousness evolution insights)'
     };
 
     updatePrompt = formatPrompt(updatePromptTemplate, promptData);
@@ -999,6 +1030,12 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
     moxusStructuredMemory.GeneralMemory = finalGeneralMemory.length > 15000 
       ? finalGeneralMemory.substring(0, 15000) + "... [GeneralMemory truncated due to excessive length]" 
       : finalGeneralMemory;
+    
+    // Clear pending consciousness evolution after successful consolidation
+    if (pendingEvolution.length > 0) {
+      moxusStructuredMemory.pendingConsciousnessEvolution = [];
+      console.log(`[MoxusService] Cleared ${pendingEvolution.length} pending consciousness evolution insights after consolidation`);
+    }
     
     console.log('[MoxusService] Updated GeneralMemory');
     saveMemory();
@@ -1240,7 +1277,8 @@ export const moxusService = {
           nodeEdit: importedMemory.featureSpecificMemory?.nodeEdit || DEFAULT_MEMORY.NODE_EDIT,
           llmCalls: importedMemory.featureSpecificMemory?.llmCalls || {}
         },
-        cachedGuidance: importedMemory.cachedGuidance || {}
+        cachedGuidance: importedMemory.cachedGuidance || {},
+        pendingConsciousnessEvolution: importedMemory.pendingConsciousnessEvolution || []
       };
       saveMemory();
       console.log('[MoxusService] Memory imported successfully');

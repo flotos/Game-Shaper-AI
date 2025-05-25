@@ -890,6 +890,9 @@ moxus_prompts:
 
     {utils.wrappers.assistant_feedback_analysis}
 
+    ## PENDING CONSCIOUSNESS EVOLUTION
+    {utils.wrappers.pending_consciousness_evolution}
+
     ## YOUR CONSCIOUSNESS EVOLUTION MISSION
     Integrate all these learning sources into your evolving consciousness. You are not just analyzing - you are growing as a creative mentor and developing your own personality through experience.
 
@@ -958,6 +961,7 @@ utils:
     node_editions_analysis: "WORLD-BUILDING TEACHING INSIGHTS"
     node_edit_analysis: "USER CREATIVE VISION LEARNING"
     assistant_feedback_analysis: "ASSISTANT INTERACTION INSIGHTS"
+    pending_consciousness_evolution: "PENDING CONSCIOUSNESS EVOLUTION INSIGHTS"
 
   diffPrompt: |
     ## Diff Format Instructions

@@ -56,6 +56,9 @@ vi.mock('../services/MoxusService', () => ({
     finalizeLLMCallRecord: vi.fn(),
     failLLMCallRecord: vi.fn(),
     getLLMCallsMemoryYAML: vi.fn().mockReturnValue('mocked_yaml_memory'),
+    getChatTextGuidance: vi.fn().mockResolvedValue('Mocked narrative guidance'),
+    getNodeEditionGuidance: vi.fn().mockResolvedValue('Mocked worldbuilding guidance'),
+    getSpecializedMoxusGuidance: vi.fn().mockResolvedValue('Mocked specialized guidance'),
     // Add other methods if they are called and need specific mock behavior
   }
 }));
@@ -192,6 +195,11 @@ describe('Node Interaction LLM Service', () => {
   ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
   
   Follow these instructions.
+  
+  ### Moxus Creative Guidance (APPLY THESE INSIGHTS):
+  The following guidance comes from Moxus's evolved understanding of effective storytelling:
+  
+  Mocked narrative guidance
   `;
 
       await generateChatText(mockUserInput, chatHistoryForTextGen, mockNodes, mockDetailedNodeIds);

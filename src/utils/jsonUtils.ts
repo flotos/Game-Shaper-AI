@@ -244,8 +244,8 @@ export function safeJsonParse(jsonString: string): any {
       console.error('Failed to parse JSON even after repair attempt:', errorMessage);
       
       // Log more context for debugging
-      const truncatedOriginal = jsonString.length > 500 ? jsonString.substring(0, 500) + '...[truncated]' : jsonString;
-      console.error('Original JSON (first 500 chars):', truncatedOriginal);
+      const truncatedOriginal = jsonString.length > 100000 ? jsonString.substring(0, 100000) + '...[truncated]' : jsonString;
+      console.error('Original JSON (first 100000 chars):', truncatedOriginal);
       
       // Try to identify the error position if available
       const positionMatch = errorMessage.match(/position (\d+)/i);

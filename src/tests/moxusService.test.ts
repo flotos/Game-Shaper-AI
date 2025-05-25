@@ -348,9 +348,9 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       expect(feedbackCall[0]).toContain(mockLLMCall.response);
       expect(feedbackCall[1]).toBe('moxus_feedback_on_chat_text_generation');
       
-      // Check that consciousness evolution was applied to general memory
+      // Check that consciousness evolution was stored for later consolidation (not directly appended)
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.GeneralMemory).toContain('I\'m learning that this user prefers character-driven stories');
+      expect(finalMemory.pendingConsciousnessEvolution).toContain('I\'m learning that this user prefers character-driven stories');
       
       // Check that narrative teaching insights were cached for future guidance
       expect(finalMemory.cachedGuidance?.chatTextGuidance).toContain('Focus more on character development');
@@ -392,9 +392,9 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       expect(feedbackCall[0]).toContain(mockNodeEditionLLMCall.response);
       expect(feedbackCall[1]).toBe('moxus_feedback_on_node_edition_json');
       
-      // Check that consciousness evolution was applied to general memory
+      // Check that consciousness evolution was stored for later consolidation (not directly appended)
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.GeneralMemory).toContain('I\'m understanding this user\'s world-building preferences better');
+      expect(finalMemory.pendingConsciousnessEvolution).toContain('I\'m understanding this user\'s world-building preferences better');
       
       // Check that worldbuilding teaching insights were cached for future guidance
       expect(finalMemory.cachedGuidance?.nodeEditionGuidance).toContain('Improve character interconnections');

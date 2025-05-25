@@ -92,10 +92,19 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   ${lastMoxusReportMessage.content.replace('**Moxus Report:**', '').trim()}
   ` : '';
 
+  // Get Moxus guidance for narrative generation
+  const moxusGuidance = await moxusService.getChatTextGuidance(`User input: ${userInput}`);
+  const moxusGuidanceSection = moxusGuidance ? `
+  ### Moxus Creative Guidance (APPLY THESE INSIGHTS):
+  The following guidance comes from Moxus's evolved understanding of effective storytelling:
+  
+  ${moxusGuidance}
+  ` : '';
+
   const chatTextPrompt = formatPrompt(loadedPrompts.node_operations.generate_chat_text, {
     nodes_description: nodesDescription,
     string_history: stringHistory,
-    last_moxus_report_section: lastMoxusReportSection,
+    last_moxus_report_section: lastMoxusReportSection + moxusGuidanceSection,
     user_input: userInput
   });
 
@@ -184,13 +193,22 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   ${lastMoxusReportContent.content.replace('**Moxus Report:**', '').trim()}
   ` : '';
   
+  // Get Moxus guidance for world-building
+  const moxusGuidance = await moxusService.getNodeEditionGuidance(`User input: ${userInput}`);
+  const moxusGuidanceSection = moxusGuidance ? `
+  ## Moxus World-Building Guidance (APPLY THESE INSIGHTS):
+  The following guidance comes from Moxus's evolved understanding of effective world-building:
+  
+  ${moxusGuidance}
+  ` : '';
+  
   const thinkMode = isUserInteraction ? '/no_think' : '/think';
 
   const nodeEditionPrompt = formatPrompt(loadedPrompts.node_operations.generate_node_edition, {
     think_mode: thinkMode,
     nodes_description: nodesDescription,
     formatted_chat_history: formattedChatHistory,
-    last_moxus_report_section: lastMoxusReportSection,
+    last_moxus_report_section: lastMoxusReportSection + moxusGuidanceSection,
     actions_list: actions.join('\n'),
     user_input: userInput
   });
