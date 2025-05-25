@@ -431,6 +431,8 @@ const getAssistantNodesContent = (): string => {
 
 const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string => {
   const assistantNodesContent = getAssistantNodesContent();
+  const currentGeneralMemory = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
+  
   // Ensure safeTaskData is initialized from task.data but exclude chatHistory from being stringified later if it's large.
   const { chatHistory: taskChatHistory, ...otherDataFromTask } = task.data || {};
   let safeTaskData: any = otherDataFromTask;
@@ -457,38 +459,18 @@ const getMemoryUpdatePrompt = (task: MoxusTask, existingMemory: string): string 
     // This is appropriate as we don't want to stringify a potentially large chatHistory array in the prompt.
   }
   
-  return `Your name is Moxus, the World Design & Interactivity Watcher for this game engine.
-  You monitor the story, provide guidance, and maintain consistency and quality in the game world.
-  Your goal is to maintain a brief record of critical observations that will highlight problems in the game.
+  // Use the new generic memory update prompt that ensures JSON diff output
+  const prompts = AllPrompts as { moxus_prompts: { moxus_generic_memory_update: string } };
+  let updatePrompt = prompts.moxus_prompts.moxus_generic_memory_update;
   
-  ${assistantNodesContent ? `Additional features:\n  ---\n  ${assistantNodesContent}\n  ---` : ""}
+  updatePrompt = updatePrompt.replace(/{assistant_nodes_content}/g, assistantNodesContent);
+  updatePrompt = updatePrompt.replace(/{current_general_memory}/g, currentGeneralMemory);
+  updatePrompt = updatePrompt.replace(/{existing_memory}/g, existingMemory);
+  updatePrompt = updatePrompt.replace(/{task_type}/g, task.type);
+  updatePrompt = updatePrompt.replace(/{task_data}/g, JSON.stringify(safeTaskData, null, 2));
+  updatePrompt = updatePrompt.replace(/{formatted_chat_history}/g, formattedChatHistory);
   
-  # CHAT HISTORY CONTEXT (Last 10 turns)
-  ${formattedChatHistory}
-  
-  # CURRENT MEMORY DOCUMENT
-  Below is your current memory document. You should update this document focusing on criticism:
-  
-  ${existingMemory}
-  
-  # NEW INFORMATION
-  Task Type: ${task.type}
-  Data:
-  \`\`\`json
-  ${JSON.stringify(safeTaskData, null, 2)}
-  \`\`\`
-  
-  # INSTRUCTIONS
-  1. Analyze the new information (including Chat History Context if provided) focusing ONLY on problems and issues.
-  2. Update the memory document.
-  3. Focus exclusively on criticism and improvement areas, not what works well.
-  4. Use bullet points for critical observations.
-  5. Only include observations that highlight problems or inconsistencies.
-  6. The memory document should identify specific issues requiring attention.
-  7. Keep any section about your own personality detailled and rich.
-  8. The entire document should be critical in nature.
-
-  Return the complete updated memory document.`;
+  return updatePrompt;
 };
 
 // Asynchronous function to process the queue
@@ -853,8 +835,36 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
 
         const nodeEditionUpdatePrompt = getMemoryUpdatePrompt(nodeEditionTaskForPrompt, nodeEditionMemoryToUpdate);
         // Use a distinct originalCallType for the LLM call that performs this memory update
-        const updatedNodeEditionMemory = await getMoxusFeedbackImpl(nodeEditionUpdatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_node_edition`);
-        moxusStructuredMemory.featureSpecificMemory.nodeEdition = updatedNodeEditionMemory;
+        const responseContent = await getMoxusFeedbackImpl(nodeEditionUpdatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_node_edition`);
+        
+        // Process JSON response for node edition memory updates
+        try {
+          const parsedResponse = safeJsonParse(responseContent);
+          let finalUpdatedMemory = nodeEditionMemoryToUpdate;
+          
+          if (parsedResponse && parsedResponse.memory_update_diffs) {
+            if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+              finalUpdatedMemory = parsedResponse.memory_update_diffs.rpl;
+              console.log(`[MoxusService] Applied full replacement to nodeEdition memory.`);
+            } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+              finalUpdatedMemory = applyDiffs(nodeEditionMemoryToUpdate, parsedResponse.memory_update_diffs.df);
+              console.log(`[MoxusService] Applied diffs to nodeEdition memory.`);
+            } else {
+              console.warn(`[MoxusService] Received JSON for nodeEdition memory update, but no valid rpl or df instructions found. Using raw response as fallback.`);
+              finalUpdatedMemory = responseContent;
+            }
+          } else {
+            console.warn(`[MoxusService] nodeEdition memory update response was not valid JSON or missing memory_update_diffs. Using raw response as fallback.`);
+            finalUpdatedMemory = responseContent;
+          }
+          
+          moxusStructuredMemory.featureSpecificMemory.nodeEdition = finalUpdatedMemory;
+        } catch (error) {
+          console.error(`[MoxusService] Error parsing JSON response for nodeEdition memory update:`, error);
+          // Fallback to storing raw response
+          moxusStructuredMemory.featureSpecificMemory.nodeEdition = responseContent;
+        }
+        
         console.log(`[MoxusService] Updated nodeEdition memory document via llmCallFeedback for ${callId}.`);
         saveMemory();
       }
@@ -864,8 +874,36 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating chatText memory document.`);
         const chatTextMemoryToUpdate = moxusStructuredMemory.featureSpecificMemory.chatText;
         const chatTextUpdatePrompt = getMemoryUpdatePrompt(task, chatTextMemoryToUpdate);
-        const updatedChatTextMemory = await getMoxusFeedbackImpl(chatTextUpdatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${task.type}`);
-        moxusStructuredMemory.featureSpecificMemory.chatText = updatedChatTextMemory;
+        const responseContent = await getMoxusFeedbackImpl(chatTextUpdatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${task.type}`);
+        
+        // Process JSON response for chat text memory updates
+        try {
+          const parsedResponse = safeJsonParse(responseContent);
+          let finalUpdatedMemory = chatTextMemoryToUpdate;
+          
+          if (parsedResponse && parsedResponse.memory_update_diffs) {
+            if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+              finalUpdatedMemory = parsedResponse.memory_update_diffs.rpl;
+              console.log(`[MoxusService] Applied full replacement to chatText memory.`);
+            } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+              finalUpdatedMemory = applyDiffs(chatTextMemoryToUpdate, parsedResponse.memory_update_diffs.df);
+              console.log(`[MoxusService] Applied diffs to chatText memory.`);
+            } else {
+              console.warn(`[MoxusService] Received JSON for chatText memory update, but no valid rpl or df instructions found. Using raw response as fallback.`);
+              finalUpdatedMemory = responseContent;
+            }
+          } else {
+            console.warn(`[MoxusService] chatText memory update response was not valid JSON or missing memory_update_diffs. Using raw response as fallback.`);
+            finalUpdatedMemory = responseContent;
+          }
+          
+          moxusStructuredMemory.featureSpecificMemory.chatText = finalUpdatedMemory;
+        } catch (error) {
+          console.error(`[MoxusService] Error parsing JSON response for chatText memory update:`, error);
+          // Fallback to storing raw response
+          moxusStructuredMemory.featureSpecificMemory.chatText = responseContent;
+        }
+        
         console.log(`[MoxusService] Updated chatText memory document via task ${task.id}.`);
         saveMemory();
       }
@@ -900,12 +938,42 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     console.log(`[MoxusService] Task ${task.id} (${task.type}) is updating ${memoryKey} memory document.`);
     const updatePrompt = getMemoryUpdatePrompt(task, memoryToUpdate); 
     if (!getMoxusFeedbackImpl) throw new Error('getMoxusFeedback implementation not set for general update path.');
-    const updatedMemory = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForGenericUpdate}`); 
-    if (Object.prototype.hasOwnProperty.call(moxusStructuredMemory.featureSpecificMemory, memoryKey)) {
-      (moxusStructuredMemory.featureSpecificMemory as any)[memoryKey] = updatedMemory;
-    } else {
-      console.error(`[MoxusService] CRITICAL: memoryKey "${memoryKey}" was set by the switch but is not a valid key of featureSpecificMemory. This indicates a logic error.`);
+    const responseContent = await getMoxusFeedbackImpl(updatePrompt, `INTERNAL_MEMORY_UPDATE_FOR_${originalCallTypeForGenericUpdate}`); 
+    
+    // Process JSON response for memory updates
+    try {
+      const parsedResponse = safeJsonParse(responseContent);
+      let finalUpdatedMemory = memoryToUpdate;
+      
+      if (parsedResponse && parsedResponse.memory_update_diffs) {
+        if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+          finalUpdatedMemory = parsedResponse.memory_update_diffs.rpl;
+          console.log(`[MoxusService] Applied full replacement to ${memoryKey} memory.`);
+        } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+          finalUpdatedMemory = applyDiffs(memoryToUpdate, parsedResponse.memory_update_diffs.df);
+          console.log(`[MoxusService] Applied diffs to ${memoryKey} memory.`);
+        } else {
+          console.warn(`[MoxusService] Received JSON for ${memoryKey} memory update, but no valid rpl or df instructions found. Using raw response as fallback.`);
+          finalUpdatedMemory = responseContent;
+        }
+      } else {
+        console.warn(`[MoxusService] ${memoryKey} memory update response was not valid JSON or missing memory_update_diffs. Using raw response as fallback.`);
+        finalUpdatedMemory = responseContent;
+      }
+      
+      if (Object.prototype.hasOwnProperty.call(moxusStructuredMemory.featureSpecificMemory, memoryKey)) {
+        (moxusStructuredMemory.featureSpecificMemory as any)[memoryKey] = finalUpdatedMemory;
+      } else {
+        console.error(`[MoxusService] CRITICAL: memoryKey "${memoryKey}" was set by the switch but is not a valid key of featureSpecificMemory. This indicates a logic error.`);
+      }
+    } catch (error) {
+      console.error(`[MoxusService] Error parsing JSON response for ${memoryKey} memory update:`, error);
+      // Fallback to storing raw response
+      if (Object.prototype.hasOwnProperty.call(moxusStructuredMemory.featureSpecificMemory, memoryKey)) {
+        (moxusStructuredMemory.featureSpecificMemory as any)[memoryKey] = responseContent;
+      }
     }
+    
     console.log(`[MoxusService] Updated ${memoryKey} memory document via task ${task.id}.`);
     saveMemory();
   } else {
@@ -918,7 +986,15 @@ const applyDiffs = (originalText: string, diffs: Array<{ prev_txt: string, next_
   let modifiedText = originalText;
   for (const diff of diffs) {
     const { prev_txt, next_txt, occ = 1 } = diff;
-    if (!prev_txt) continue; // Skip if prev_txt is empty
+    
+    // Handle empty prev_txt as append operation
+    if (!prev_txt) {
+      if (next_txt) { // Only append if there's something to append
+        modifiedText += next_txt;
+        console.log(`[MoxusService] applyDiffs: Appended content to end of text. New length: ${modifiedText.length}`);
+      }
+      continue;
+    }
 
     let count = 0;
     let pos = modifiedText.indexOf(prev_txt);
@@ -1214,33 +1290,30 @@ const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
 
     const learningResponse = await getMoxusFeedbackImpl(analysisPrompt, 'moxus_feedback_on_manual_node_edit');
     
-    // Process the learning response
+    // Process the JSON learning response using the new diff format
     try {
-      const parsedLearning = safeJsonParse(learningResponse);
-      
-      // Update manual edit memory
-      if (parsedLearning.memory_update_diffs) {
+      const parsedResponse = safeJsonParse(learningResponse);
+      if (parsedResponse && parsedResponse.memory_update_diffs) {
         let updatedMemory = currentManualEditMemory;
-        if (parsedLearning.memory_update_diffs.rpl !== undefined) {
-          updatedMemory = parsedLearning.memory_update_diffs.rpl;
-        } else if (parsedLearning.memory_update_diffs.df && Array.isArray(parsedLearning.memory_update_diffs.df)) {
-          updatedMemory = applyDiffs(currentManualEditMemory, parsedLearning.memory_update_diffs.df);
+        if (parsedResponse.memory_update_diffs.rpl !== undefined) {
+          updatedMemory = parsedResponse.memory_update_diffs.rpl;
+        } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
+          updatedMemory = applyDiffs(updatedMemory, parsedResponse.memory_update_diffs.df);
         }
         moxusStructuredMemory.featureSpecificMemory.nodeEdit = updatedMemory;
+        console.log(`[MoxusService] Updated nodeEdit memory document via manual edit analysis for task ${task.id}.`);
+      } else {
+        // Fallback to appending raw response if JSON parsing fails
+        console.warn('[MoxusService] Manual edit analysis response was not valid JSON or missing memory_update_diffs. Using raw response as fallback.');
+        moxusStructuredMemory.featureSpecificMemory.nodeEdit += '\n\n' + learningResponse;
       }
-      
-      // Update general memory with consciousness evolution
-      if (parsedLearning.consciousness_evolution) {
-        moxusStructuredMemory.GeneralMemory = currentGeneralMemory + '\n\n' + parsedLearning.consciousness_evolution;
-      }
-      
-      saveMemory();
     } catch (error) {
-      console.error('[MoxusService] Error parsing manual edit learning response:', error);
-      // Fallback: append raw response to memory
+      console.error('[MoxusService] Error parsing manual edit analysis JSON response:', error);
+      // Fallback to appending raw response
       moxusStructuredMemory.featureSpecificMemory.nodeEdit += '\n\n' + learningResponse;
-      saveMemory();
     }
+    
+    saveMemory();
   } catch (error) {
     console.error('[MoxusService] Error in handleManualNodeEditAnalysis:', error);
   }

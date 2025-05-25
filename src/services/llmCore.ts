@@ -7,7 +7,6 @@ import { safeJsonParse } from '../utils/jsonUtils';
 export interface PromptsConfig {
   moxus_prompts: {
     moxus_feedback_system_message: string;
-    moxus_get_feedback_user_message: string;
   };
   twine_import: {
     data_extraction: string;

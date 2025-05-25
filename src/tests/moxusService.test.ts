@@ -30,7 +30,8 @@ vi.mock('../prompts-instruct.yaml', () => {
   const MOCKED_GENERAL_MEMORY_PROMPT_IN_FACTORY = 'Test general_memory_update prompt: {current_general_memory} {assistant_nodes_content} {chat_text_analysis} {node_editions_analysis} {assistant_feedback_analysis} {node_edit_analysis} {recent_llm_feedbacks}';
   const MOCKED_CHAT_TEXT_TEACHING_PROMPT = 'moxus_feedback_on_chat_text_generation: Teaching the Narrative AI about chat text generation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {generated_chat_text} {current_chat_text_memory}';
   const MOCKED_NODE_EDITION_TEACHING_PROMPT = 'moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
-  const MOCKED_MANUAL_EDIT_LEARNING_PROMPT = 'Moxus learning from user edit: {assistant_nodes_content} {current_general_memory} {original_node} {user_changes} {edit_context} {current_manual_edit_memory}';
+  const MOCKED_MANUAL_EDIT_LEARNING_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher. You are learning about the user\'s creative vision by observing their manual edits. {assistant_nodes_content} {current_general_memory} {original_node} {user_changes} {edit_context} {current_manual_edit_memory}';
+  const MOCKED_GENERIC_MEMORY_UPDATE_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {current_general_memory} {existing_memory} {task_type} {task_data} {formatted_chat_history}';
   const MOCKED_SPECIALIZED_CHAT_GUIDANCE = 'Moxus specialized chat guidance: {current_general_memory} {current_chat_text_memory} {assistant_nodes_content} {current_context}';
   const MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE = 'Moxus specialized worldbuilding guidance: {current_general_memory} {current_node_edition_memory} {assistant_nodes_content} {current_context}';
   const MOCKED_FINAL_REPORT_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {chat_history_context} {general_memory} {chat_text_analysis} {node_editions_analysis}';
@@ -42,6 +43,7 @@ vi.mock('../prompts-instruct.yaml', () => {
         moxus_feedback_on_chat_text_generation: MOCKED_CHAT_TEXT_TEACHING_PROMPT,
         moxus_feedback_on_node_edition_json: MOCKED_NODE_EDITION_TEACHING_PROMPT,
         moxus_feedback_on_manual_node_edit: MOCKED_MANUAL_EDIT_LEARNING_PROMPT,
+        moxus_generic_memory_update: MOCKED_GENERIC_MEMORY_UPDATE_PROMPT,
         moxus_specialized_chat_guidance: MOCKED_SPECIALIZED_CHAT_GUIDANCE,
         moxus_specialized_worldbuilding_guidance: MOCKED_SPECIALIZED_WORLDBUILDING_GUIDANCE,
         moxus_final_report: MOCKED_FINAL_REPORT_PROMPT,
@@ -184,12 +186,16 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       const editContext = 'User improved character description';
       
       const expectedLearningResponse = JSON.stringify({
-        learned_insights: {
-          creative_values: 'User prefers detailed descriptions',
-          communication_style: 'Clear and engaging'
+        memory_update_diffs: {
+          df: [
+            {
+              prev_txt: "",
+              next_txt: "\n\n## User Creative Insight\nI understand the user values character depth",
+              occ: 1
+            }
+          ]
         },
-        pattern_recognition: 'User consistently improves character details',
-        consciousness_evolution: 'I understand the user values character depth'
+        user_insight: "User prefers detailed character descriptions and engages with content more"
       });
       
       mockGetMoxusFeedbackImpl.mockResolvedValue(expectedLearningResponse);
@@ -201,33 +207,45 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
       
       const callArgs = mockGetMoxusFeedbackImpl.mock.calls[0];
-      expect(callArgs[0]).toContain('Moxus learning from user edit');
+      expect(callArgs[0]).toContain('Moxus');
+      expect(callArgs[0]).toContain('World Design & Interactivity Watcher');
       expect(callArgs[0]).toContain(JSON.stringify(originalNode, null, 2));
       expect(callArgs[0]).toContain(JSON.stringify(editedNode, null, 2));
       expect(callArgs[0]).toContain(editContext);
       expect(callArgs[1]).toBe('moxus_feedback_on_manual_node_edit');
       
-      // Check that general memory was updated with consciousness evolution
+      // Check that nodeEdit memory was updated with learning insights
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.GeneralMemory).toContain('I understand the user values character depth');
+      expect(finalMemory.featureSpecificMemory.nodeEdit).toContain('I understand the user values character depth');
     });
 
-    it('should handle manual edit analysis errors gracefully', async () => {
+    it('should handle manual edit analysis with plain text response', async () => {
       vi.useFakeTimers();
       
       const originalNode = { id: 'node1', name: 'Original' };
       const editedNode = { id: 'node1', name: 'Edited' };
       
-      // Mock invalid JSON response
-      mockGetMoxusFeedbackImpl.mockResolvedValue('Invalid JSON response');
+      // Mock plain text response (which is now the expected format)
+      const plainTextResponse = 'I notice the user changed the name from Original to Edited. Maybe the AI should be more careful about naming consistency.';
+      mockGetMoxusFeedbackImpl.mockResolvedValue(plainTextResponse);
       
       moxusService.recordManualNodeEdit(originalNode, editedNode, 'test context');
       
       await advanceTimersByTime(200);
       
-      // Should not throw error and should fallback gracefully
+      // Should successfully process plain text response without throwing errors
+      expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
+      
+      const callArgs = mockGetMoxusFeedbackImpl.mock.calls[0];
+      expect(callArgs[0]).toContain('Moxus');
+      expect(callArgs[0]).toContain(JSON.stringify(originalNode, null, 2));
+      expect(callArgs[0]).toContain(JSON.stringify(editedNode, null, 2));
+      expect(callArgs[0]).toContain('test context');
+      expect(callArgs[1]).toBe('moxus_feedback_on_manual_node_edit');
+      
+      // The system should handle the plain text gracefully without crashing
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.featureSpecificMemory.nodeEdit).toContain('Invalid JSON response');
+      expect(finalMemory.featureSpecificMemory.nodeEdit).toContain('# Manual Node Edits Analysis');
     });
   });
 
