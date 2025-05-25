@@ -41,12 +41,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
   let chatTextCallId_to_finalize: string | null = null;
 
   useEffect(() => {
-    if (actionTriggered) {
+    if (actionTriggered && input.trim() && !isLoading) {
       chatTextCallId_to_finalize = null;
       handleSend();
       setActionTriggered(false);
+    } else if (actionTriggered) {
+      setActionTriggered(false);
     }
-  }, [input, actionTriggered]);
+  }, [actionTriggered]);
 
   useEffect(() => {
     if (chatHistory.length === 0) {
@@ -61,6 +63,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
     if (isLoading) return;
 
     setIsLoading(true);
+    setActionTriggered(false);
     setErrorMessage('');
     setLoadingMessage('Refocusing story... (this will clear chat history)');
     const timestamp = new Date().toLocaleTimeString();

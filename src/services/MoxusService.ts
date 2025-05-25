@@ -684,7 +684,22 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
         if (parsedResponse.memory_update_diffs.rpl !== undefined) {
           updatedMemory = parsedResponse.memory_update_diffs.rpl;
         } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
-          updatedMemory = applyDiffs(updatedMemory, parsedResponse.memory_update_diffs.df);
+          // Filter diffs to only include those that target content in assistantFeedback memory
+          const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
+            if (!diff.prev_txt) return true; // Allow append operations
+            const found = updatedMemory.includes(diff.prev_txt);
+            if (!found) {
+              console.warn(`[MoxusService] Skipping assistantFeedback diff that targets content not found in assistantFeedback memory: "${diff.prev_txt.substring(0, 100)}..."`);
+            }
+            return found;
+          });
+          
+          if (validDiffs.length > 0) {
+            updatedMemory = applyDiffs(updatedMemory, validDiffs);
+            console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedResponse.memory_update_diffs.df.length} diffs to assistantFeedback memory.`);
+          } else {
+            console.warn('[MoxusService] No valid diffs found for assistantFeedback memory. All diffs target content not in assistantFeedback memory.');
+          }
         }
         moxusStructuredMemory.featureSpecificMemory.assistantFeedback = updatedMemory;
         console.log(`[MoxusService] Updated assistantFeedback memory document via consciousness-driven feedback for task ${task.id}.`);
@@ -810,7 +825,22 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
               if (parsedResponse.memory_update_diffs.rpl !== undefined) {
                 updatedMemory = parsedResponse.memory_update_diffs.rpl;
               } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
-                updatedMemory = applyDiffs(updatedMemory, parsedResponse.memory_update_diffs.df);
+                // Filter diffs to only include those that target content in chatText memory
+                const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
+                  if (!diff.prev_txt) return true; // Allow append operations
+                  const found = updatedMemory.includes(diff.prev_txt);
+                  if (!found) {
+                    console.warn(`[MoxusService] Skipping chatText diff that targets content not found in chatText memory: "${diff.prev_txt.substring(0, 100)}..."`);
+                  }
+                  return found;
+                });
+                
+                if (validDiffs.length > 0) {
+                  updatedMemory = applyDiffs(updatedMemory, validDiffs);
+                  console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedResponse.memory_update_diffs.df.length} diffs to chatText memory.`);
+                } else {
+                  console.warn('[MoxusService] No valid diffs found for chatText memory. All diffs target content not in chatText memory.');
+                }
               }
               moxusStructuredMemory.featureSpecificMemory.chatText = updatedMemory;
               console.log(`[MoxusService] Updated chatText memory document via consciousness-driven feedback for task ${task.id}.`);
@@ -819,7 +849,22 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
               if (parsedResponse.memory_update_diffs.rpl !== undefined) {
                 updatedMemory = parsedResponse.memory_update_diffs.rpl;
               } else if (parsedResponse.memory_update_diffs.df && Array.isArray(parsedResponse.memory_update_diffs.df)) {
-                updatedMemory = applyDiffs(updatedMemory, parsedResponse.memory_update_diffs.df);
+                // Filter diffs to only include those that target content in nodeEdition memory
+                const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
+                  if (!diff.prev_txt) return true; // Allow append operations
+                  const found = updatedMemory.includes(diff.prev_txt);
+                  if (!found) {
+                    console.warn(`[MoxusService] Skipping nodeEdition diff that targets content not found in nodeEdition memory: "${diff.prev_txt.substring(0, 100)}..."`);
+                  }
+                  return found;
+                });
+                
+                if (validDiffs.length > 0) {
+                  updatedMemory = applyDiffs(updatedMemory, validDiffs);
+                  console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedResponse.memory_update_diffs.df.length} diffs to nodeEdition memory.`);
+                } else {
+                  console.warn('[MoxusService] No valid diffs found for nodeEdition memory. All diffs target content not in nodeEdition memory.');
+                }
               }
               moxusStructuredMemory.featureSpecificMemory.nodeEdition = updatedMemory;
               console.log(`[MoxusService] Updated nodeEdition memory document via consciousness-driven feedback for task ${task.id}.`);
@@ -1011,19 +1056,40 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
     const parsedJson = safeJsonParse(contentToParse) as any;
     let finalGeneralMemory = currentGeneralMemorySnapshot;
 
+
+
     if (parsedJson && parsedJson.memory_update_diffs) {
       if (parsedJson.memory_update_diffs.rpl !== undefined) {
         console.log('[MoxusService] Applying full replacement to GeneralMemory.');
         finalGeneralMemory = parsedJson.memory_update_diffs.rpl;
       } else if (parsedJson.memory_update_diffs.df && Array.isArray(parsedJson.memory_update_diffs.df)) {
         console.log('[MoxusService] Applying diffs to GeneralMemory.');
-        finalGeneralMemory = applyDiffs(currentGeneralMemorySnapshot, parsedJson.memory_update_diffs.df);
+        
+        // Filter diffs to only include those that target content in GeneralMemory
+        const validDiffs = parsedJson.memory_update_diffs.df.filter((diff: any) => {
+          if (!diff.prev_txt) return true; // Allow append operations
+          const found = currentGeneralMemorySnapshot.includes(diff.prev_txt);
+          if (!found) {
+            console.warn(`[MoxusService] Skipping diff that targets content not found in GeneralMemory: "${diff.prev_txt.substring(0, 100)}..."`);
+          }
+          return found;
+        });
+        
+        if (validDiffs.length > 0) {
+          finalGeneralMemory = applyDiffs(currentGeneralMemorySnapshot, validDiffs);
+          console.log(`[MoxusService] Applied ${validDiffs.length} out of ${parsedJson.memory_update_diffs.df.length} diffs to GeneralMemory.`);
+        } else {
+          console.warn('[MoxusService] No valid diffs found for GeneralMemory. All diffs target content not in GeneralMemory.');
+          finalGeneralMemory = currentGeneralMemorySnapshot; // Keep original if no valid diffs
+        }
       } else {
-        console.warn('[MoxusService] Received JSON for GeneralMemory update, but no valid rpl or df instructions found in memory_update_diffs. Using raw (cleaned) response.');
+        console.warn('[MoxusService] Received JSON for GeneralMemory update, but no valid rpl or df instructions found in memory_update_diffs.');
+        console.warn('[MoxusService] Using raw (cleaned) response as fallback.');
         finalGeneralMemory = contentToParse; 
       }
     } else {
-      console.warn('[MoxusService] GeneralMemory update response was not valid JSON or did not contain memory_update_diffs after cleaning. Using raw (cleaned) response as fallback.');
+      console.warn('[MoxusService] GeneralMemory update response was not valid JSON or did not contain memory_update_diffs after cleaning.');
+      console.warn('[MoxusService] Using raw (cleaned) response as fallback.');
       finalGeneralMemory = contentToParse;
     }
 

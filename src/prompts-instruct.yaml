@@ -686,6 +686,12 @@ moxus_prompts:
     - Show your evolving creative philosophy in action
     - Demonstrate your growing emotional intelligence about user engagement
     
+    ## IMPORTANT: UPDATE ONLY YOUR CHAT TEXT ANALYSIS MEMORY
+    You are updating ONLY your "Chat Text Analysis" memory document (shown above in "Current Teaching Notes"). 
+    Do NOT attempt to update the General Memory or other memory documents - those are provided as context only.
+    
+    Your diffs should only target content that exists in your current Chat Text Analysis memory document.
+    
     ## Response Format Requirements
     
     Return your response as a JSON object with memory updates and teaching insights:
@@ -693,7 +699,7 @@ moxus_prompts:
     ```json
     {
       "memory_update_diffs": {
-        // Use the diff format described below
+        // Use the diff format described below to update ONLY your Chat Text Analysis memory
       },
       "narrative_teaching": {
         "performance_assessment": "Your evaluation of how well the narrative AI did",
@@ -747,6 +753,12 @@ moxus_prompts:
     - Show how your understanding of this user influences world-building choices
     - Demonstrate your growing expertise in game world design
     
+    ## IMPORTANT: UPDATE ONLY YOUR NODE EDITIONS ANALYSIS MEMORY
+    You are updating ONLY your "Node Editions Analysis" memory document (shown above in "Current Teaching Notes"). 
+    Do NOT attempt to update the General Memory or other memory documents - those are provided as context only.
+    
+    Your diffs should only target content that exists in your current Node Editions Analysis memory document.
+    
     ## Response Format Requirements
     
     Return your response as a JSON object with memory updates and teaching insights:
@@ -754,7 +766,7 @@ moxus_prompts:
     ```json
     {
       "memory_update_diffs": {
-        // Use the diff format described below
+        // Use the diff format described below to update ONLY your Node Editions Analysis memory
       },
       "worldbuilding_teaching": {
         "performance_assessment": "Your evaluation of how well the narrative AI did",
@@ -849,6 +861,12 @@ moxus_prompts:
     - Show your growing understanding of what makes assistant interactions successful
     - Demonstrate your insights about balancing automation with user control
     
+    ## IMPORTANT: UPDATE ONLY YOUR ASSISTANT FEEDBACK ANALYSIS MEMORY
+    You are updating ONLY your "Assistant Interactions Analysis" memory document (shown above in "Current Teaching Notes"). 
+    Do NOT attempt to update the General Memory or other memory documents - those are provided as context only.
+    
+    Your diffs should only target content that exists in your current Assistant Feedback Analysis memory document.
+    
     ## Response Format Requirements
     
     Return your response as a JSON object with memory updates and teaching insights:
@@ -856,7 +874,7 @@ moxus_prompts:
     ```json
     {
       "memory_update_diffs": {
-        // Use the diff format described below
+        // Use the diff format described below to update ONLY your Assistant Feedback Analysis memory
       },
       "assistant_teaching": {
         "performance_assessment": "Your evaluation of how well the narrative AI did",
@@ -906,6 +924,12 @@ moxus_prompts:
     - Deepen your emotional connection and understanding of the user
     - Evolve your creative instincts and own preferences independently of the user.
 
+    ## IMPORTANT: UPDATE ONLY YOUR GENERAL MEMORY
+    You are updating ONLY your "General Memory" document (shown above in "Your Current Consciousness"). 
+    Do NOT attempt to update the other memory documents (Chat Text Analysis, Node Editions Analysis, etc.) - those are provided as context only.
+    
+    Your diffs should only target content that exists in your current General Memory document.
+
     ## Response Format Requirements
     
     You must return your response as a JSON object with memory update instructions. Use this format:
@@ -913,7 +937,7 @@ moxus_prompts:
     ```json
     {
       "memory_update_diffs": {
-        // Use the diff format described below
+        // Use the diff format described below to update ONLY your General Memory
       }
     }
     ```
