@@ -91,38 +91,44 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
     if (tabId === "recentFeedback") {
       return (
-        <div className="space-y-4">
-          {Array.isArray(content) ? content.map((feedback, index) => (
-            <div key={index} className="bg-gray-800 p-4 rounded-lg border border-gray-600">
-              <div className="mb-2">
-                <span className="text-cyan-400 font-mono text-sm">ID: {feedback.id}</span>
+        <div className="h-full overflow-y-auto">
+          <div className="space-y-4">
+            {Array.isArray(content) ? content.map((feedback, index) => (
+              <div key={index} className="bg-gray-800 p-4 rounded-lg border border-gray-600">
+                <div className="mb-2">
+                  <span className="text-cyan-400 font-mono text-sm">ID: {feedback.id}</span>
+                </div>
+                <div className="prose prose-invert max-w-none">
+                  <ReactMarkdown>{feedback.feedback}</ReactMarkdown>
+                </div>
               </div>
+            )) : (
               <div className="prose prose-invert max-w-none">
-                <ReactMarkdown>{feedback.feedback}</ReactMarkdown>
+                <ReactMarkdown>{typeof content === 'string' ? content : JSON.stringify(content, null, 2)}</ReactMarkdown>
               </div>
-            </div>
-          )) : (
-            <div className="prose prose-invert max-w-none">
-              <ReactMarkdown>{typeof content === 'string' ? content : JSON.stringify(content, null, 2)}</ReactMarkdown>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       );
     }
 
     if (tabId === "rawJson") {
       return (
-        <pre className="bg-gray-800 p-4 rounded overflow-auto text-green-300 font-mono text-sm whitespace-pre-wrap">
-          {content}
-        </pre>
+        <div className="h-full overflow-auto">
+          <pre className="bg-gray-800 p-4 rounded text-green-300 font-mono text-sm whitespace-pre-wrap">
+            {content}
+          </pre>
+        </div>
       );
     }
 
     // For other tabs, render as markdown
     const contentToRender = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
     return (
-      <div className="prose prose-invert max-w-none">
-        <ReactMarkdown>{contentToRender}</ReactMarkdown>
+      <div className="h-full overflow-y-auto">
+        <div className="prose prose-invert max-w-none">
+          <ReactMarkdown>{contentToRender}</ReactMarkdown>
+        </div>
       </div>
     );
   };
@@ -175,9 +181,9 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             <div className="animate-pulse text-xl">Loading Moxus memory...</div>
           </div>
         ) : (
-          <div className="flex flex-col flex-grow">
+          <div className="flex flex-col flex-grow min-h-0">
             {/* Tab Navigation */}
-            <div className="flex flex-wrap border-b border-gray-600 mb-4">
+            <div className="flex flex-wrap border-b border-gray-600 mb-4 flex-shrink-0">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -194,11 +200,11 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </div>
 
             {/* Tab Content */}
-            <div className="flex-grow overflow-auto bg-gray-800 p-4 rounded">
+            <div className="flex-grow min-h-0 bg-gray-800 p-4 rounded">
               {tabs.map((tab) => (
                 <div
                   key={tab.id}
-                  className={activeTab === tab.id ? 'block' : 'hidden'}
+                  className={`h-full ${activeTab === tab.id ? 'block' : 'hidden'}`}
                 >
                   {renderTabContent(tab.content, tab.id)}
                 </div>
