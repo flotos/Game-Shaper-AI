@@ -418,17 +418,11 @@ export const getResponse = async (
 
 export const getMoxusFeedback = async (promptContent: string, originalCallType: string = 'unknown'): Promise<string> => {
   try {
-    const moxusSystemMessage = loadedPrompts.moxus_prompts.moxus_feedback_system_message.replace(
-      '{moxus_llm_calls_memory_yaml}',
-      moxusService.getLLMCallsMemoryJSON()
-    );
-
     const messages: Message[] = [
-      { role: 'system', content: moxusSystemMessage },
-      { role: 'user', content: loadedPrompts.moxus_prompts.moxus_get_feedback_user_message }
+      { role: 'user', content: promptContent }
     ];
 
-    const response = await getResponse(messages, 'gpt-4o-mini', undefined, false, undefined, undefined, 'moxus_feedback');
+    const response = await getResponse(messages, 'gpt-4o-mini', undefined, false, undefined, undefined, originalCallType);
     
     if (typeof response === 'string') {
       return response;

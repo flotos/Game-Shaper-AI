@@ -841,4 +841,228 @@ n_nodes:
     
     console.log('[TEST] Assistant feature LLM call flow test completed successfully');
   });
+
+  it('should call the correct moxus_feedback_on_manual_node_edit prompt when user manually edits a node', async () => {
+    vi.useFakeTimers();
+    
+    // Track all LLM calls made by callType to detect if generic "moxus_feedback" is being called
+    const llmCallTracker: Record<string, number> = {};
+    mockGetMoxusFeedbackImpl.mockReset();
+    mockGetMoxusFeedbackImpl.mockImplementation((prompt, callType) => {
+      console.log(`[TEST] MockGetMoxusFeedback called with callType: ${callType}`);
+      llmCallTracker[callType] = (llmCallTracker[callType] || 0) + 1;
+      
+      // Simulate the LLM call recording that would normally happen in getResponse
+      const mockCallId = `mock-${callType}-${Date.now()}`;
+      moxusService.initiateLLMCallRecord(mockCallId, callType, 'gpt-4o-mini', prompt);
+      const response = 'Moxus manual edit feedback response';
+      moxusService.finalizeLLMCallRecord(mockCallId, response);
+      
+      return Promise.resolve(response);
+    });
+    
+    // Setup original and edited nodes
+    const originalNode = {
+      id: 'hero1',
+      name: 'Hero Character',
+      longDescription: 'A brave hero',
+      type: 'character',
+      image: 'hero.jpg'
+    };
+    
+    const editedNode = {
+      id: 'hero1',
+      name: 'Hero Character',
+      longDescription: 'A very powerful and brave hero with magical abilities', // User's manual edit
+      type: 'character',
+      image: 'hero.jpg'
+    };
+    
+    // 1. Record the manual node edit (this should use the specific manual edit prompt)
+    moxusService.recordManualNodeEdit(originalNode, editedNode, 'Manual edit via node editor');
+    
+    // 2. Allow time for the manual edit analysis task to be processed
+    await advanceTimersByTime(500);
+    
+    // 3. Verify that the correct specialized prompt was called, NOT the generic moxus_feedback
+    console.log('[TEST] LLM call tracker:', llmCallTracker);
+    
+    // This should be the SPECIFIC manual edit prompt, not generic
+    expect(llmCallTracker['moxus_feedback_on_manual_node_edit']).toBe(1);
+    
+    // These generic call types should NOT be called for manual node edits
+    expect(llmCallTracker['moxus_feedback']).toBeUndefined();
+    expect(llmCallTracker['nodeEditFeedback']).toBeUndefined();
+    
+    // 4. Verify that the manual edit memory was updated
+    const memory = moxusService.getMoxusMemory();
+    expect(memory.featureSpecificMemory.nodeEdit).toBeTruthy();
+    expect(memory.featureSpecificMemory.nodeEdit).toContain('Moxus manual edit feedback response');
+    
+    console.log('[TEST] Manual node edit prompt test completed - should use specific moxus_feedback_on_manual_node_edit prompt');
+  });
+
+  it('should record manual node edit analysis in LLM call logs with correct call type', async () => {
+    vi.useFakeTimers();
+    
+    // Setup tracking
+    const llmCallTracker: Record<string, number> = {};
+    mockGetMoxusFeedbackImpl.mockReset();
+    mockGetMoxusFeedbackImpl.mockImplementation((prompt, callType) => {
+      console.log(`[TEST] MockGetMoxusFeedback called with callType: ${callType}`);
+      llmCallTracker[callType] = (llmCallTracker[callType] || 0) + 1;
+      
+      // Simulate the LLM call recording that would normally happen in getResponse
+      const mockCallId = `mock-${callType}-${Date.now()}`;
+      moxusService.initiateLLMCallRecord(mockCallId, callType, 'gpt-4o-mini', prompt);
+      const response = '{"memory_update_diffs": {"rpl": "Updated manual edit memory"}, "consciousness_evolution": "Learning from manual edit"}';
+      moxusService.finalizeLLMCallRecord(mockCallId, response);
+      
+      return Promise.resolve(response);
+    });
+    
+    // Setup nodes
+    const originalNode = {
+      id: 'hero1',
+      name: 'Hero Character',
+      longDescription: 'A brave hero',
+      type: 'character',
+      image: 'hero.jpg'
+    };
+    
+    const editedNode = {
+      id: 'hero1',
+      name: 'Hero Character',
+      longDescription: 'A very powerful and brave hero with magical abilities',
+      type: 'character',
+      image: 'hero.jpg'
+    };
+    
+    // 1. Check initial LLM call logs (should be empty)
+    let llmCalls = moxusService.getLLMLogEntries();
+    expect(llmCalls.length).toBe(0);
+    
+    // 2. Record the manual node edit
+    moxusService.recordManualNodeEdit(originalNode, editedNode, 'Manual edit via node editor');
+    
+    // 3. Allow time for processing
+    await advanceTimersByTime(500);
+    
+    // 4. Check LLM call logs after manual edit analysis
+    llmCalls = moxusService.getLLMLogEntries();
+    console.log('[TEST] LLM calls after manual edit:', llmCalls.map(call => ({ id: call.id, callType: call.callType })));
+    
+    // 5. The key question: Is the manual edit analysis recorded as an LLM call in the logs?
+    // If this is empty, then manual edit analysis is NOT being recorded in LLM logs,
+    // which would explain why the user doesn't see the correct call type in the logs
+    console.log(`[TEST] Total LLM calls recorded: ${llmCalls.length}`);
+    console.log('[TEST] LLM call types recorded:', llmCalls.map(call => call.callType));
+    
+    // 6. Check if we can find the manual edit analysis call
+    const manualEditAnalysisCalls = llmCalls.filter(call => 
+      call.callType === 'moxus_feedback_on_manual_node_edit' || 
+      call.callType === 'manualNodeEditAnalysis'
+    );
+    
+    console.log(`[TEST] Manual edit analysis calls found: ${manualEditAnalysisCalls.length}`);
+    
+    // 7. Verify that manual edit analysis WAS called (we know this from previous test)
+    expect(llmCallTracker['moxus_feedback_on_manual_node_edit']).toBe(1);
+    
+    // 8. The critical test: Is the manual edit analysis recorded in LLM logs?
+    // This might fail if manual edit analysis doesn't create LLM log entries
+    expect(manualEditAnalysisCalls.length).toBe(1);
+    if (manualEditAnalysisCalls.length > 0) {
+      expect(manualEditAnalysisCalls[0].callType).toBe('moxus_feedback_on_manual_node_edit');
+    }
+    
+    console.log('[TEST] Manual node edit LLM log recording test completed');
+  });
+
+  it('should NOT create duplicate LLM call entries for manual node edits (regression test)', async () => {
+    vi.useFakeTimers();
+    
+    // This test specifically prevents regression of the duplicate logging issue that was fixed
+    // Previously, manual node edits were creating TWO entries:
+    // 1. "manual-node-edit-analysis-{timestamp}" with moxus_feedback_on_manual_node_edit
+    // 2. "{timestamp}-{random}" with moxus_feedback_on_manual_node_edit
+    
+    const llmCallTracker: Record<string, number> = {};
+    const recordedCallIds: string[] = [];
+    
+    mockGetMoxusFeedbackImpl.mockReset();
+    mockGetMoxusFeedbackImpl.mockImplementation((prompt, callType) => {
+      console.log(`[TEST] MockGetMoxusFeedback called with callType: ${callType}`);
+      llmCallTracker[callType] = (llmCallTracker[callType] || 0) + 1;
+      
+      // Simulate the LLM call recording that would normally happen in getResponse
+      const mockCallId = `mock-${callType}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      recordedCallIds.push(mockCallId);
+      moxusService.initiateLLMCallRecord(mockCallId, callType, 'gpt-4o-mini', prompt);
+      const response = '{"memory_update_diffs": {"rpl": "Updated manual edit memory"}, "consciousness_evolution": "Learning from manual edit"}';
+      moxusService.finalizeLLMCallRecord(mockCallId, response);
+      
+      return Promise.resolve(response);
+    });
+    
+    // Setup test nodes
+    const originalNode = {
+      id: 'test-hero',
+      name: 'Test Hero',
+      longDescription: 'A simple test hero',
+      type: 'character',
+      image: 'hero.jpg'
+    };
+    
+    const editedNode = {
+      id: 'test-hero', 
+      name: 'Test Hero',
+      longDescription: 'A simple test hero with enhanced powers', // User edited this
+      type: 'character',
+      image: 'hero.jpg'
+    };
+    
+    // 1. Start with empty logs
+    expect(moxusService.getLLMLogEntries().length).toBe(0);
+    
+    // 2. Record the manual node edit
+    moxusService.recordManualNodeEdit(originalNode, editedNode, 'Regression test edit');
+    
+    // 3. Allow processing time
+    await advanceTimersByTime(500);
+    
+    // 4. Get final LLM call logs
+    const finalLlmCalls = moxusService.getLLMLogEntries();
+    
+    // 5. CRITICAL ASSERTION: Should have exactly ONE entry, not two
+    console.log(`[TEST] Final LLM call count: ${finalLlmCalls.length}`);
+    console.log('[TEST] Final LLM call IDs:', finalLlmCalls.map(call => call.id));
+    console.log('[TEST] Final LLM call types:', finalLlmCalls.map(call => call.callType));
+    
+    expect(finalLlmCalls.length).toBe(1); // EXACTLY one entry, not two
+    
+    // 6. Verify the single entry has the correct call type
+    expect(finalLlmCalls[0].callType).toBe('moxus_feedback_on_manual_node_edit');
+    
+    // 7. Verify the getMoxusFeedbackImpl was called exactly once
+    expect(llmCallTracker['moxus_feedback_on_manual_node_edit']).toBe(1);
+    expect(recordedCallIds.length).toBe(1);
+    
+    // 8. Verify there are no calls with different ID patterns for the same operation
+    const manualEditCalls = finalLlmCalls.filter(call => 
+      call.callType === 'moxus_feedback_on_manual_node_edit'
+    );
+    expect(manualEditCalls.length).toBe(1); // Should be exactly one, not multiple with same call type
+    
+    // 9. Verify the single call ID matches what we recorded
+    expect(finalLlmCalls[0].id).toBe(recordedCallIds[0]);
+    
+    // 10. Additional check: ensure no legacy manual ID patterns exist
+    const hasLegacyManualEditId = finalLlmCalls.some(call => 
+      call.id.startsWith('manual-node-edit-analysis-')
+    );
+    expect(hasLegacyManualEditId).toBe(false); // Should not have the old manual ID pattern
+    
+    console.log('[TEST] ✅ NO duplicate LLM call entries detected for manual node edit - regression test passed');
+  });
 }); 
