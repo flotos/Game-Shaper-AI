@@ -15,9 +15,10 @@ interface NodeGraphInterfaceProps {
     chatHistory?: Message[],
     isFromUserInteraction?: boolean
   ) => Promise<void>;
+  onEditNode?: (nodeId: string) => void;
 }
 
-const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ nodes, updateGraph, onNodesSorted }) => {
+const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ nodes, updateGraph, onNodesSorted, onEditNode }) => {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [updatedNodes, setUpdatedNodes] = useState<Set<string>>(new Set());
   // const [compressedImages, setCompressedImages] = useState<Map<string, { originalUrl: string; compressedUrl: string }>>(new Map()); // Removed
@@ -105,6 +106,12 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
     }
   }, [updateGraph, nodeToDelete]);
 
+  const handleEditNode = useCallback((nodeId: string) => {
+    if (onEditNode) {
+      onEditNode(nodeId);
+    }
+  }, [onEditNode]);
+
   // For NodeGridItem props
   const handleMouseEnter = useCallback((nodeId: string) => setHoveredNodeId(nodeId), []);
   const handleMouseLeave = useCallback((nodeId: string) => {
@@ -134,6 +141,7 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
           onMouseLeave={handleMouseLeave} // Pass the correctly scoped handleMouseLeave
           onRegenerateImage={handleRegenerateImage}
           onDeleteNode={handleDeleteNode}
+          onEditNode={handleEditNode}
         />
       ))}
     </div>
@@ -147,7 +155,8 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
     handleMouseEnter, 
     handleMouseLeave, 
     handleRegenerateImage, 
-    handleDeleteNode
+    handleDeleteNode,
+    handleEditNode
   ]);
 
   return (

@@ -23,6 +23,7 @@ interface NodeGridItemProps {
   onMouseLeave: (nodeId: string) => void;
   onRegenerateImage: (node: Node) => void;
   onDeleteNode: (nodeId: string) => void;
+  onEditNode: (nodeId: string) => void;
 }
 
 const getNodeBorderColor = (nodeType: string): string => {
@@ -86,7 +87,8 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
     onMouseEnter,
     onMouseLeave,
     onRegenerateImage,
-    onDeleteNode 
+    onDeleteNode,
+    onEditNode 
   }
 ) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -157,6 +159,11 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
     e.stopPropagation();
     onDeleteNode(node.id);
   }, [node.id, onDeleteNode]);
+
+  const handleEdit = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEditNode(node.id);
+  }, [node.id, onEditNode]);
   
   const handleMouseEnterItem = useCallback(() => {
     onMouseEnter(node.id);
@@ -229,6 +236,12 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
               className="absolute top-2 right-2 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-sm transition-colors"
             >
               Regenerate
+            </button>
+            <button
+              onClick={handleEdit}
+              className="absolute top-10 right-2 bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded text-sm transition-colors"
+            >
+              Edit
             </button>
             <button
               onClick={handleDelete}

@@ -16,10 +16,16 @@ interface NodeEditorOverlayProps {
     chatHistory?: Message[],
     isFromUserInteraction?: boolean
   ) => Promise<void>;
+  initialSelectedNodeId?: string;
 }
 
-const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, updateNode, deleteNode, closeOverlay, updateGraph }) => {
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, updateNode, deleteNode, closeOverlay, updateGraph, initialSelectedNodeId }) => {
+  const [selectedNode, setSelectedNode] = useState<Node | null>(() => {
+    if (initialSelectedNodeId) {
+      return nodes.find(node => node.id === initialSelectedNodeId) || null;
+    }
+    return null;
+  });
   const [isCreatingNewNode, setIsCreatingNewNode] = useState<boolean>(false);
 
   const generateRandomId = () => {
@@ -34,10 +40,7 @@ const NodeEditorOverlay: React.FC<NodeEditorOverlayProps> = ({ nodes, addNode, u
     updateNode(selectedNode);
     
     if (originalNode) {
-      moxusService.addTask('nodeEditFeedback', {
-          before: originalNode, 
-          after: selectedNode
-      });
+      moxusService.recordManualNodeEdit(originalNode, selectedNode, 'Manual edit via node editor');
     } else {
       console.warn(`[NodeEditorOverlay] Could not find original node state for ID: ${selectedNode.id} to send to Moxus.`);
     }

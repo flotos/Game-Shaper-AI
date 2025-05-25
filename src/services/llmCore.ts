@@ -428,7 +428,7 @@ export const getMoxusFeedback = async (promptContent: string, originalCallType: 
       { role: 'user', content: loadedPrompts.moxus_prompts.moxus_get_feedback_user_message }
     ];
 
-    const response = await getResponse(messages, 'gpt-4o-mini', undefined, false, { type: 'json_object' }, undefined, 'moxus_feedback');
+    const response = await getResponse(messages, 'gpt-4o-mini', undefined, false, undefined, undefined, 'moxus_feedback');
     
     if (typeof response === 'string') {
       return response;

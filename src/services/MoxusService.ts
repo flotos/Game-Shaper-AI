@@ -242,10 +242,13 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
   
   const trimmedCallType = call.callType?.trim();
   const isMoxusInternalProcessingCall = 
+    trimmedCallType === 'moxus_feedback' ||
     trimmedCallType === 'moxus_feedback_generation' || 
     trimmedCallType === 'moxus_finalreport' || 
     trimmedCallType === 'INTERNAL_FINAL_REPORT_GENERATION_STEP' || 
     (trimmedCallType && trimmedCallType.startsWith('moxus_feedback_on_')) || 
+    (trimmedCallType && trimmedCallType.startsWith('moxus_specialized_')) ||
+    (trimmedCallType && trimmedCallType.startsWith('INTERNAL_MEMORY_UPDATE_FOR_')) ||
     (trimmedCallType && trimmedCallType.startsWith('moxus_update_') && trimmedCallType.endsWith('_memory'));
   if (!isMoxusInternalProcessingCall) {
     addFeedbackTasksForCall(call);

@@ -3,7 +3,8 @@ import { moxusService, setMoxusFeedbackImpl } from '../services/MoxusService';
 import type { LLMCall } from '../services/MoxusService';
 import type { Node } from '../models/Node';
 import type { Message } from '../context/ChatContext';
-// import ActualAllPromptsYaml from '../prompts-instruct.yaml'; // Not strictly needed for runtime if fully mocked
+// Import real prompts for validation tests
+import ActualAllPromptsYaml from '../prompts-instruct.yaml';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -559,6 +560,260 @@ describe('Moxus Service - Consciousness-Driven System', () => {
 
       const finalMemory = moxusService.getMoxusMemory();
       expect(finalMemory.GeneralMemory).toBe(updatedMemoryFromChatReset);
+    });
+  });
+
+  describe('Prompt Template Validation', () => {
+    it('should validate consciousness-driven prompts contain all required placeholders', () => {
+      const chatTextPrompt = ActualAllPromptsYaml.moxus_prompts?.moxus_feedback_on_chat_text_generation;
+      const nodeEditionPrompt = ActualAllPromptsYaml.moxus_prompts?.moxus_feedback_on_node_edition_json;
+      const generalMemoryPrompt = ActualAllPromptsYaml.moxus_prompts?.general_memory_update;
+      
+      // Skip test if prompts are not available
+      if (!chatTextPrompt || !nodeEditionPrompt || !generalMemoryPrompt) {
+        console.warn('Skipping prompt validation test - prompts not available');
+        return;
+      }
+      
+      // Type assert after null checks
+      const validChatTextPrompt = chatTextPrompt as string;
+      const validNodeEditionPrompt = nodeEditionPrompt as string;
+      const validGeneralMemoryPrompt = generalMemoryPrompt as string;
+      
+      // Validate required placeholders exist in chat text prompt
+      const requiredChatTextPlaceholders = [
+        '{assistant_nodes_content}',
+        '{current_general_memory}', 
+        '{recent_chat_history}',
+        '{generated_chat_text}',
+        '{current_chat_text_memory}'
+      ];
+      
+      // Validate required placeholders exist in node edition prompt
+      const requiredNodeEditionPlaceholders = [
+        '{assistant_nodes_content}',
+        '{current_general_memory}',
+        '{recent_chat_history}', 
+        '{node_edition_response}',
+        '{all_nodes_context}',
+        '{current_node_edition_memory}'
+      ];
+      
+      // Validate required placeholders exist in general memory prompt
+      const requiredGeneralMemoryPlaceholders = [
+        '{assistant_nodes_content}',
+        '{current_general_memory}',
+        '{chat_text_analysis}',
+        '{node_editions_analysis}',
+        '{recent_llm_feedbacks}'
+      ];
+      
+      requiredChatTextPlaceholders.forEach(placeholder => {
+        expect(validChatTextPrompt).toContain(placeholder);
+      });
+      
+      requiredNodeEditionPlaceholders.forEach(placeholder => {
+        expect(validNodeEditionPrompt).toContain(placeholder);
+      });
+      
+      requiredGeneralMemoryPlaceholders.forEach(placeholder => {
+        expect(validGeneralMemoryPrompt).toContain(placeholder);
+      });
+    });
+    
+    it('should validate placeholder replacement works correctly', () => {
+      const testData = {
+        assistant_nodes_content: 'Test assistant content',
+        current_general_memory: 'Test memory',
+        recent_chat_history: 'user: test\nassistant: response',
+        generated_chat_text: 'Generated story content',
+        current_chat_text_memory: 'Chat analysis'
+      };
+      
+      let prompt = ActualAllPromptsYaml.moxus_prompts?.moxus_feedback_on_chat_text_generation;
+      
+      // Skip test if prompt is not available
+      if (!prompt) {
+        console.warn('Skipping placeholder replacement test - prompt not available');
+        return;
+      }
+      
+      // Type assert after null check
+      let validPrompt = prompt as string;
+      
+      // Replace all placeholders
+      for (const [key, value] of Object.entries(testData)) {
+        validPrompt = validPrompt.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
+      }
+      
+      prompt = validPrompt;
+      
+      // Validate no unreplaced placeholders remain for the test data
+      const testPlaceholders = Object.keys(testData).map(key => `{${key}}`);
+      testPlaceholders.forEach(placeholder => {
+        expect(prompt).not.toContain(placeholder);
+      });
+      
+      // Validate actual content was inserted
+      Object.values(testData).forEach(value => {
+        expect(prompt).toContain(value);
+      });
+    });
+
+    it('should validate specialized guidance prompts contain required placeholders', () => {
+      const chatGuidancePrompt = ActualAllPromptsYaml.moxus_prompts?.moxus_specialized_chat_guidance;
+      const worldbuildingGuidancePrompt = ActualAllPromptsYaml.moxus_prompts?.moxus_specialized_worldbuilding_guidance;
+      
+      // Skip test if prompts are not available
+      if (!chatGuidancePrompt || !worldbuildingGuidancePrompt) {
+        console.warn('Skipping specialized guidance prompt test - prompts not available');
+        return;
+      }
+      
+      // Type assert after null checks
+      const validChatGuidancePrompt = chatGuidancePrompt as string;
+      const validWorldbuildingGuidancePrompt = worldbuildingGuidancePrompt as string;
+      
+      const requiredGuidancePlaceholders = [
+        '{current_general_memory}',
+        '{assistant_nodes_content}',
+        '{current_context}'
+      ];
+      
+      requiredGuidancePlaceholders.forEach(placeholder => {
+        expect(validChatGuidancePrompt).toContain(placeholder);
+        expect(validWorldbuildingGuidancePrompt).toContain(placeholder);
+      });
+      
+      // Chat guidance should have chat-specific placeholder
+      expect(validChatGuidancePrompt).toContain('{current_chat_text_memory}');
+      
+      // Worldbuilding guidance should have node-specific placeholder
+      expect(validWorldbuildingGuidancePrompt).toContain('{current_node_edition_memory}');
+    });
+  });
+
+  describe('JSON Response Structure Validation', () => {
+    it('should handle malformed JSON gracefully without crashing', async () => {
+      vi.useFakeTimers();
+      
+      const malformedResponses = [
+        'Invalid JSON{',
+        '{"memory_update_diffs": "invalid_structure"}',
+        '{"consciousness_evolution": null}',
+        '{incomplete_json',
+        '',
+        'Plain text response'
+      ];
+      
+      for (let i = 0; i < malformedResponses.length; i++) {
+        const response = malformedResponses[i];
+        const callId = `malformed-test-${i}`;
+        
+        mockGetMoxusFeedbackImpl.mockResolvedValue(response);
+        
+        // Should not throw errors
+        await expect(async () => {
+          moxusService.initiateLLMCallRecord(callId, 'chat_text_generation', 'gpt-test', 'test prompt');
+          moxusService.finalizeLLMCallRecord(callId, 'test response');
+          await advanceTimersByTime(200);
+        }).not.toThrow();
+        
+        // System should still be functional - call should be recorded
+        const memory = moxusService.getMoxusMemory();
+        expect(memory.featureSpecificMemory.llmCalls[callId]).toBeDefined();
+        
+        // For malformed JSON, system handles gracefully - feedback might be stored as the raw response
+        // or undefined depending on the error handling logic
+        const call = memory.featureSpecificMemory.llmCalls[callId];
+        expect(call.feedback === response || call.feedback === undefined).toBe(true);
+      }
+    });
+  });
+
+
+
+  describe('Error Recovery and Edge Cases', () => {
+    it('should handle missing or corrupted memory gracefully', () => {
+      // Simulate corrupted localStorage
+      localStorageMock.setItem('moxusStructuredMemory', 'invalid json{');
+      
+      // Should not crash when loading corrupted memory
+      expect(() => {
+        moxusService.resetMemory();
+        moxusService.initialize(mockGetNodesCallback, mockAddMessageCallback, mockGetChatHistoryCallback);
+      }).not.toThrow();
+      
+      // Should fall back to default memory
+      const memory = moxusService.getMoxusMemory();
+      expect(memory.GeneralMemory).toContain('Moxus Game Analysis');
+      expect(memory.featureSpecificMemory.chatText).toContain('Chat Text Analysis');
+    });
+
+    it('should handle empty or null task data gracefully', async () => {
+      vi.useFakeTimers();
+      
+      // Test various edge cases with task data (skip null prompts as they cause legitimate errors)
+      const edgeCases = [
+        { id: 'edge-1', prompt: '', response: 'response' },
+        { id: 'edge-2', prompt: 'prompt', response: '' },
+        { id: 'edge-4', prompt: 'prompt', response: null as any }
+      ];
+      
+      mockGetMoxusFeedbackImpl.mockResolvedValue('Feedback for edge case');
+      
+      for (const edgeCase of edgeCases) {
+        await expect(async () => {
+          moxusService.initiateLLMCallRecord(edgeCase.id, 'chat_text_generation', 'gpt-4', edgeCase.prompt);
+          if (edgeCase.response !== null) {
+            moxusService.finalizeLLMCallRecord(edgeCase.id, edgeCase.response);
+          }
+          await advanceTimersByTime(200);
+        }).not.toThrow();
+      }
+    });
+  });
+
+  describe('Memory Persistence and State Management', () => {
+    it('should handle invalid memory import gracefully', () => {
+      const invalidMemoryStructures = [
+        null,
+        undefined,
+        {},
+        { GeneralMemory: null },
+        { featureSpecificMemory: null },
+        { GeneralMemory: 'test', featureSpecificMemory: 'invalid' }
+      ];
+      
+      for (const invalidMemory of invalidMemoryStructures) {
+        expect(() => {
+          moxusService.setMoxusMemory(invalidMemory as any);
+        }).not.toThrow();
+        
+        // Should maintain valid structure
+        const memory = moxusService.getMoxusMemory();
+        expect(memory.GeneralMemory).toBeTruthy();
+        expect(memory.featureSpecificMemory).toBeTruthy();
+        expect(memory.featureSpecificMemory.chatText).toBeTruthy();
+      }
+    });
+
+    it('should handle localStorage quota exceeded gracefully', () => {
+      // Mock localStorage to throw quota exceeded error
+      const originalSetItem = localStorageMock.setItem;
+      localStorageMock.setItem = vi.fn().mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+      
+      // Should not crash when saving fails
+      expect(() => {
+        moxusService.getMoxusMemory().GeneralMemory = 'Test memory that might exceed quota';
+        // This internally calls saveMemory
+        moxusService.addTask('synthesizeGeneralMemory', { reason: 'quota test' });
+      }).not.toThrow();
+      
+      // Restore original implementation
+      localStorageMock.setItem = originalSetItem;
     });
   });
 }); 

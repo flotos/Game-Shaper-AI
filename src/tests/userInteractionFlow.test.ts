@@ -539,4 +539,306 @@ n_nodes:
     
     console.log('[TEST] Comprehensive userInteractionFlow test completed successfully');
   });
+
+  it('should handle assistant update flow without infinite moxus_feedback loop', async () => {
+    vi.useFakeTimers();
+    
+    // Track all LLM calls made by callType
+    const llmCallTracker: Record<string, number> = {};
+    mockGetMoxusFeedbackImpl.mockReset();
+    mockGetMoxusFeedbackImpl.mockImplementation((prompt, callType) => {
+      console.log(`[TEST] MockGetMoxusFeedback called with callType: ${callType}`);
+      llmCallTracker[callType] = (llmCallTracker[callType] || 0) + 1;
+      return Promise.resolve('Moxus feedback response');
+    });
+    
+    // 1. Simulate the actual scenario that caused the infinite loop
+    // First, simulate a moxus_feedback call being made (this would happen in the real flow)
+    moxusService.initiateLLMCallRecord('test-moxus-feedback-call', 'moxus_feedback', 'gpt-4o-mini', 'Test moxus feedback prompt');
+    moxusService.finalizeLLMCallRecord('test-moxus-feedback-call', 'Test moxus feedback response');
+    
+    // 2. Allow time for any feedback tasks to be processed
+    await advanceTimersByTime(200);
+    
+    // 3. Verify that the moxus_feedback call was recorded
+    const llmCalls = moxusService.getLLMLogEntries();
+    expect(llmCalls.length).toBe(1);
+    expect(llmCalls[0].callType).toBe('moxus_feedback');
+    
+    // 4. Most importantly: verify that NO additional feedback tasks were generated
+    // (which would have caused the infinite loop before the fix)
+    expect(llmCallTracker['moxus_feedback']).toBeUndefined(); // Should not have generated more moxus_feedback calls
+    
+    // 5. Wait a bit more to ensure no delayed tasks are triggered
+    await advanceTimersByTime(200);
+    
+    const finalLlmCalls = moxusService.getLLMLogEntries();
+    expect(finalLlmCalls.length).toBe(1); // Still should be exactly 1 call
+    
+    // 6. Now test the assistantFeedback flow separately
+    moxusService.addTask('assistantFeedback', { 
+      query: "Update the hero character to be more powerful",
+      result: {
+        callId: `assistant-${Date.now()}`,
+        u_nodes: {
+          "hero1": {
+            longDescription: { rpl: "A very powerful hero with enhanced abilities" },
+            img_upd: true
+          }
+        }
+      }
+    });
+    
+    await advanceTimersByTime(500);
+    
+    // 7. Verify assistantFeedback was processed with the correct call type
+    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_assistantFeedback']).toBe(1);
+    
+    // 8. Verify the assistantFeedback memory was updated
+    const memory = moxusService.getMoxusMemory();
+    expect(memory.featureSpecificMemory.assistantFeedback).toBeTruthy();
+    
+    console.log('[TEST] Assistant update flow completed without infinite loop - moxus_feedback calls are now properly excluded from generating additional feedback');
+  });
+
+  it('should process a complete assistant feature LLM call flow', async () => {
+    // This test comprehensively covers ALL LLM calls made during a complete assistant feature interaction:
+    //
+    // ASSISTANT FEATURE LLM CALLS:
+    // 1. generateNodesFromPrompt (node_creation_from_prompt) - main assistant LLM call
+    // 2. (optional) Image prompt generation for updated nodes (image_prompt_generation) x N
+    //
+    // MOXUS FEEDBACK PIPELINE LLM CALLS:
+    // 1. Feedback for node_creation_from_prompt (standard LLM call feedback)
+    // 2. AssistantFeedback task processing (INTERNAL_MEMORY_UPDATE_FOR_assistantFeedback)
+    // 3. (optional) Final report if conditions are met
+    // 4. (optional) General memory update
+    //
+    // ASSISTANT FEATURE FLOW:
+    // User Query → generateNodesFromPrompt → User Preview/Confirmation → updateGraph → assistantFeedback task → Moxus Analysis
+    
+    vi.useFakeTimers();
+    
+    // Setup mock data
+    const mockNodes: Node[] = [
+      {
+        id: 'char1', 
+        name: 'Hero Character',
+        longDescription: 'A brave hero',
+        type: 'character',
+        image: 'hero.jpg'
+      },
+      {
+        id: 'location1',
+        name: 'Starting Village',
+        longDescription: 'A peaceful village',
+        type: 'location',
+        image: 'village.jpg'
+      },
+      {
+        id: 'assist1',
+        name: 'Narrative Assistant',
+        longDescription: 'Helpful storytelling AI',
+        type: 'assistant',
+        image: 'assistant.jpg'
+      },
+      {
+        id: 'sys1',
+        name: 'Game System',
+        longDescription: 'Core game mechanics',
+        type: 'system',
+        image: 'system.jpg'
+      }
+    ];
+    
+    const mockChatHistory: Message[] = [
+      { role: 'user', content: 'I want to make the hero more powerful' },
+      { role: 'assistant', content: 'The hero character could be enhanced in several ways...' }
+    ];
+    
+    mockGetNodesCallback.mockReturnValue(mockNodes);
+    mockGetChatHistoryCallback.mockReturnValue(mockChatHistory);
+    
+    // Track all LLM calls made by callType
+    const llmCallTracker: Record<string, number> = {};
+    mockGetMoxusFeedbackImpl.mockReset();
+    mockGetMoxusFeedbackImpl.mockImplementation((prompt, callType) => {
+      console.log(`[TEST] MockGetMoxusFeedback called with callType: ${callType}`);
+      llmCallTracker[callType] = (llmCallTracker[callType] || 0) + 1;
+      return Promise.resolve('Moxus feedback response for ' + callType);
+    });
+    
+    // PHASE 1: Assistant Feature Main LLM Call
+    
+    // STEP 1: generateNodesFromPrompt (this is the core assistant feature LLM call)
+    const assistantPromptCallId = 'assistant-generate-nodes-123';
+    const userQuery = "Make the hero more powerful and add a magical sword";
+    
+    moxusService.initiateLLMCallRecord(
+      assistantPromptCallId,
+      'node_creation_from_prompt',
+      'gpt-4',
+      `Generate nodes based on user prompt: ${userQuery}`
+    );
+    
+    // Mock the response that generateNodesFromPrompt would return
+    const assistantLLMResponse = JSON.stringify({
+      u_nodes: {
+        "char1": {
+          longDescription: { rpl: "A brave and powerful hero with enhanced magical abilities" },
+          img_upd: true
+        }
+      },
+      n_nodes: [{
+        id: "sword1",
+        name: "Enchanted Sword",
+        longDescription: "A magical sword that glows with mystical energy and enhances the wielder's power.",
+        type: "item",
+        updateImage: true
+      }]
+    });
+    
+    moxusService.finalizeLLMCallRecord(
+      assistantPromptCallId,
+      assistantLLMResponse
+    );
+    
+    // PHASE 2: Image Generation LLM Calls (optional, background)
+    
+    // STEP 2: Image prompt generation for updated nodes (char1 and sword1)
+    const imagePromptCallIds = [];
+    const nodesToUpdateImages = ['char1', 'sword1'];
+    
+    for (let i = 0; i < nodesToUpdateImages.length; i++) {
+      const nodeId = nodesToUpdateImages[i];
+      const imageCallId = `assistant-image-prompt-${nodeId}-${i}`;
+      imagePromptCallIds.push(imageCallId);
+      
+      moxusService.initiateLLMCallRecord(
+        imageCallId,
+        'image_prompt_generation',
+        'gpt-4o',
+        `Generate image prompt for updated node ${nodeId}`
+      );
+      moxusService.finalizeLLMCallRecord(
+        imageCallId,
+        `A detailed fantasy image of ${nodeId === 'char1' ? 'a powerful hero with enhanced abilities' : 'an enchanted magical sword'}`
+      );
+    }
+    
+    // Allow time for initial feedback tasks to be queued
+    await advanceTimersByTime(100);
+    
+    // PHASE 3: User Confirmation and Assistant Feedback Task
+    
+    // STEP 3: User confirms the changes (this triggers assistantFeedback task)
+    // This simulates what happens when user clicks "Apply Changes" in AssistantOverlay
+    const assistantFeedbackData = {
+      query: userQuery,
+      result: {
+        callId: `assistant-${Date.now()}`,
+        u_nodes: {
+          "char1": {
+            longDescription: { rpl: "A brave and powerful hero with enhanced magical abilities" },
+            img_upd: true
+          }
+        },
+        n_nodes: [{
+          id: "sword1",
+          name: "Enchanted Sword", 
+          longDescription: "A magical sword that glows with mystical energy and enhances the wielder's power.",
+          type: "item",
+          updateImage: true,
+          image: ""
+        }]
+      }
+    };
+    
+    moxusService.addTask('assistantFeedback', assistantFeedbackData);
+    
+    // PHASE 4: Moxus Feedback Pipeline (background, asynchronous)
+    
+    // Allow time for all feedback tasks to be processed sequentially
+    console.log('[TEST] Processing assistant feature Moxus feedback pipeline...');
+    
+    // Process LLM call feedback for node_creation_from_prompt
+    await advanceTimersByTime(400);
+    
+    // Process assistantFeedback task
+    await advanceTimersByTime(400);
+    
+    // Optional: Process final report (if conditions are met)
+    await advanceTimersByTime(300);
+    
+    // Optional: Process general memory update
+    await advanceTimersByTime(300);
+    
+    // COMPREHENSIVE VERIFICATION
+    console.log('[TEST] Starting assistant feature comprehensive verification');
+    
+    // 1. Verify all main assistant feature LLM calls were recorded
+    const llmCalls = moxusService.getLLMLogEntries();
+    console.log(`[TEST] Total LLM calls recorded: ${llmCalls.length}`);
+    
+    // Should have: generateNodesFromPrompt + 2 image prompts = 3 main calls
+    const mainCallTypes = ['node_creation_from_prompt', 'image_prompt_generation'];
+    const mainCalls = llmCalls.filter(call => mainCallTypes.includes(call.callType));
+    expect(mainCalls.length).toBeGreaterThanOrEqual(3); // 1 main + 2 image prompts
+    
+    // Verify specific main calls exist
+    expect(llmCalls.some(call => call.id === assistantPromptCallId)).toBe(true);
+    imagePromptCallIds.forEach(imageId => {
+      expect(llmCalls.some(call => call.id === imageId)).toBe(true);
+    });
+    
+    // 2. Verify feedback was generated for eligible calls ONLY
+    // According to MoxusService: image_prompt_generation is SKIPPED, but node_creation_from_prompt should get feedback
+    const assistantPromptCall = llmCalls.find(call => call.id === assistantPromptCallId);
+    expect(assistantPromptCall?.feedback).toBeTruthy();
+    
+    // Image prompt calls should NOT have feedback (they're skipped)
+    imagePromptCallIds.forEach(imageId => {
+      const imageCall = llmCalls.find(call => call.id === imageId);
+      expect(imageCall?.feedback).toBeUndefined();
+    });
+    
+    // 3. Verify assistant feedback memory was updated
+    const memory = moxusService.getMoxusMemory();
+    expect(memory.featureSpecificMemory.assistantFeedback).toBeTruthy();
+    expect(memory.featureSpecificMemory.assistantFeedback).toContain('Moxus feedback response'); // Should contain the mocked response
+    
+    // 4. Verify comprehensive Moxus LLM call pattern for assistant feature
+    const moxusCallCount = mockGetMoxusFeedbackImpl.mock.calls.length;
+    console.log(`[TEST] Total Moxus LLM calls made: ${moxusCallCount}`);
+    console.log('[TEST] Moxus call breakdown by type:', llmCallTracker);
+    
+    // Expected Moxus calls for assistant feature:
+    // - Feedback for node_creation_from_prompt (✓) - standard LLM call feedback
+    // - AssistantFeedback memory update (✓) - INTERNAL_MEMORY_UPDATE_FOR_assistantFeedback
+    // - (optional) Additional memory updates or reports depending on timing
+    expect(moxusCallCount).toBeGreaterThanOrEqual(2);
+    expect(moxusCallCount).toBeLessThanOrEqual(5); // Allow some variation
+    
+    // Verify specific Moxus call types were made
+    expect(llmCallTracker['node_creation_from_prompt']).toBe(1); // Standard feedback for the main call
+    expect(llmCallTracker['INTERNAL_MEMORY_UPDATE_FOR_assistantFeedback']).toBe(1); // Assistant feedback task processing
+    
+    // Verify that image_prompt_generation was NOT processed by Moxus
+    expect(llmCallTracker['image_prompt_generation']).toBeUndefined();
+    
+    // 5. Verify total LLM call count is reasonable
+    // Main calls (1 + 2) + Moxus calls (2-5) = 5-8 total
+    const totalLLMCalls = llmCalls.length + moxusCallCount;
+    console.log(`[TEST] Total LLM operations (main + Moxus): ${totalLLMCalls}`);
+    expect(totalLLMCalls).toBeGreaterThanOrEqual(5);
+    expect(totalLLMCalls).toBeLessThanOrEqual(10); // Reasonable upper bound
+    
+         // 6. Verify the assistantFeedback task data was properly structured
+     // This ensures the assistant feature is correctly passing data to Moxus
+     const assistantMemory = memory.featureSpecificMemory.assistantFeedback;
+     expect(assistantMemory).toContain('Moxus feedback response'); // Should contain the mocked response
+     expect(assistantMemory.length).toBeGreaterThan(50); // Should have been updated from default empty state
+    
+    console.log('[TEST] Assistant feature LLM call flow test completed successfully');
+  });
 }); 

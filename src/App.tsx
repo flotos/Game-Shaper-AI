@@ -11,21 +11,35 @@ import './services/llm';
 import { LLMLoggerBubble } from './components/LLMLoggerBubble';
 import { LLMLoggerPanel } from './components/LLMLoggerPanel';
 import { NodeSpecificUpdates, LLMNodeEditionResponse } from './models/nodeOperations';
+import ReactMarkdown from 'react-markdown';
 
 const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [memoryJson, setMemoryJson] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [pendingTasks, setPendingTasks] = useState(0);
+  const [activeTab, setActiveTab] = useState<string>("generalMemory");
+  const [parsedMemory, setParsedMemory] = useState<any>(null);
   
   const refreshMemory = () => {
     setIsLoading(true);
     setPendingTasks(moxusService.getPendingTaskCount());
     setTimeout(() => {
       try {
-        setMemoryJson(moxusService.getLLMCallsMemoryJSON());
+        const jsonString = moxusService.getLLMCallsMemoryJSON();
+        setMemoryJson(jsonString);
+        
+        // Parse the JSON to extract sections
+        try {
+          const parsed = JSON.parse(jsonString);
+          setParsedMemory(parsed);
+        } catch (parseError) {
+          console.error("Error parsing Moxus memory JSON:", parseError);
+          setParsedMemory(null);
+        }
       } catch (error) {
         console.error("Error getting Moxus memory:", error);
         setMemoryJson("Error loading Moxus memory JSON");
+        setParsedMemory(null);
       } finally {
         setIsLoading(false);
       }
@@ -55,13 +69,70 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     }, 1000);
     return () => clearInterval(intervalId);
   }, []);
+
+  const tabs = [
+    { id: "generalMemory", label: "General Memory", content: parsedMemory?.GeneralMemory },
+    { id: "nodeEdition", label: "Node Edition", content: parsedMemory?.featureSpecificMemory?.nodeEdition },
+    { id: "chatText", label: "Chat Text", content: parsedMemory?.featureSpecificMemory?.chatText },
+    { id: "assistantFeedback", label: "Assistant Feedback", content: parsedMemory?.featureSpecificMemory?.assistantFeedback },
+    { id: "nodeEdit", label: "Node Edit", content: parsedMemory?.featureSpecificMemory?.nodeEdit },
+    { id: "recentFeedback", label: "Recent Feedback", content: parsedMemory?.recentLLMFeedback },
+    { id: "rawJson", label: "Raw JSON", content: memoryJson }
+  ];
+
+  const renderTabContent = (content: any, tabId: string) => {
+    if (!content) {
+      return (
+        <div className="flex items-center justify-center h-32 text-gray-400">
+          <p>No content available for this section</p>
+        </div>
+      );
+    }
+
+    if (tabId === "recentFeedback") {
+      return (
+        <div className="space-y-4">
+          {Array.isArray(content) ? content.map((feedback, index) => (
+            <div key={index} className="bg-gray-800 p-4 rounded-lg border border-gray-600">
+              <div className="mb-2">
+                <span className="text-cyan-400 font-mono text-sm">ID: {feedback.id}</span>
+              </div>
+              <div className="prose prose-invert max-w-none">
+                <ReactMarkdown>{feedback.feedback}</ReactMarkdown>
+              </div>
+            </div>
+          )) : (
+            <div className="prose prose-invert max-w-none">
+              <ReactMarkdown>{typeof content === 'string' ? content : JSON.stringify(content, null, 2)}</ReactMarkdown>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (tabId === "rawJson") {
+      return (
+        <pre className="bg-gray-800 p-4 rounded overflow-auto text-green-300 font-mono text-sm whitespace-pre-wrap">
+          {content}
+        </pre>
+      );
+    }
+
+    // For other tabs, render as markdown
+    const contentToRender = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+    return (
+      <div className="prose prose-invert max-w-none">
+        <ReactMarkdown>{contentToRender}</ReactMarkdown>
+      </div>
+    );
+  };
   
   return (
     <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
-      <div className="bg-slate-900 p-6 rounded shadow-md w-3/4 h-3/4 flex flex-col">
+      <div className="bg-slate-900 p-6 rounded shadow-md w-5/6 h-5/6 flex flex-col">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl">
-            Moxus Memory (JSON)
+            Moxus Memory
             {pendingTasks > 0 && (
               <span className="ml-2 bg-cyan-600 text-white text-sm rounded-full px-2 py-0.5">
                 {pendingTasks} pending tasks
@@ -98,14 +169,42 @@ const MoxusMemoryModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </button>
           </div>
         </div>
+
         {isLoading ? (
           <div className="flex-grow flex items-center justify-center">
             <div className="animate-pulse text-xl">Loading Moxus memory...</div>
           </div>
         ) : (
-          <pre className="bg-gray-800 p-4 rounded overflow-auto flex-grow text-green-300 font-mono text-sm">
-            {memoryJson}
-          </pre>
+          <div className="flex flex-col flex-grow">
+            {/* Tab Navigation */}
+            <div className="flex flex-wrap border-b border-gray-600 mb-4">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 mr-2 mb-2 rounded-t transition-colors ${
+                    activeTab === tab.id
+                      ? 'bg-cyan-600 text-white border-b-2 border-cyan-400'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Content */}
+            <div className="flex-grow overflow-auto bg-gray-800 p-4 rounded">
+              {tabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className={activeTab === tab.id ? 'block' : 'hidden'}
+                >
+                  {renderTabContent(tab.content, tab.id)}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -117,6 +216,7 @@ const AppContent: React.FC = () => {
   const { addMessage, getChatHistory, setChatHistory, clearChatHistory } = useChat();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
+  const [initialSelectedNodeId, setInitialSelectedNodeId] = useState<string | undefined>(undefined);
   const [showAssistant, setShowAssistant] = useState(false);
   const [showTwineImport, setShowTwineImport] = useState(false);
   const [showMoxusMemory, setShowMoxusMemory] = useState(false);
@@ -174,6 +274,16 @@ const AppContent: React.FC = () => {
     } else {
       console.log('No nodes available to regenerate images.');
     }
+  };
+
+  const openNodeEditor = (nodeId?: string) => {
+    setInitialSelectedNodeId(nodeId);
+    setShowNodeEditor(true);
+  };
+
+  const closeNodeEditor = () => {
+    setShowNodeEditor(false);
+    setInitialSelectedNodeId(undefined);
   };
 
   const clearLocalStorage = () => {
@@ -260,7 +370,7 @@ const AppContent: React.FC = () => {
             Import Twine
           </button>
           <button 
-            onClick={() => setShowNodeEditor(true)} 
+            onClick={() => openNodeEditor()} 
             className="px-1 bg-slate-800 text-white rounded hover:bg-yellow-700"
           >
             Edit Nodes
@@ -289,7 +399,7 @@ const AppContent: React.FC = () => {
       </header>
       <div className="flex flex-grow overflow-y-auto">
         <ChatInterface nodes={getNodes()} updateGraph={updateGraph} addMessage={addMessage} />
-        <NodeGraphInterface nodes={getNodes()} updateGraph={updateGraph} onNodesSorted={setNodes} />
+        <NodeGraphInterface nodes={getNodes()} updateGraph={updateGraph} onNodesSorted={setNodes} onEditNode={openNodeEditor} />
       </div>
       
       {showNodeEditor && (
@@ -298,8 +408,9 @@ const AppContent: React.FC = () => {
           addNode={addNode}
           updateNode={updateNode}
           deleteNode={deleteNode}
-          closeOverlay={() => setShowNodeEditor(false)}
+          closeOverlay={closeNodeEditor}
           updateGraph={updateGraph}
+          initialSelectedNodeId={initialSelectedNodeId}
         />
       )}
 
