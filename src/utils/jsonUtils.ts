@@ -122,11 +122,37 @@ function extractFirstCompleteJson(jsonString: string): string {
 }
 
 /**
+ * Normalizes non-ASCII quotation marks to standard ASCII double quotes
+ */
+function normalizeQuotationMarks(jsonString: string): string {
+  return jsonString
+    // German quotation marks
+    .replace(/„/g, '"')
+    .replace(/"/g, '"')
+    // French quotation marks
+    .replace(/«/g, '"')
+    .replace(/»/g, '"')
+    // English curved quotes
+    .replace(/"/g, '"')
+    .replace(/"/g, '"')
+    // Single quotes that might be misused
+    .replace(/'/g, '"')
+    .replace(/'/g, '"')
+    // Other common unicode quote variants
+    .replace(/‚/g, '"')
+    .replace(/'/g, '"')
+    .replace(/‛/g, '"');
+}
+
+/**
  * Pre-processes common LLM JSON errors before attempting repair
  */
 function preProcessBrokenJson(jsonString: string): string {
   // First remove markdown wrapping
   let processed = removeMarkdownWrapping(jsonString);
+  
+  // Normalize non-ASCII quotation marks to standard ASCII quotes
+  processed = normalizeQuotationMarks(processed);
   
   // Try to extract just the JSON part if there's trailing content
   processed = extractFirstCompleteJson(processed);

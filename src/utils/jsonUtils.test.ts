@@ -152,6 +152,49 @@ describe('JSON Utilities', () => {
       expect(result.consciousness_evolution).toContain('compelling narratives');
     });
 
+    it('should handle German quotation marks and other Unicode quote variants', () => {
+      const jsonWithGermanQuotes = `{
+  "n_nodes": [
+    {
+      "id": "kol01",
+      "name": "Kol, the Newcomer",
+      "type": "character"
+    }
+  ],
+  "u_nodes": {},
+  "d_nodes": [
+    „8eoy",
+    „x7f2",
+    „z9k2"
+  ]
+}`;
+
+      const result = safeJsonParse(jsonWithGermanQuotes);
+      expect(result).toBeDefined();
+      expect(result.n_nodes).toHaveLength(1);
+      expect(result.n_nodes[0].id).toBe("kol01");
+      expect(result.d_nodes).toEqual(["8eoy", "x7f2", "z9k2"]);
+    });
+
+    it('should handle various Unicode quotation marks', () => {
+      const jsonWithVariousQuotes = `{
+        "test1": "normal quotes",
+        test2: „german quotes",
+        "test3": «french quotes»,
+        test4: "english curved quotes",
+        'test5': 'single quotes'
+      }`;
+
+      const result = safeJsonParse(jsonWithVariousQuotes);
+      expect(result).toEqual({
+        test1: "normal quotes",
+        test2: "german quotes", 
+        test3: "french quotes",
+        test4: "english curved quotes",
+        test5: "single quotes"
+      });
+    });
+
 
   });
 
