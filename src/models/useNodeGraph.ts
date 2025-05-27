@@ -72,19 +72,104 @@ function useNodeGraph() {
       } catch (error) {
         if (error instanceof DOMException && error.name === 'QuotaExceededError') {
           console.warn('localStorage quota exceeded. Attempting to clean up...');
-          // Try to remove old data to make space
+          
           try {
+            // First, clean up any potential orphaned image data
+            cleanupUnusedImageData();
+            
+            // Try to remove old data to make space
             localStorage.removeItem('nodeGraph');
-            // Ensure updateImage is stripped here too on retry
-            const nodesToSaveOnRetry = nodes.map(({ updateImage, ...rest }) => rest);
-            const compressedNodesOnRetry = LZString.compress(JSON.stringify(nodesToSaveOnRetry));
+            
+            // Also clean up other potential large items
+            const itemsToCheck = ['chatHistory', 'moxusStructuredMemory'];
+            itemsToCheck.forEach(key => {
+              const item = localStorage.getItem(key);
+              if (item && item.length > 50000) { // If item is larger than 50KB
+                console.warn(`Large localStorage item detected: ${key} (${item.length} characters). Consider cleaning.`);
+              }
+            });
+            
+            // Try a more aggressive compression or data reduction
+            const nodesToSave = nodes.map(({ updateImage, ...rest }) => {
+              // For quota issues, we might need to remove image data temporarily
+              const nodeWithoutLargeImages = { ...rest };
+              if (nodeWithoutLargeImages.image && nodeWithoutLargeImages.image.startsWith('data:image/') && nodeWithoutLargeImages.image.length > 100000) {
+                console.warn(`Very large image detected in node ${nodeWithoutLargeImages.id}, temporarily removing to save space`);
+                nodeWithoutLargeImages.image = 'https://via.placeholder.com/512x512.png?text=Image+Removed+Due+To+Storage+Limits';
+              }
+              return nodeWithoutLargeImages;
+            });
+            
+            const compressedNodesOnRetry = LZString.compress(JSON.stringify(nodesToSave));
             localStorage.setItem('nodeGraph', compressedNodesOnRetry);
+            console.log('Successfully saved nodes after cleanup and image size reduction.');
+            
           } catch (cleanupError) {
             console.error('Failed to save nodes even after cleanup:', cleanupError);
+            // As a last resort, try to save just the essential node data
+            try {
+              const essentialNodes = nodes.map(({ updateImage, image, ...rest }) => ({
+                ...rest,
+                image: '' // Remove all images as last resort
+              }));
+              const essentialCompressed = LZString.compress(JSON.stringify(essentialNodes));
+              localStorage.setItem('nodeGraph', essentialCompressed);
+              console.warn('Saved nodes without images due to persistent storage issues. Images will need to be regenerated.');
+            } catch (finalError) {
+              console.error('Critical: Could not save nodes at all:', finalError);
+            }
           }
         } else {
           console.error('Error saving nodes:', error);
         }
+      }
+    };
+
+    // Function to clean up unused image data from localStorage
+    const cleanupUnusedImageData = () => {
+      try {
+        const currentImageUrls = new Set<string>();
+        
+        // Collect all currently used image URLs from nodes
+        nodes.forEach(node => {
+          if (node.image && node.image.startsWith('data:image/')) {
+            currentImageUrls.add(node.image);
+          }
+        });
+        
+        // Clean up any localStorage entries that might be storing orphaned image data
+        let cleanedItems = 0;
+        const keysToRemove: string[] = [];
+        
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('imageCache_') || key.startsWith('tempImage_') || key.startsWith('generatedImage_'))) {
+            keysToRemove.push(key);
+          }
+        }
+        
+        keysToRemove.forEach(key => {
+          localStorage.removeItem(key);
+          cleanedItems++;
+        });
+        
+        if (cleanedItems > 0) {
+          console.log(`Cleaned up ${cleanedItems} potentially orphaned image entries from localStorage.`);
+        }
+        
+        // Additional cleanup: revoke any blob URLs that might be lingering in memory
+        const blobUrls: string[] = [];
+        nodes.forEach(node => {
+          if (node.image && node.image.startsWith('blob:')) {
+            blobUrls.push(node.image);
+          }
+        });
+        
+        // Note: We don't revoke these blob URLs here as they might still be in use
+        // They should be revoked when nodes are deleted or updated
+        
+      } catch (error) {
+        console.error('Error during image cleanup:', error);
       }
     };
 
