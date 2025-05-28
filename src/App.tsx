@@ -390,6 +390,22 @@ const AppContent: React.FC = () => {
   const [showLLMLogger, setShowLLMLogger] = useState(false);
   const moxusInitLoggedRef = useRef(false);
 
+  // Simple storage cleanup on page load
+  useEffect(() => {
+    const performInitialCleanup = () => {
+      try {
+        const cleanup = cleanupUnusedImageEntries();
+        if (cleanup.itemsRemoved > 0) {
+          console.log(`[App] Initial cleanup: Removed ${cleanup.itemsRemoved} orphaned image entries, freed ${cleanup.formattedBytesFreed}`);
+        }
+      } catch (error) {
+        console.error('[App] Error during initial storage cleanup:', error);
+      }
+    };
+
+    performInitialCleanup();
+  }, []);
+
   useEffect(() => {
     if (typeof getNodes === 'function' && 
         typeof addMessage === 'function' && 

@@ -1,5 +1,6 @@
 import { createContext, FC, useCallback, useState, useContext, ReactNode, useEffect } from 'react';
 import { moxusService } from '../services/MoxusService';
+import { safeLocalStorageSetItem } from '../utils/localStorageUtils';
 
 export interface Message {
   role: "assistant" | "user" | "system" | "reasoning" | "nodeEdition" | "selectedNodes" | "actions" | "userMandatoryInstructions" | "moxus";
@@ -42,7 +43,7 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const addMessage = useCallback((message: Message) => {
     setChatHistoryState((prevChatHistory) => {
       const updatedChatHistory = [...prevChatHistory, message];
-      localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
+      safeLocalStorageSetItem('chatHistory', JSON.stringify(updatedChatHistory));
       return updatedChatHistory;
     });
   }, []);
@@ -64,7 +65,7 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
         const updatedChatHistory = [...prevChatHistory];
         updatedChatHistory[streamingMessageIndex] = updatedMessage;
         
-        localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
+        safeLocalStorageSetItem('chatHistory', JSON.stringify(updatedChatHistory));
         return updatedChatHistory;
       }
       return prevChatHistory;
@@ -88,7 +89,7 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
         const updatedChatHistory = [...prevChatHistory];
         updatedChatHistory[streamingMessageIndex] = updatedMessage;
 
-        localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
+        safeLocalStorageSetItem('chatHistory', JSON.stringify(updatedChatHistory));
         return updatedChatHistory;
       }
       return prevChatHistory;
@@ -96,7 +97,7 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
   }, []);
 
   const setChatHistory = useCallback((messages: Message[]) => {
-    localStorage.setItem('chatHistory', JSON.stringify(messages));
+    safeLocalStorageSetItem('chatHistory', JSON.stringify(messages));
     setChatHistoryState(messages);
   }, []);
 
@@ -133,7 +134,7 @@ export const ChatProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
         const updatedChatHistory = [...prevChatHistory];
         updatedChatHistory[index] = { ...updatedChatHistory[index], content: newContent };
-        localStorage.setItem('chatHistory', JSON.stringify(updatedChatHistory));
+        safeLocalStorageSetItem('chatHistory', JSON.stringify(updatedChatHistory));
         return updatedChatHistory;
       }
       return prevChatHistory;

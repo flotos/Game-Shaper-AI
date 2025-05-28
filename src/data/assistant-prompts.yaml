@@ -35,13 +35,13 @@ prompts:
   - name: "Create Story Events"
     description: "Add dramatic story events or plot twists"
     prompt: |
-      Create 1-2 significant story events that could occur in the game. Each should:
+      Create a significant story events that could occur in the game. It should:
       - Have meaningful consequences for the world
       - Involve existing characters or locations
       - Offer multiple potential outcomes
       - Advance the overall narrative
       
-      Focus on events that create drama and player agency.
+      Focus on an event that create drama and player agency.
 
   - name: "Add Items & Objects"
     description: "Create interesting items and objects"

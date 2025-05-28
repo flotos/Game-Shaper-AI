@@ -111,4 +111,62 @@ export const getLocalStorageQuotaInfo = async () => {
     formattedUsage: 'Unknown',
     formattedAvailable: 'Unknown'
   };
+};
+
+export const handleQuotaExceededError = (key: string, value: string) => {
+  console.warn(`localStorage quota exceeded when saving ${key}. Attempting cleanup...`);
+  
+  // Try image cleanup first (most likely culprit)
+  const imageCleanup = cleanupUnusedImageEntries();
+  console.log(`Image cleanup freed ${imageCleanup.formattedBytesFreed} of space`);
+  
+  // Try to save again after image cleanup
+  try {
+    localStorage.setItem(key, value);
+    console.log(`Successfully saved ${key} after image cleanup`);
+    return true;
+  } catch (error) {
+    console.warn(`Still unable to save ${key} after image cleanup`);
+    
+    // If still failing, check if any individual node has large base64 images
+    if (key === 'nodeGraph') {
+      try {
+        const nodes = JSON.parse(value);
+        let cleaned = false;
+        
+        for (const node of nodes) {
+          if (node.image && typeof node.image === 'string' && node.image.startsWith('data:image/')) {
+            console.log(`Removing large base64 image from node ${node.id} (${node.name})`);
+            node.image = ''; // Clear the image, it can be regenerated
+            cleaned = true;
+          }
+        }
+        
+        if (cleaned) {
+          const cleanedValue = JSON.stringify(nodes);
+          localStorage.setItem(key, cleanedValue);
+          console.log(`Successfully saved ${key} after removing base64 images from nodes`);
+          return true;
+        }
+      } catch (parseError) {
+        console.error('Error parsing nodes for base64 cleanup:', parseError);
+      }
+    }
+    
+    return false;
+  }
+};
+
+export const safeLocalStorageSetItem = (key: string, value: string): boolean => {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+      return handleQuotaExceededError(key, value);
+    } else {
+      console.error(`Error saving to localStorage (${key}):`, error);
+      return false;
+    }
+  }
 }; 

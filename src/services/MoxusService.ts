@@ -2,6 +2,7 @@ import { Node } from '../models/Node';
 import { Message } from '../context/ChatContext';
 import { getChatHistoryForMoxus, loadedPrompts, formatPrompt } from './llmCore';
 import { safeJsonParse } from '../utils/jsonUtils';
+import { safeLocalStorageSetItem } from '../utils/localStorageUtils';
 
 // Avoid circular dependency by forward declaring the function type
 type GetMoxusFeedbackFn = (promptContent: string, originalCallType?: string) => Promise<string>;
@@ -244,63 +245,9 @@ const cleanUnusedImages = () => {
 };
 
 const saveMemory = () => {
-  try {
-    localStorage.setItem(MOXUS_STRUCTURED_MEMORY_KEY, JSON.stringify(moxusStructuredMemory));
-  } catch (error) {
-    console.error('[MoxusService] Error saving memory to localStorage:', error);
-    
-    // Handle quota exceeded error with progressive cleanup
-    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      console.warn('[MoxusService] localStorage quota exceeded. Attempting cleanup...');
-      
-      try {
-        // First, try aggressive LLM call cleanup
-        const llmCalls = moxusStructuredMemory.featureSpecificMemory.llmCalls;
-        const callIds = Object.keys(llmCalls);
-        if (callIds.length > 20) {
-          const sortedCalls = Object.values(llmCalls).sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-          const callsToDelete = sortedCalls.slice(20);
-          callsToDelete.forEach(oldCall => { delete llmCalls[oldCall.id]; });
-          console.log(`[MoxusService] Aggressive cleanup: Removed ${callsToDelete.length} old LLM calls.`);
-        }
-
-        // Truncate memory sections if they're too large
-        if (moxusStructuredMemory.GeneralMemory.length > 10000) {
-          moxusStructuredMemory.GeneralMemory = moxusStructuredMemory.GeneralMemory.substring(0, 10000) + "... [Truncated due to storage constraints]";
-          console.log('[MoxusService] Truncated GeneralMemory due to storage constraints.');
-        }
-
-        if (moxusStructuredMemory.featureSpecificMemory.nodeEdition.length > 8000) {
-          moxusStructuredMemory.featureSpecificMemory.nodeEdition = moxusStructuredMemory.featureSpecificMemory.nodeEdition.substring(0, 8000) + "... [Truncated due to storage constraints]";
-          console.log('[MoxusService] Truncated nodeEdition memory due to storage constraints.');
-        }
-
-        if (moxusStructuredMemory.featureSpecificMemory.chatText.length > 8000) {
-          moxusStructuredMemory.featureSpecificMemory.chatText = moxusStructuredMemory.featureSpecificMemory.chatText.substring(0, 8000) + "... [Truncated due to storage constraints]";
-          console.log('[MoxusService] Truncated chatText memory due to storage constraints.');
-        }
-
-        // Clear non-essential data
-        moxusStructuredMemory.cachedGuidance = {};
-        moxusStructuredMemory.pendingConsciousnessEvolution = [];
-        console.log('[MoxusService] Cleared cached guidance and pending consciousness evolution.');
-
-        // Trigger node cleanup if callback is available
-        if (getNodesCallback && typeof getNodesCallback === 'function') {
-          cleanUnusedImages();
-        }
-
-        // Try to save again after cleanup
-        localStorage.setItem(MOXUS_STRUCTURED_MEMORY_KEY, JSON.stringify(moxusStructuredMemory));
-        console.log('[MoxusService] Successfully saved memory after cleanup.');
-        
-      } catch (cleanupError) {
-        console.error('[MoxusService] Failed to save memory even after cleanup:', cleanupError);
-        // As a last resort, clear the localStorage entry to prevent further errors
-        localStorage.removeItem(MOXUS_STRUCTURED_MEMORY_KEY);
-        console.warn('[MoxusService] Removed Moxus memory from localStorage due to persistent quota issues.');
-      }
-    }
+  const success = safeLocalStorageSetItem(MOXUS_STRUCTURED_MEMORY_KEY, JSON.stringify(moxusStructuredMemory));
+  if (!success) {
+    console.error('[MoxusService] Failed to save Moxus memory even after automated cleanup attempts');
   }
 };
 
