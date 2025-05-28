@@ -204,6 +204,23 @@ function escapeNewlinesInsideStrings(jsonString: string): string {
   return result;
 }
 
+
+function convertSingleQuotedStrings(jsonString: string): string {
+  let processed = jsonString;
+
+  processed = processed.replace(/:\s*'((?:[^'\\]|\\.)*)'\s*([,}\]])/g, (_match, value, terminator) => {
+    const unescaped = value.replace(/\\'/g, "'").replace(/"/g, '\\"');
+    return ': "' + unescaped + '"' + terminator;
+  });
+
+  processed = processed.replace(/(\[|\s*,)\s*'((?:[^'\\]|\\.)*)'\s*(?=,|\])/g, (_match, prefix, value) => {
+    const unescaped = value.replace(/\\'/g, "'").replace(/"/g, '\\"');
+    return prefix + ' "' + unescaped + '"';
+  });
+
+  return processed;
+}
+
 /**
  * Pre-processes common LLM JSON errors before attempting repair
  */
@@ -225,6 +242,9 @@ function preProcessBrokenJson(jsonString: string): string {
   
   // Fix unquoted property names
   processed = fixUnquotedPropertyNames(processed);
+  
+  // Convert single-quoted string values to double-quoted ones
+  processed = convertSingleQuotedStrings(processed);
   
   // Remove any trailing commas in objects and arrays
   processed = processed.replace(/,(\s*[}\]])/g, '$1');
