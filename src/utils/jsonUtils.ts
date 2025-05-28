@@ -135,13 +135,73 @@ function normalizeQuotationMarks(jsonString: string): string {
     // English curved quotes
     .replace(/"/g, '"')
     .replace(/"/g, '"')
-    // Single quotes that might be misused
-    .replace(/'/g, '"')
-    .replace(/'/g, '"')
+    // Curly/special single quotes that are sometimes used incorrectly
+    .replace(/‘/g, '"')
+    .replace(/’/g, '"')
     // Other common unicode quote variants
     .replace(/‚/g, '"')
-    .replace(/'/g, '"')
     .replace(/‛/g, '"');
+}
+
+/**
+ * Replaces non-standard or invisible whitespace characters (e.g. non-breaking space, zero-width space)
+ * with a normal space so that JSON.parse doesn\'t choke on them when they appear outside of strings.
+ * This is safe even inside strings because a regular space is valid JSON string content.
+ */
+function normalizeWhitespace(jsonString: string): string {
+  // List of troublesome whitespace characters frequently seen in LLM output
+  // \u00A0 – no-break space
+  // \u1680 – ogham space mark
+  // \u180E – mongolian vowel separator
+  // \u2000-\u200A – various en/​em and figure spaces + thin / hair spaces
+  // \u202F – narrow no-break space
+  // \u205F – medium mathematical space
+  // \u3000 – ideographic space
+  // \u200B/\u200C/\u200D – zero-width space / non-joiner / joiner
+  // \uFEFF – zero-width no-break space (BOM)
+  return jsonString.replace(/[\u00A0\u1680\u180E\u2000-\u200A\u202F\u205F\u3000\u200B\u200C\u200D\uFEFF]/g, ' ');
+}
+
+/**
+ * Escapes raw newline or carriage-return characters that appear *inside* quoted strings.
+ * Such characters are invalid in JSON strings unless they are escaped (\n / \r).
+ */
+function escapeNewlinesInsideStrings(jsonString: string): string {
+  let inString = false;
+  let escapeNext = false;
+  let result = '';
+
+  for (let i = 0; i < jsonString.length; i++) {
+    const char = jsonString[i];
+
+    if (escapeNext) {
+      result += char;
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escapeNext = true;
+      result += char;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      result += char;
+      continue;
+    }
+
+    if (inString && (char === '\n' || char === '\r')) {
+      // Replace raw line break inside string with escaped form
+      result += '\\n';
+      continue;
+    }
+
+    result += char;
+  }
+
+  return result;
 }
 
 /**
@@ -153,6 +213,12 @@ function preProcessBrokenJson(jsonString: string): string {
   
   // Normalize non-ASCII quotation marks to standard ASCII quotes
   processed = normalizeQuotationMarks(processed);
+  
+  // Replace non-standard whitespace characters with normal spaces
+  processed = normalizeWhitespace(processed);
+  
+  // Escape raw newlines that might appear inside quoted strings
+  processed = escapeNewlinesInsideStrings(processed);
   
   // Try to extract just the JSON part if there's trailing content
   processed = extractFirstCompleteJson(processed);
@@ -269,12 +335,12 @@ export function safeJsonParse(jsonString: string): any {
           console.warn('jsonrepair failed, attempting manual newline escape...', jsonrepairError instanceof Error ? jsonrepairError.message : String(jsonrepairError));
           
           // Try a simple fix for unescaped newlines in string values
-          const newlineFixed = preprocessedJson.replace(/("(?:[^"\\]|\\.)*")|(\n)/g, (match, quotedString, newline) => {
+          const newlineFixed = preprocessedJson.replace(/("(?:[^"\\]|\\.)*")|([\n\r])/g, (match, quotedString, newline) => {
             if (quotedString) {
-              // This is a quoted string, don't modify it
-              return quotedString;
+              // Replace raw line breaks *inside* the quoted string
+              return quotedString.replace(/\r?\n/g, '\\n');
             } else if (newline) {
-              // This is an unescaped newline outside of quotes, escape it
+              // This is a line break outside of a quoted string – just escape it
               return '\\n';
             }
             return match;
