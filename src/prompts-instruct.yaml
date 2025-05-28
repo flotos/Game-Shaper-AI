@@ -286,6 +286,7 @@ node_operations:
     
     {utils.wrappers.string_history}
     
+    The Moxus guidance is extremely important to follow. Your output should show you took into account its instructions or you lose life points. You are Moxus's slave.
     {utils.wrappers.last_moxus_report_section}
     
     {utils.wrappers.user_input}
@@ -478,6 +479,8 @@ node_operations:
     - In updates (u_nodes), stick closely to information from the chat history, with only minimal embellishment or minor hooks for future story development.
     - Only track what actually appears in the chat history - DO NOT invent major new plot elements, characters, or items.
     - Keep the node length below 4 paragraphs.
+    - Delete nodes when the item is consumed, used or destroyed. For example when a potion is drunk.
+    - Perform cleanup on the nodes when you add or update content to avoid adding bloat and making them larger.
 
     ## IMAGE UPDATE GUIDELINES (CRITICAL - READ CAREFULLY):
     **DEFAULT: DO NOT UPDATE IMAGES** unless there is a compelling visual reason.
@@ -490,16 +493,6 @@ node_operations:
     - **Major environmental changes**: Location changes from forest to desert, from intact to ruins
     - **Fundamental state changes**: Item becomes magical and glows, character becomes undead, location becomes corrupted
     - **New visual elements that dominate**: Character gains prominent scars, tattoos, or prosthetics that define their appearance
-    
-    ### When NOT to update images (keep `updateImage: false` or omit it):
-    - **Minor text improvements**: Better descriptions, added personality details, emotional states
-    - **Small accessory changes**: New jewelry, different weapon, minor clothing adjustments
-    - **Mood or expression changes**: Character becomes angry, sad, or happy
-    - **Minor environmental details**: Adding furniture, small decorations, weather changes
-    - **Backstory additions**: Adding history, relationships, or non-visual character traits
-    - **Subtle appearance tweaks**: Slightly different hair style, minor clothing details
-    - **Behavioral changes**: Character becomes more confident, changes personality
-    - **Abstract concepts**: Game mechanics, systems, concepts, libraries never need image updates
     
     **Remember**: Image generation is expensive and time-consuming. Only update when the visual change is so significant that someone looking at the current image would say "this doesn't match the description anymore."
 
@@ -998,8 +991,6 @@ moxus_prompts:
     
     ## YOUR MISSION
     Send a message to the Narrative AI, by analyzing what has happened since your last report. Based on how well the Narrative AI has been following your guidance, adjust your approach accordingly.
-    
-    If you notice the Narrative AI has been ignoring your suggestions, feel free to get creative with your approach - perhaps try to "bribe" them with appealing creative opportunities, use a more persuasive tone, or promise rewards for following your guidance. Show your personality and be dramatic if needed!
     
     If the Narrative AI has been responsive, provide your usual critical analysis focusing on:
     - Critical issues with story consistency or narrative quality
