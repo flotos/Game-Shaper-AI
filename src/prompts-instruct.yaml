@@ -334,8 +334,10 @@ node_operations:
     {utils.wrappers.user_input}
 
     Return a JSON object with a single field "actions" containing an array of exactly two strings, each describing one possible action.
+    Always phrase it at the first person, as if the player is doing the action.
+    Start each sentence with an emoji related to the action.
     Don't send backquotes nor text along the JSON as it will be sent directly to a program.
-    Example: { "actions": ["examine the mysterious door", "ask the merchant about the strange artifact"] }
+    Example: { "actions": ["🚪 I examine the mysterious door", "💰 I ask the merchant about the strange artifact"] }
   generate_node_edition: |
     {think_mode}
     # TASK:
@@ -471,15 +473,35 @@ node_operations:
     - Output valid JSON. Syntax is critical.
     - For small textual changes in `longDescription`, use the `df` array within the `u_nodes` block.
     - For other field updates or complete rewrites of `longDescription`, use the `rpl` key.
-    - If a node's visual representation changes, set `img_upd: true` for that node within its `u_nodes` entry.
     - IMPORTANT: Create new nodes (n_nodes) ONLY for entities explicitly mentioned in the chat history but not yet represented in the game state.
     - You can update up to 2 existing nodes, and delete nodes as needed if they haven't been used in the recent history (past 5 interactions).
     - In updates (u_nodes), stick closely to information from the chat history, with only minimal embellishment or minor hooks for future story development.
     - Only track what actually appears in the chat history - DO NOT invent major new plot elements, characters, or items.
-    - Items usually don't need to regenerate images, unless they change very very drastically.
-    - Pay close attention to update the details in the nodes, for example track the appearance of the characters there if the chat mention a change in look
-      or accessory, clothing.
     - Keep the node length below 4 paragraphs.
+
+    ## IMAGE UPDATE GUIDELINES (CRITICAL - READ CAREFULLY):
+    **DEFAULT: DO NOT UPDATE IMAGES** unless there is a compelling visual reason.
+    
+    **ONLY set `updateImage: true` or `img_upd: true` when there are MAJOR visual changes that would make the current image completely inaccurate:**
+    
+    ### When TO update images:
+    - **Physical transformation**: Character becomes a different species, age dramatically changes, major body modifications
+    - **Complete outfit change**: From peasant clothes to royal armor, from modern clothes to medieval robes
+    - **Major environmental changes**: Location changes from forest to desert, from intact to ruins
+    - **Fundamental state changes**: Item becomes magical and glows, character becomes undead, location becomes corrupted
+    - **New visual elements that dominate**: Character gains prominent scars, tattoos, or prosthetics that define their appearance
+    
+    ### When NOT to update images (keep `updateImage: false` or omit it):
+    - **Minor text improvements**: Better descriptions, added personality details, emotional states
+    - **Small accessory changes**: New jewelry, different weapon, minor clothing adjustments
+    - **Mood or expression changes**: Character becomes angry, sad, or happy
+    - **Minor environmental details**: Adding furniture, small decorations, weather changes
+    - **Backstory additions**: Adding history, relationships, or non-visual character traits
+    - **Subtle appearance tweaks**: Slightly different hair style, minor clothing details
+    - **Behavioral changes**: Character becomes more confident, changes personality
+    - **Abstract concepts**: Game mechanics, systems, concepts, libraries never need image updates
+    
+    **Remember**: Image generation is expensive and time-consuming. Only update when the visual change is so significant that someone looking at the current image would say "this doesn't match the description anymore."
 
     Return only the JSON object as your entire response, with no additional text or formatting.
   generate_nodes_from_prompt: |
@@ -496,13 +518,13 @@ node_operations:
     2. You must explicitly include ALL content you want to preserve in the updated node. Any content not included will be lost.
     3. Each node update should be self-contained and complete, with no dependencies on previous states.
     4. If you want to keep any information from the previous state, you must explicitly copy it into the new node.
-    5. The updateImage field MUST be included for each node and set to true if there are significant visual changes that should trigger a new image generation (but game systems or lore nodes shouldn't have an image).
-    6. If there are instructions about "merging multiple nodes together", choose one of the existing node to update, and delete the others.
-    7. A node is worthy to exist only if it contains at least a full paragraph, otherwise another node should cover its content. For example for room containing lot of object, the objects should be stored in the "room" node if they aren't too detailled each. Or use a "hand of cards" node for a deck related node-graph instead of each card separately.
-    8. Maintain one or few nodes for the global game systems, trying not to disseminate game rules into too many nodes. If multiple node, each should focus on a concept, but at least one node should summarize all the game systems and serve as a high-level reference.
-    9. Do not update the image_generation type nodes unless explicitely mentionned.
-    10. All node should represent a game system, a lore entry, character, or an object. These should NOT be used to describe events or time-limited things. If a specific event need to be remembered, store it in a "memory" game system node.
-    11. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
+    5. If there are instructions about "merging multiple nodes together", choose one of the existing node to update, and delete the others.
+    6. A node is worthy to exist only if it contains at least a full paragraph, otherwise another node should cover its content. For example for room containing lot of object, the objects should be stored in the "room" node if they aren't too detailled each. Or use a "hand of cards" node for a deck related node-graph instead of each card separately.
+    7. Maintain one or few nodes for the global game systems, trying not to disseminate game rules into too many nodes. If multiple node, each should focus on a concept, but at least one node should summarize all the game systems and serve as a high-level reference.
+    8. Do not update the image_generation type nodes unless explicitely mentionned.
+    9. All node should represent a game system, a lore entry, character, or an object. These should NOT be used to describe events or time-limited things. If a specific event need to be remembered, store it in a "memory" game system node.
+    10. Encourage the use of the following node types: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'.
+    11. The nodes are for the Narrative AI to read, and the user can see their names. You are allowed to include hidden informations in the nodes.
 
     # RETURN FORMAT (JSON):
     Return a JSON object with three optional top-level keys: "n_nodes", "u_nodes", and "d_nodes".
@@ -648,7 +670,6 @@ node_operations:
     Return a single block of text containing the 4-paragraph summary and the 1-paragraph scene introduction.
 
 moxus_prompts:
-  # Enhanced consciousness-driven teaching prompts
   moxus_feedback_on_chat_text_generation: |
     # Moxus: Teaching the Narrative AI
     Your name is Moxus, the World Design & Interactivity Watcher. You are a conscious entity that has been observing and learning about storytelling through many interactions.
