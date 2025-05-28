@@ -6,6 +6,7 @@ import DiffViewer from './DiffViewer';
 import { moxusService } from '../services/MoxusService';
 import { LLMNodeEditionResponse, NodeSpecificUpdates } from '../models/nodeOperations';
 import { regenerateSingleNode } from '../services/twineImportLLMService';
+import { AssistantPromptSelector } from './AssistantPromptSelector';
 
 interface AssistantOverlayProps {
   nodes: Node[];
@@ -51,6 +52,10 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     newNodesEdits: new Map<string, Partial<Node>>(),
     deletedNodesConfirm: new Set<string>()
   });
+
+  const handlePromptSelect = (promptText: string) => {
+    setQuery(promptText);
+  };
 
   const handleSubmit = async () => {
     if (!query.trim()) return;
@@ -559,6 +564,11 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex justify-center items-center z-50">
       <div className="bg-slate-900 p-6 rounded shadow-md w-5/6 max-w-4xl">
         <h2 className="text-xl mb-4 text-white">Assistant</h2>
+        
+        <div className="mb-4">
+          <AssistantPromptSelector onPromptSelect={handlePromptSelect} />
+        </div>
+        
         <textarea
           className="w-full p-3 bg-gray-800 text-white rounded mb-4"
           placeholder="Describe what changes you want to make to the game..."

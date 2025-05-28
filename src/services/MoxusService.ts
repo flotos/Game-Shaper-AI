@@ -794,10 +794,12 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
       // Store consciousness evolution for later consolidation (don't append directly)
       if (parsedResponse.consciousness_evolution) {
         await atomicMemoryUpdate(() => {
-          moxusStructuredMemory.pendingConsciousnessEvolution = 
-            (moxusStructuredMemory.pendingConsciousnessEvolution || [])
-            .concat(parsedResponse.consciousness_evolution);
+          if (!moxusStructuredMemory.pendingConsciousnessEvolution) {
+            moxusStructuredMemory.pendingConsciousnessEvolution = [];
+          }
+          moxusStructuredMemory.pendingConsciousnessEvolution.push(parsedResponse.consciousness_evolution);
           console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
+          console.log(`[MoxusService] Current pendingConsciousnessEvolution array:`, moxusStructuredMemory.pendingConsciousnessEvolution);
         });
       }
       
@@ -961,10 +963,12 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           // Store consciousness evolution for later consolidation (don't append directly)
           if (parsedResponse.consciousness_evolution) {
             await atomicMemoryUpdate(() => {
-              moxusStructuredMemory.pendingConsciousnessEvolution = 
-                (moxusStructuredMemory.pendingConsciousnessEvolution || [])
-                .concat(parsedResponse.consciousness_evolution);
+              if (!moxusStructuredMemory.pendingConsciousnessEvolution) {
+                moxusStructuredMemory.pendingConsciousnessEvolution = [];
+              }
+              moxusStructuredMemory.pendingConsciousnessEvolution.push(parsedResponse.consciousness_evolution);
               console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
+              console.log(`[MoxusService] Current pendingConsciousnessEvolution array:`, moxusStructuredMemory.pendingConsciousnessEvolution);
             });
           }
           
@@ -980,6 +984,10 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
                   const validDiffs = parsedResponse.memory_update_diffs.df.filter((diff: any) => {
                     if (!diff.prev_txt) return true; // Allow append operations
                     const found = updatedMemory.includes(diff.prev_txt);
+                    console.log(`[MoxusService] 🔍 CHATTEXT-DEBUG: Checking diff for prev_txt: "${diff.prev_txt.substring(0, 100)}..."`);
+                    console.log(`[MoxusService] 🔍 CHATTEXT-DEBUG: Current memory length: ${updatedMemory.length}`);
+                    console.log(`[MoxusService] 🔍 CHATTEXT-DEBUG: Memory preview: "${updatedMemory.substring(0, 200)}..."`);
+                    console.log(`[MoxusService] 🔍 CHATTEXT-DEBUG: Direct match found: ${found}`);
                     if (!found) {
                       console.warn(`[MoxusService] Skipping chatText diff that targets content not found in chatText memory: "${diff.prev_txt.substring(0, 100)}..."`);
                     }
@@ -1010,14 +1018,22 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
                       return true; // Allow append operations
                     }
                     const found = updatedMemory.includes(diff.prev_txt);
+                    console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Checking diff for prev_txt: "${diff.prev_txt.substring(0, 100)}..."`);
+                    console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Current memory length: ${updatedMemory.length}`);
+                    console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Memory preview: "${updatedMemory.substring(0, 200)}..."`);
+                    console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Direct match found: ${found}`);
+                    
                     if (!found) {                      
                       // Check for partial matches to help debug
                       const firstLine = diff.prev_txt.split('\n')[0];
+                      console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Trying normalized comparison for first line: "${firstLine}"`);
                       
                       // Try normalized comparison
                       const normalizedMemory = updatedMemory.replace(/\r\n/g, '\n').trim();
                       const normalizedExpected = diff.prev_txt.replace(/\r\n/g, '\n').trim();
-                      if (normalizedMemory.includes(normalizedExpected)) {
+                      const normalizedFound = normalizedMemory.includes(normalizedExpected);
+                      console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Normalized match found: ${normalizedFound}`);
+                      if (normalizedFound) {
                         return true; // Allow this diff with normalization
                       }
                     }
@@ -1505,8 +1521,8 @@ const handleManualNodeEditAnalysis = async (task: MoxusTask) => {
 const atomicMemoryUpdate = async (updateFunction: () => void | Promise<void>): Promise<void> => {
   return memoryUpdateMutex = memoryUpdateMutex.then(async () => {
     try {
-      // Only reload memory from localStorage in non-test environments
-      // In test environments, we want to preserve the in-memory state
+      // Skip memory reloading entirely in test environments to preserve in-memory state
+      // In production, reload from localStorage for consistency
       if (!(import.meta.env && import.meta.env.VITEST)) {
         const beforeReload = moxusStructuredMemory.featureSpecificMemory.nodeEdition.length;
         loadMemory();
@@ -1515,6 +1531,8 @@ const atomicMemoryUpdate = async (updateFunction: () => void | Promise<void>): P
         if (beforeReload !== afterReload) {
           console.warn(`[MoxusService] 🔍 NODEDIT-DEBUG: Memory changed during reload! This could cause diff mismatches.`);
         }
+      } else {
+        console.log(`[MoxusService] 🔍 TEST-DEBUG: Skipping memory reload in test environment to preserve in-memory state`);
       }
       
       // Apply the update

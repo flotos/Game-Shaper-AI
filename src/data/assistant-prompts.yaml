@@ -1,0 +1,88 @@
+prompts:
+  - name: "Add New Characters"
+    description: "Create new characters for the game world"
+    prompt: |
+      Add 2-3 new interesting characters to the game world. Each character should have:
+      - A unique personality and background
+      - Clear motivations and goals
+      - Relationships or connections to existing game elements
+      - Distinct visual characteristics
+      
+      Make them fit organically into the existing world and story.
+
+  - name: "Expand Locations"
+    description: "Create or expand game locations"
+    prompt: |
+      Create 1-2 new locations or expand existing ones. Each location should include:
+      - Detailed environmental descriptions
+      - Interesting features or landmarks
+      - Potential story events or encounters
+      - Connections to existing game elements
+      
+      Focus on atmospheric details that enhance immersion.
+
+  - name: "Add Game Systems"
+    description: "Introduce new game mechanics or systems"
+    prompt: |
+      Introduce a new game system or mechanic that adds depth to gameplay. Consider:
+      - How it integrates with existing systems
+      - Clear rules and interactions
+      - Meaningful player choices
+      - Balanced risk/reward mechanics
+      
+      Explain how players would interact with this system.
+
+  - name: "Create Story Events"
+    description: "Add dramatic story events or plot twists"
+    prompt: |
+      Create 1-2 significant story events that could occur in the game. Each should:
+      - Have meaningful consequences for the world
+      - Involve existing characters or locations
+      - Offer multiple potential outcomes
+      - Advance the overall narrative
+      
+      Focus on events that create drama and player agency.
+
+  - name: "Add Items & Objects"
+    description: "Create interesting items and objects"
+    prompt: |
+      Add 2-4 new items or objects to the game world. Each should have:
+      - Unique properties or abilities
+      - Clear purpose or function
+      - Interesting backstory or origin
+      - Visual appeal and distinctiveness
+      
+      Consider both practical and mystical items.
+
+  - name: "Enhance World Lore"
+    description: "Expand the game's background lore and history"
+    prompt: |
+      Expand the world's lore and background information. Add:
+      - Historical events or legends
+      - Cultural details and traditions
+      - Hidden secrets or mysteries
+      - Ancient civilizations or ruins
+      
+      Make the world feel deeper and more lived-in.
+
+  - name: "Create Conflicts"
+    description: "Add tensions and conflicts to drive story"
+    prompt: |
+      Introduce new conflicts or tensions to drive the story forward:
+      - Political intrigue or power struggles
+      - Resource competition or territorial disputes
+      - Ideological differences or moral dilemmas
+      - Personal vendettas or family feuds
+      
+      Focus on conflicts that create meaningful choices.
+
+  - name: "Add Mysteries"
+    description: "Create intriguing mysteries for players to solve"
+    prompt: |
+      Create 1-2 compelling mysteries for players to investigate:
+      - Missing persons or strange disappearances
+      - Ancient puzzles or encoded messages
+      - Unexplained phenomena or supernatural events
+      - Hidden treasures or lost artifacts
+      
+      Include clues and multiple layers of discovery. 
