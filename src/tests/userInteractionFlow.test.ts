@@ -809,9 +809,9 @@ n_nodes:
     });
     
     // 2. Verify feedback was generated for eligible calls ONLY
-    // According to MoxusService: image_prompt_generation is SKIPPED, but node_creation_from_prompt should get feedback
+    // According to MoxusService: image_prompt_generation AND node_creation_from_prompt are SKIPPED to prevent infinite loops
     const assistantPromptCall = llmCalls.find(call => call.id === assistantPromptCallId);
-    expect(assistantPromptCall?.feedback).toBeTruthy();
+    expect(assistantPromptCall?.feedback).toBeUndefined(); // No longer generates feedback to prevent infinite loops
     
     // Image prompt calls should NOT have feedback (they're skipped)
     imagePromptCallIds.forEach(imageId => {
@@ -830,25 +830,25 @@ n_nodes:
     console.log('[TEST] Moxus call breakdown by type:', llmCallTracker);
     
     // Expected Moxus calls for assistant feature:
-    // - Feedback for node_creation_from_prompt (✓) - standard LLM call feedback
+    // - NO feedback for node_creation_from_prompt (✗) - now skipped to prevent infinite loops
     // - AssistantFeedback consciousness-driven analysis (✓) - moxus_feedback_on_assistant_feedback
     // - (optional) Additional memory updates or reports depending on timing
-    expect(moxusCallCount).toBeGreaterThanOrEqual(2);
-    expect(moxusCallCount).toBeLessThanOrEqual(5); // Allow some variation
+    expect(moxusCallCount).toBeGreaterThanOrEqual(1);
+    expect(moxusCallCount).toBeLessThanOrEqual(3); // Reduced from 5 since we skip node_creation_from_prompt feedback
     
     // Verify specific Moxus call types were made
-    expect(llmCallTracker['node_creation_from_prompt']).toBe(1); // Standard feedback for the main call
+    expect(llmCallTracker['node_creation_from_prompt']).toBeUndefined(); // No longer generates feedback to prevent infinite loops
     expect(llmCallTracker['moxus_feedback_on_assistant_feedback']).toBe(1); // Assistant feedback consciousness-driven analysis
     
     // Verify that image_prompt_generation was NOT processed by Moxus
     expect(llmCallTracker['image_prompt_generation']).toBeUndefined();
     
     // 5. Verify total LLM call count is reasonable
-    // Main calls (1 + 2) + Moxus calls (2-5) = 5-8 total
+    // Main calls (1 + 2) + Moxus calls (1-3) = 4-6 total (reduced since no node_creation_from_prompt feedback)
     const totalLLMCalls = llmCalls.length + moxusCallCount;
     console.log(`[TEST] Total LLM operations (main + Moxus): ${totalLLMCalls}`);
-    expect(totalLLMCalls).toBeGreaterThanOrEqual(5);
-    expect(totalLLMCalls).toBeLessThanOrEqual(10); // Reasonable upper bound
+    expect(totalLLMCalls).toBeGreaterThanOrEqual(4);
+    expect(totalLLMCalls).toBeLessThanOrEqual(8); // Reduced upper bound since no node_creation_from_prompt feedback
     
          // 6. Verify the assistantFeedback task data was properly structured
      // This ensures the assistant feature is correctly passing data to Moxus
