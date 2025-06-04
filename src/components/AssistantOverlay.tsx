@@ -7,6 +7,8 @@ import { moxusService } from '../services/MoxusService';
 import { LLMNodeEditionResponse, NodeSpecificUpdates } from '../models/nodeOperations';
 import { regenerateSingleNode } from '../services/twineImportLLMService';
 import { AssistantPromptSelector } from './AssistantPromptSelector';
+import { applyTextDiffInstructions } from '../utils/textUtils';
+import { FieldUpdateOperation } from '../models/nodeOperations';
 
 interface AssistantOverlayProps {
   nodes: Node[];
@@ -81,10 +83,44 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
 
       const llmResponseData = await generateNodesFromPrompt(query, nodes, moxusMemoryData, moxusPersonalityData);
       
+      // --- New logic: transform the new `u_nodes` structure (field-based updates)
+      //     into a simpler array of partial Node objects so that the existing
+      //     preview / diff UI can display the pending changes.
+      const mergeUpdates: Partial<Node>[] = [];
+      const uNodesObj = (llmResponseData as any).u_nodes as Record<string, any> | undefined;
+      if (uNodesObj && typeof uNodesObj === 'object') {
+        for (const [nodeId, fieldUpdates] of Object.entries(uNodesObj)) {
+          const originalNode = nodes.find(n => n.id === nodeId) || null;
+          const updatedNode: Partial<Node> = { id: nodeId };
+
+          // Iterate over every field to build the updated representation
+          for (const [fieldName, op] of Object.entries(fieldUpdates)) {
+            if (fieldName === 'img_upd') continue; // image regen flag is handled elsewhere
+            const fieldOp = op as FieldUpdateOperation;
+
+            if (fieldOp && typeof fieldOp === 'object') {
+              if (fieldOp.rpl !== undefined) {
+                // Full replacement provided by the model
+                (updatedNode as any)[fieldName] = fieldOp.rpl;
+              } else if (fieldOp.df && originalNode) {
+                // Diff-style update: apply patch so the preview shows the real text
+                const originalText = (originalNode as any)[fieldName] || '';
+                (updatedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
+              }
+            }
+          }
+
+          // Only push if at least one property (besides id) is present
+          if (Object.keys(updatedNode).length > 1) {
+            mergeUpdates.push(updatedNode);
+          }
+        }
+      }
+      
       // Normalize response format to handle both old (merge) and new (u_nodes) formats
       const normalizedResponse = {
-        merge: llmResponseData.merge || [],
-        delete: llmResponseData.delete || [],
+        merge: (llmResponseData.merge || []).concat(mergeUpdates),
+        delete: llmResponseData.delete || llmResponseData.d_nodes || [],
         newNodes: llmResponseData.newNodes || llmResponseData.n_nodes || [],
       };
       
