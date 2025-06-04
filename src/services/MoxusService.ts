@@ -671,25 +671,22 @@ const handleFinalReport = async (task: MoxusTask) => {
 
   console.log(`[MoxusService] Previous report found: ${!!previousReportData.previousReport}, age: ${previousReportData.reportAge} messages`);
 
-  // STEP 1: Generate the final report using enhanced prompt
-  let promptContent = (loadedPrompts.moxus_prompts as any).moxus_final_report
-  
-  // Replace placeholders
-  promptContent = promptContent.replace(/{assistant_nodes_content}/g, assistantNodesContent || "(No assistant nodes found)");
-  promptContent = promptContent.replace(/{chat_history_context}/g, chatHistoryContextString);
-  promptContent = promptContent.replace(/{previous_report_analysis}/g, 
-    previousReportData.previousReport ? 
-    `Previous Report Content:\n${previousReportData.previousReport}\n\nMessages since previous report: ${previousReportData.reportAge}` :
-    "No previous final report found in chat history."
-  );
-  promptContent = promptContent.replace(/{compliance_analysis}/g, 
-    previousReportData.previousReport ? 
-    `You have a previous report from ${previousReportData.reportAge} messages ago. Analyze what has been applied and what hasn't based on the narrative AI's subsequent responses.` :
-    "No previous final report to analyze compliance against."
-  );
-  promptContent = promptContent.replace(/{general_memory}/g, moxusStructuredMemory.GeneralMemory || '(No general memory available)');
-  promptContent = promptContent.replace(/{chat_text_analysis}/g, moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)');
-  promptContent = promptContent.replace(/{node_editions_analysis}/g, moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)');
+  // STEP 1: Generate the final report using enhanced prompt with unified placeholder handling
+  const promptTemplate = (loadedPrompts.moxus_prompts as any).moxus_final_report;
+
+  const promptContent = formatPrompt(promptTemplate, {
+    assistant_nodes_content: assistantNodesContent || "(No assistant nodes found)",
+    chat_history_context: chatHistoryContextString,
+    previous_report_analysis: previousReportData.previousReport ?
+      `Previous Report Content:\n${previousReportData.previousReport}\n\nMessages since previous report: ${previousReportData.reportAge}` :
+      "No previous final report found in chat history.",
+    compliance_analysis: previousReportData.previousReport ?
+      `You have a previous report from ${previousReportData.reportAge} messages ago. Analyze what has been applied and what hasn't based on the narrative AI's subsequent responses.` :
+      "No previous final report to analyze compliance against.",
+    current_general_memory: moxusStructuredMemory.GeneralMemory || '(No general memory available)',
+    chat_text_analysis: moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)',
+    node_editions_analysis: moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)'
+  });
 
   console.log(`[MoxusService] Generating final report (Task ID: ${task.id}) using current memory sources...`);
   if (!getMoxusFeedbackImpl) {
