@@ -24,6 +24,7 @@ interface NodeGridItemProps {
   onRegenerateImage: (node: Node) => void;
   onDeleteNode: (nodeId: string) => void;
   onEditNode: (nodeId: string) => void;
+  variant?: 'grid' | 'list';
 }
 
 const getNodeBorderColor = (nodeType: string): string => {
@@ -92,7 +93,8 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
     onMouseLeave,
     onRegenerateImage,
     onDeleteNode,
-    onEditNode 
+    onEditNode,
+    variant = 'grid'
   }
 ) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -192,9 +194,68 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
     dynamicBadgeClasses = `${badgeColorClass} rounded-full`; // Default: filled circle
   }
 
+  if (variant === 'list') {
+    return (
+      <div
+        className="mb-4 break-inside-avoid w-full"
+        onMouseEnter={handleMouseEnterItem}
+        onMouseLeave={handleMouseLeaveItem}
+      >
+        <div
+          className={`relative flex items-center bg-gray-800 cursor-pointer rounded transition-all duration-200 border-l-4 ${borderColorClass} ${
+            isUpdated ? 'animate-pulse' : ''
+          } ${deletingNode === node.id ? 'opacity-50' : ''}`}
+          onClick={handleSelect}
+        >
+          <div className="flex-shrink-0 w-14 h-14 overflow-hidden">
+            {thumbnailUrl && deletingNode !== node.id ? (
+              <img
+                src={thumbnailUrl}
+                alt={node.name}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                Img...
+              </div>
+            )}
+          </div>
+          <div className="flex-grow px-2">
+            <span className="truncate">{node.name}</span>
+          </div>
+          <span className={`mx-2 w-3 h-3 ${dynamicBadgeClasses} flex-shrink-0`}></span>
+          {hoveredNodeId === node.id && deletingNode !== node.id && (
+            <div className="flex space-x-1 mr-2">
+              <button
+                onClick={handleRegenerate}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-1 py-0.5 rounded text-xs transition-colors"
+              >
+                R
+              </button>
+              <button
+                onClick={handleEdit}
+                className="bg-yellow-600 hover:bg-yellow-700 text-white px-1 py-0.5 rounded text-xs transition-colors"
+              >
+                E
+              </button>
+              <button
+                onClick={handleDelete}
+                className={`${nodeToDelete === node.id ? 'bg-red-700 hover:bg-red-800' : 'bg-red-600 hover:bg-red-700'} text-white px-1 py-0.5 rounded text-xs transition-colors`}
+                title={nodeToDelete === node.id ? 'Click again to confirm deletion' : 'Delete node'}
+              >
+                {nodeToDelete === node.id ? '✗' : '✗'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
-      className="w-[calc(33.333%-1rem)] flex-shrink-0"
+      className="mb-4 break-inside-avoid w-full"
       onMouseEnter={handleMouseEnterItem}
       onMouseLeave={handleMouseLeaveItem}
     >
@@ -250,11 +311,7 @@ const NodeGridItem: React.FC<NodeGridItemProps> = React.memo((
             </button>
             <button
               onClick={handleDelete}
-              className={`absolute top-2 left-2 ${
-                nodeToDelete === node.id
-                  ? 'bg-red-700 hover:bg-red-800'
-                  : 'bg-red-600 hover:bg-red-700'
-              } text-white p-1 rounded text-sm transition-colors`}
+              className={`absolute top-2 left-2 ${nodeToDelete === node.id ? 'bg-red-700 hover:bg-red-800' : 'bg-red-600 hover:bg-red-700'} text-white p-1 rounded text-sm transition-colors`}
               title={nodeToDelete === node.id ? 'Click again to confirm deletion' : 'Delete node'}
             >
               {nodeToDelete === node.id ? 'Confirm ✗' : '✗'}

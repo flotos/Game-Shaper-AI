@@ -127,7 +127,7 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
   // getCompressedImageUrl is removed.
 
   const nodesGrid = useMemo(() => (
-    <div className="flex flex-wrap gap-4">
+    <div className="columns-3 gap-4">
       {nodes.map((node) => (
         <NodeGridItem
           key={node.id}
@@ -138,23 +138,24 @@ const NodeGraphInterface: React.FC<NodeGraphInterfaceProps> = React.memo(({ node
           nodeToDelete={nodeToDelete}
           deletingNode={deletingNode}
           onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave} // Pass the correctly scoped handleMouseLeave
+          onMouseLeave={handleMouseLeave}
           onRegenerateImage={handleRegenerateImage}
           onDeleteNode={handleDeleteNode}
           onEditNode={handleEditNode}
+          variant={['character', 'location'].includes((node.type || '').toLowerCase()) ? 'grid' : 'list'}
         />
       ))}
     </div>
   ), [
-    nodes, 
-    updatedNodes, 
-    hoveredNodeId, 
-    nodeToDelete, 
-    deletingNode, 
-    handleNodeSelect, 
-    handleMouseEnter, 
-    handleMouseLeave, 
-    handleRegenerateImage, 
+    nodes,
+    updatedNodes,
+    hoveredNodeId,
+    nodeToDelete,
+    deletingNode,
+    handleNodeSelect,
+    handleMouseEnter,
+    handleMouseLeave,
+    handleRegenerateImage,
     handleDeleteNode,
     handleEditNode
   ]);
