@@ -124,7 +124,6 @@ All prompts follow a consistent structure stored in `prompts-instruct.yaml`:
 ```yaml
 operation_name:
   instruction: |
-    /think or /no_think
     # TASK description
     # Rules and constraints  
     # Context sections

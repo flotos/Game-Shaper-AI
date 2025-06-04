@@ -391,32 +391,32 @@ describe('Node Interaction LLM Service', () => {
       expect(result.d_nodes).toEqual(mockExpectedParsedResponse.d_nodes);
     });
     
-    it('should use /think for think_mode when isUserInteraction is false', async () => {
-      // Return proper JSON instead of YAML
-      const mockLlmJsonOutput = JSON.stringify({
-        u_nodes: {
-          "1": {
-            name: { rpl: "Updated Node1" }
-          }
-        }
-      });
+    // it('should use /think for think_mode when isUserInteraction is false', async () => {
+    //   // Return proper JSON instead of YAML
+    //   const mockLlmJsonOutput = JSON.stringify({
+    //     u_nodes: {
+    //       "1": {
+    //         name: { rpl: "Updated Node1" }
+    //       }
+    //     }
+    //   });
       
-      (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-        llmResult: mockLlmJsonOutput,
-        callId: 'edition-call-id-user-false'
-      });
+    //   (getResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
+    //     llmResult: mockLlmJsonOutput,
+    //     callId: 'edition-call-id-user-false'
+    //   });
 
-      // Only checking the think_mode difference here, other params assumed similar to above for brevity
-      await generateNodeEdition(chatHistoryForEdition, mockActionsForEdition, nodesForEditionTest, mockUserInput, false); // isUserInteraction = false
+    //   // Only checking the think_mode difference here, other params assumed similar to above for brevity
+    //   await generateNodeEdition(chatHistoryForEdition, mockActionsForEdition, nodesForEditionTest, mockUserInput, false); // isUserInteraction = false
 
-      expect(formatPrompt).toHaveBeenCalledTimes(1);
-      expect(formatPrompt).toHaveBeenCalledWith(
-        (loadedPrompts.node_operations as any).generate_node_edition,
-        expect.objectContaining({ // Check only a subset of properties
-          think_mode: '/think' 
-        })
-      );
-    });
+    //   expect(formatPrompt).toHaveBeenCalledTimes(1);
+    //   expect(formatPrompt).toHaveBeenCalledWith(
+    //     (loadedPrompts.node_operations as any).generate_node_edition,
+        // expect.objectContaining({
+        //   think_mode: '/think' 
+        // })
+    //   );
+    // });
 
     it('should throw an error if getResponse fails for generateNodeEdition', async () => {
         const mockError = new Error('LLM API Error for generateNodeEdition');

@@ -1,7 +1,5 @@
 twine_import:
   data_extraction: |
-    /think
-
     # Instructions
     You are a Game Engine. Your task is to analyze and extract structured data from a Twine story.
       
@@ -31,8 +29,6 @@ twine_import:
       ]
     }
   node_generation_new_game: |
-    /think
-
     # Instructions
     You are a Game Engine. Your task is to create a completely new game based on the extracted story data.
 
@@ -69,8 +65,6 @@ twine_import:
       "d_nodes": ["nodeID1ToDelete", "nodeID2ToDelete"]
     }
   node_generation_merge: |
-    /think
-
     # Instructions
     You are a Game Engine. Your task is to merge the extracted story data into the existing game world.
 
@@ -128,8 +122,6 @@ twine_import:
       
     During your reasoning process, verify after every node created that you preserved ALL the original feature and did not discard any content.
   regenerate_single_node: |
-    /think
-
     # Instructions
     You are a Game Engine. An AI generated nodes for a game. However, the user deemed the node didn't follow the guidelines he expected.
     Your task is to generate a new node, following more closely the guildelines provided by the user.
@@ -273,7 +265,6 @@ node_operations:
 
     ##Your answer
   generate_chat_text: |
-    /think
     # TASK:
     You are the Game Engine of a textual interactive experience using Nodes as the basis of your knowledge and memory.
     Generate appropriate narration based on user interaction. Consider the nodes which store the memory of the narrator engine, and possible actions for a coherent game state update.
@@ -635,7 +626,6 @@ node_operations:
     For example, the main character and active characters should be first, then the location, then ongoing game systems, ... 
 
   refocus_story: |
-    /think
     # TASK:
     The story generation has become inconsistent or of low quality. Your task is to help refocus the narrative.
     You will generate a concise summary of the story so far, followed by an introduction to the current scene.

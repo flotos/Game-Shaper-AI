@@ -202,7 +202,8 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   ${moxusGuidance}
   ` : '';
   
-  const thinkMode = isUserInteraction ? '/no_think' : '/think';
+  // const thinkMode = isUserInteraction ? '/no_think' : '/think';
+  const thinkMode = '';
 
   const nodeEditionPrompt = formatPrompt(loadedPrompts.node_operations.generate_node_edition, {
     think_mode: thinkMode,
