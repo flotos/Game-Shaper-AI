@@ -5,6 +5,7 @@ import { generateImagePrompt } from './llm';
 interface QueuedImage {
   nodeId: string;
   prompt: string;
+  negativePrompt?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   imageUrl?: string;
   node?: Node;
@@ -30,9 +31,13 @@ class ImageQueueService {
     }
     try {
       const prompt = await generateImagePrompt(node, allNodes, chatHistory);
+      const negativePromptNode = allNodes.find(n => n.type === "image_generation_prompt_negative");
+      const negativePrompt = negativePromptNode?.longDescription?.trim();
+
       this.queue.push({
         nodeId: node.id,
         prompt,
+        negativePrompt,
         status: 'pending',
         node
       });
@@ -78,7 +83,12 @@ class ImageQueueService {
     try {
       console.log('Processing queue item for node:', item.nodeId, 'Type:', item.node.type);
       item.status = 'processing';
-      const imageUrl = await generateImage(item.prompt, item.node.imageSeed, item.node.type);
+      let imageUrl: string;
+      if (item.negativePrompt !== undefined) {
+        imageUrl = await generateImage(item.prompt, item.node.imageSeed, item.node.type, item.negativePrompt);
+      } else {
+        imageUrl = await generateImage(item.prompt, item.node.imageSeed, item.node.type);
+      }
       
       if (imageUrl && this.updateNodeCallback) {
         console.log('Generated new image for node:', item.nodeId);

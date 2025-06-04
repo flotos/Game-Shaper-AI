@@ -75,9 +75,15 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
       throw new Error(errMsg);
     }
     
-    // Finalize as successful since we expect a string and no further parsing is done here.
-    moxusService.finalizeLLMCallRecord(responsePayload.callId, responsePayload.llmResult);
-    return responsePayload.llmResult;
+    // Append default positive prompt if provided via node of type image_generation_prompt
+    const positivePromptNode = allNodes.find(n => n.type === "image_generation_prompt");
+    const positivePromptAddition = positivePromptNode?.longDescription?.trim() || "";
+
+    const finalPrompt = positivePromptAddition ? `${responsePayload.llmResult} ${positivePromptAddition}`.trim() : responsePayload.llmResult;
+
+    // Finalize as successful with the final prompt.
+    moxusService.finalizeLLMCallRecord(responsePayload.callId, finalPrompt);
+    return finalPrompt;
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

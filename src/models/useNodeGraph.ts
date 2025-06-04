@@ -37,7 +37,7 @@ const initNodes: Node[] = [
 ];
 
 function useNodeGraph() {
-  const nonDeletableNodeTypes = ["system", "assistant", "image_generation"].map(type => type.toLowerCase());
+  const nonDeletableNodeTypes = ["system", "assistant", "image_generation", "image_generation_prompt", "image_generation_prompt_negative"].map(type => type.toLowerCase());
   const [nodes, setNodes] = useState<Node[]>(() => {
     try {
       const savedNodes = localStorage.getItem('nodeGraph');

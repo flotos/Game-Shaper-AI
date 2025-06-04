@@ -4,25 +4,25 @@ import { moxusService } from '../services/MoxusService';
 
 const apiType = import.meta.env.VITE_IMG_API;
 
-export const generateImage = async (prompt: string, seed?: number, nodeType?: string): Promise<string> => {
+export const generateImage = async (prompt: string, seed?: number, nodeType?: string, negativePromptOverride?: string): Promise<string> => {
   const storageProfile: 'storage_character' | 'storage_other' =
     nodeType?.toLowerCase() === 'character' ? 'storage_character' : 'storage_other';
 
   if (apiType === 'openai') {
-    return generateImageFromOpenAI(prompt, seed, storageProfile);
+    return generateImageFromOpenAI(prompt, seed, storageProfile, negativePromptOverride);
   } else if (apiType === 'openrouter') {
-    return generateImageFromOpenRouter(prompt, seed, storageProfile);
+    return generateImageFromOpenRouter(prompt, seed, storageProfile, negativePromptOverride);
   } else if (apiType === 'automatic1111') {
-    return generateImageFromAutomatic(prompt, seed, storageProfile);
+    return generateImageFromAutomatic(prompt, seed, storageProfile, negativePromptOverride);
   } else if (apiType === 'novelai') {
-    return generateImageFromNovelAIV4(prompt, seed, storageProfile);
+    return generateImageFromNovelAIV4(prompt, seed, storageProfile, negativePromptOverride);
   } else {
     console.error('Unknown API type');
     return '';
   }
 };
 
-const generateImageFromOpenAI = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
+const generateImageFromOpenAI = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other', _negativePromptOverride?: string): Promise<string> => {
   const callId = `img_openai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const modelName = import.meta.env.VITE_OAI_IMAGE_MODEL || 'dall-e-unknown';
   moxusService.initiateLLMCallRecord(callId, 'image_generation_openai', modelName, prompt);
@@ -77,7 +77,7 @@ const generateImageFromOpenAI = async (prompt: string, seed?: number, storagePro
  * - anthropic/claude-3-opus
  */
 
-const generateImageFromOpenRouter = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
+const generateImageFromOpenRouter = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other', _negativePromptOverride?: string): Promise<string> => {
   const callId = `img_openrouter-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const modelName = import.meta.env.VITE_OPENROUTER_IMAGE_MODEL || 'openrouter_unknown_image_model';
   moxusService.initiateLLMCallRecord(callId, 'image_generation_openrouter', modelName, prompt);
@@ -156,7 +156,7 @@ const generateImageFromOpenRouter = async (prompt: string, seed?: number, storag
   }
 };
 
-const generateImageFromAutomatic = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
+const generateImageFromAutomatic = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other', negativePromptOverride?: string): Promise<string> => {
   const callId = `img_auto1111-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const modelName = 'Automatic1111_txt2img'; // Or extract from config if available
   moxusService.initiateLLMCallRecord(callId, 'image_generation_auto1111', modelName, prompt);
@@ -165,7 +165,7 @@ const generateImageFromAutomatic = async (prompt: string, seed?: number, storage
 
   const payload = {
     prompt,
-    negative_prompt: prompts.image_prompt_negative,
+    negative_prompt: negativePromptOverride || prompts.image_prompt_negative,
     seed: seed || 1,
     steps: 20,
     width: 1024,
@@ -208,13 +208,13 @@ const generateImageFromAutomatic = async (prompt: string, seed?: number, storage
   }
 };
 
-const generateImageFromNovelAIV4 = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other'): Promise<string> => {
+const generateImageFromNovelAIV4 = async (prompt: string, seed?: number, storageProfile?: 'storage_character' | 'storage_other', negativePromptOverride?: string): Promise<string> => {
   const callId = `img_novelai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const modelName = 'nai-diffusion-4-full'; // From payload
   moxusService.initiateLLMCallRecord(callId, 'image_generation_novelai', modelName, prompt);
 
   console.log('Starting NovelAI v4 image generation...');
-  const negativePrompt = prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art, bad anatomy, plain background, white background, black background";
+  const negativePrompt = negativePromptOverride || prompts.image_prompt_negative || "anime, cartoon, manga, blurry, low quality, lowres, dark, dim, concept art, bad anatomy, plain background, white background, black background";
   const now = new Date().toISOString();
   const correlationId = Math.random().toString(36).substring(2, 8);
 
