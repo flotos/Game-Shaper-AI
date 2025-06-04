@@ -220,7 +220,7 @@ const generateImageFromNovelAIV4 = async (prompt: string, seed?: number, storage
 
   const payload = {
     input: prompt,
-    model: "nai-diffusion-4-full",
+    model: "nai-diffusion-4-5-full",
     action: "generate",
     parameters: {
       params_version: 3,
