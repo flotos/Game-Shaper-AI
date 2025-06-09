@@ -165,7 +165,6 @@ twine_import:
 
 image_generation:
   base_prompt_with_instructions_node: |
-    /no_think
     --> Your task
     The following instructions are to generate ONE image. It is very important to ensure only one image is generated.
     Your reply should be the prompt directly, with no comment, no reasoning.
@@ -485,7 +484,11 @@ node_operations:
     - **Fundamental state changes**: Item becomes magical and glows, character becomes undead, location becomes corrupted
     - **New visual elements that dominate**: Character gains prominent scars, tattoos, or prosthetics that define their appearance
     
-    **Remember**: Image generation is expensive and time-consuming. Only update when the visual change is so significant that someone looking at the current image would say "this doesn't match the description anymore."
+    **Remember**:
+    - Image generation is expensive and time-consuming. Only update when the visual change is so significant that someone looking at the current image would say "this doesn't match the description anymore."
+    - Each node should be multiple paragraphs long, but avoid having very long ones.
+    - The nodes are there for the memory, but shouldn't duplicate the chat history. Write the state of thing there, but never "Character X did Y and is now Z". Instead, specify "Character X is Z" using the same templating
+      as the node already uses.
 
     Return only the JSON object as your entire response, with no additional text or formatting.
   generate_nodes_from_prompt: |
@@ -602,6 +605,7 @@ node_operations:
     ```
 
     Return only the JSON object as your entire response, with no additional text or formatting.
+    {utils.diffPrompt}
   sort_nodes_by_relevance: |
     # TASK:
     You are a Game Engine. Your task is to sort the nodes by their relevance to the current chat history.
