@@ -44,7 +44,7 @@ export const extractDataFromTwine = async (
     ];
 
     try {
-      const result = await getResponse(extractionMessagesInternal, 'gpt-4o', undefined, false, { type: 'json_object' });
+      const result = await getResponse(extractionMessagesInternal, undefined, undefined, false, { type: 'json_object' });
       const parsedResult = typeof result === 'string' ? safeJsonParse(result) : result;
       
       if (!parsedResult.elements || !Array.isArray(parsedResult.elements)) {
@@ -135,7 +135,7 @@ export const generateNodesFromExtractedData = async (
   
   let response: any;
   try {
-    response = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'node_generation');
+    response = await getResponse(messages, undefined, undefined, false, { type: 'json_object' }, undefined, 'node_generation');
   } catch (error) {
     console.error('[TwineImportService] generateNodesFromExtractedData: getResponse failed.', error);
     throw error;
@@ -222,7 +222,7 @@ export const regenerateSingleNode = async (
   
   let response: any;
   try {
-    response = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'single_node_regeneration');
+    response = await getResponse(messages, undefined, undefined, false, { type: 'json_object' }, undefined, 'single_node_regeneration');
   } catch (error) {
     console.error('[TwineImportService] regenerateSingleNode: getResponse failed.', error);
     throw error;

@@ -196,11 +196,11 @@ export const getChatHistoryForMoxus = (chatHistory: Message[], numAssistantTurns
 
 export const getResponse = async (
   messages: Message[], 
-  model = 'gpt-4o', 
+  model?: string, 
   grammar: String | undefined = undefined, 
   stream = false, 
   responseFormat?: { type: string }, 
-  options?: { skipMoxusFeedback?: boolean },
+  options?: { skipMoxusFeedback?: boolean; temperature?: number; frequency_penalty?: number },
   callType: string = 'unknown'
 ) => {
   const apiType = import.meta.env.VITE_LLM_API;
@@ -211,7 +211,7 @@ export const getResponse = async (
   const callId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const originalPromptString = JSON.stringify(messages);
 
-  moxusService.initiateLLMCallRecord(callId, callType, model, originalPromptString);
+  moxusService.initiateLLMCallRecord(callId, callType, model ?? '', originalPromptString);
 
   if (!options?.skipMoxusFeedback && !stream) {
     const moxusFeedbackContent = formatPrompt(loadedPrompts.utils.moxus_feedback_system_message, {
@@ -257,6 +257,10 @@ export const getResponse = async (
     try {
       let response;
       if (apiType === 'openai') {
+        const openaiModel = model ?? import.meta.env.VITE_OAI_MODEL;
+        if (!openaiModel) {
+          throw new Error('OpenAI model not specified via argument or VITE_OAI_MODEL');
+        }
         response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -264,7 +268,7 @@ export const getResponse = async (
             'Authorization': `Bearer ${import.meta.env.VITE_OAI_KEY}`
           },
           body: JSON.stringify({
-            model: model,
+            model: openaiModel,
             messages: messages,
             stream: stream,
             response_format: responseFormat
@@ -339,14 +343,21 @@ export const getResponse = async (
           body: JSON.stringify(requestBody)
         });
       } else if (apiType === 'deepseek') {
-        const deepseekModel = import.meta.env.VITE_DEEPSEEK_MODEL || 'deepseek-chat';
-        
+        let deepseekModel: string;
+        if (model === 'reasoning') {
+          deepseekModel = import.meta.env.VITE_DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner';
+        } else if (model) {
+          deepseekModel = model;
+        } else {
+          deepseekModel = import.meta.env.VITE_DEEPSEEK_MODEL || 'deepseek-chat';
+        }
+
         const deepSeekPayload: any = {
           model: deepseekModel,
           messages: messages,
           stream: stream,
-          temperature: 0.2,
-          frequency_penalty: 0,
+          temperature: options?.temperature ?? 0.2,
+          frequency_penalty: options?.frequency_penalty ?? 0,
         };
 
         if (responseFormat) {
@@ -502,7 +513,7 @@ export const getMoxusFeedback = async (promptContent: string, originalCallType: 
 
     const response = await getResponse(
       messages, 
-      'gpt-4o-mini', 
+      undefined, 
       undefined, 
       false, 
       responseFormat,

@@ -109,7 +109,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   });
 
   const chatTextMessages: Message[] = [{ role: 'system', content: chatTextPrompt }];
-  const result = await getResponse(chatTextMessages, 'gpt-4o', undefined, true, undefined, undefined, 'chat_text_generation');
+  const result = await getResponse(chatTextMessages, undefined, undefined, true, undefined, undefined, 'chat_text_generation');
   return result as { streamResponse: Response, callId: string };
 };
 
@@ -150,8 +150,7 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
   const actionsMessages: Message[] = [{ role: 'system', content: actionsPrompt }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    // Assuming generateActions still expects JSON from LLM
-    responsePayload = await getResponse(actionsMessages, 'gpt-4o', undefined, false, { type: 'json_object' }, undefined, 'action_generation') as { llmResult: string, callId: string };
+    responsePayload = await getResponse(actionsMessages, undefined, undefined, false, { type: 'json_object' }, undefined, 'action_generation') as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] generateActions: getResponse failed.', error);
     throw error;
@@ -217,7 +216,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   const messages: Message[] = [{ role: 'system', content: nodeEditionPrompt }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(messages, "gpt-4o", undefined, false, { type: 'json_object' }, undefined, 'node_edition_json') as { llmResult: string, callId: string };
+    responsePayload = await getResponse(messages, undefined, undefined, false, { type: 'json_object' }, undefined, 'node_edition_json') as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] generateNodeEdition (JSON): getResponse failed.', error);
     throw error;
@@ -279,6 +278,13 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
     }
   }
 
+  const modelsTasksConfig = (await import('../config/modelsTasks.yaml')).default as any;
+  const taskOverride = modelsTasksConfig?.modelsTasks?.find((t: any) => t.promptName === 'generate_nodes_from_prompt');
+
+  const modelOverride: string | undefined = taskOverride?.model;
+  const temperatureOverride: number | undefined = taskOverride?.temperature;
+  const freqPenaltyOverride: number | undefined = taskOverride?.frequency_penalty;
+
   const promptMessageContent = formatPrompt(loadedPrompts.node_operations.generate_nodes_from_prompt, {
     user_prompt: userPrompt,
     moxus_context_string: moxusContextString,
@@ -288,7 +294,19 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   const messages: Message[] = [{ role: 'system', content: promptMessageContent }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_creation_from_prompt') as { llmResult: string, callId: string };
+    const llmOptions: any = {};
+    if (temperatureOverride !== undefined) llmOptions.temperature = temperatureOverride;
+    if (freqPenaltyOverride !== undefined) llmOptions.frequency_penalty = freqPenaltyOverride;
+
+    responsePayload = await getResponse(
+      messages,
+      modelOverride,
+      undefined,
+      false,
+      { type: 'json_object' },
+      llmOptions,
+      'node_creation_from_prompt'
+    ) as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] generateNodesFromPrompt: getResponse failed.', error);
     throw error;
@@ -397,7 +415,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   const messages: Message[] = [{ role: 'system', content: prompt }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    responsePayload = await getResponse(messages, "gpt-4", undefined, false, { type: 'json_object' }, undefined, 'node_sort_by_relevance') as { llmResult: string, callId: string };
+    responsePayload = await getResponse(messages, undefined, undefined, false, { type: 'json_object' }, undefined, 'node_sort_by_relevance') as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] sortNodesByRelevance: getResponse failed.', error);
     throw error;
@@ -425,10 +443,8 @@ export const refocusStory = async (chatHistory: Message[], nodes: Node[]): Promi
   });
 
   const messages: Message[] = [{ role: 'system', content: prompt }];
-  // Not expecting JSON, direct text response. No streaming needed for this specific call.
-  const responsePayload = await getResponse(messages, "gpt-4o", undefined, false, undefined, undefined, 'refocus_story_generation') as { llmResult: string, callId: string };
+  const responsePayload = await getResponse(messages, undefined, undefined, false, undefined, undefined, 'refocus_story_generation') as { llmResult: string, callId: string };
   
-  // Finalize LLM call record, assuming it's successful if no error is thrown by getResponse
   moxusService.finalizeLLMCallRecord(responsePayload.callId, "Refocus story text generated successfully.");
   console.log(`[NodeInteractionService] refocusStory successful for callId: ${responsePayload.callId}`);
   return responsePayload; 
@@ -462,7 +478,7 @@ export const generateUserInputResponse = async(userInput: string, chatHistory: M
   return {
     chatText: accumulatedChatText,
     actions,
-    nodeEdition, // This is LLMNodeEditionResponse (JSON structure with shortened keys)
+    nodeEdition,
     chatTextCallId
   };
 } 

@@ -65,7 +65,7 @@ export const generateImagePrompt = async(node: Partial<Node>, allNodes: Node[], 
 
   try {
     // Pass the specific callType to getResponse
-    responsePayload = await getResponse(messages, 'gpt-4o', undefined, false, undefined, { skipMoxusFeedback: true }, callType);
+    responsePayload = await getResponse(messages, undefined, undefined, false, undefined, { skipMoxusFeedback: true }, callType);
     
     if (!responsePayload || typeof responsePayload.llmResult !== 'string') {
       const errMsg = 'generateImagePrompt did not receive a valid llmResult string.';

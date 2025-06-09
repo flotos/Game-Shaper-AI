@@ -1,0 +1,5 @@
+modelsTasks:
+  - promptName: generate_nodes_from_prompt
+    model: reasoning
+    temperature: 1
+    frequency_penalty: 0
