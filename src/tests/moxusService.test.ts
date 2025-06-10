@@ -376,8 +376,8 @@ describe('Moxus Service - Consciousness-Driven System', () => {
         memory_update_diffs: {
           df: [
             {
-              prev_txt: "previous observation",
-              next_txt: "evolved insight about narrative quality",
+              prev_txt: "*This document analyzes narrative quality and coherence in the generated story text.*",
+              next_txt: "*This document analyzes narrative quality and coherence in the generated story text.*\n\nEvolved insight about narrative quality based on recent interactions.",
               occ: 1
             }
           ]
@@ -402,6 +402,13 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       
       await advanceTimersByTime(200);
       
+      // Wait for task queue to be empty AND no active tasks to ensure all async operations complete
+      let attempts = 0;
+      while ((moxusService.getPendingTaskCount() > 0 || moxusService.hasActiveTasks()) && attempts < 10) {
+        await advanceTimersByTime(100);
+        attempts++;
+      }
+      
       expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
       
       const feedbackCall = mockGetMoxusFeedbackImpl.mock.calls[0];
@@ -424,8 +431,8 @@ describe('Moxus Service - Consciousness-Driven System', () => {
         memory_update_diffs: {
           df: [
             {
-              prev_txt: "previous world-building insight",
-              next_txt: "evolved understanding of world structure",
+              prev_txt: "*This document analyzes changes to game nodes over time and their impact on the game world.*",
+              next_txt: "*This document analyzes changes to game nodes over time and their impact on the game world.*\n\nEvolved understanding of world structure based on recent node editions.",
               occ: 1
             }
           ]
@@ -445,6 +452,13 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       moxusService.finalizeLLMCallRecord(mockNodeEditionLLMCall.id, mockNodeEditionLLMCall.response as string);
       
       await advanceTimersByTime(200);
+      
+      // Wait for task queue to be empty AND no active tasks to ensure all async operations complete
+      let attempts = 0;
+      while ((moxusService.getPendingTaskCount() > 0 || moxusService.hasActiveTasks()) && attempts < 10) {
+        await advanceTimersByTime(100);
+        attempts++;
+      }
       
       expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(1);
       
@@ -506,6 +520,13 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       moxusService.finalizeLLMCallRecord(chatTextCall.id, chatTextCall.response as string);
       
       await advanceTimersByTime(200);
+      
+      // Wait for task queue to be empty AND no active tasks to ensure all async operations complete
+      let attempts = 0;
+      while ((moxusService.getPendingTaskCount() > 0 || moxusService.hasActiveTasks()) && attempts < 10) {
+        await advanceTimersByTime(100);
+        attempts++;
+      }
       
       const finalMemory = moxusService.getMoxusMemory();
       
