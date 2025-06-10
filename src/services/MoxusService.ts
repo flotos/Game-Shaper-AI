@@ -1507,7 +1507,11 @@ export const moxusService = {
   getLLMCallFeedback,
   getLLMCallsMemoryJSON,
   getPendingTaskCount: () => taskQueue.length,
+  hasActiveTasks: () => {
+    return !!(activeChatTextFeedback || activeLLMNodeEditionYamlFeedback || activeFinalReport);
+  },
   resetMemory: () => {
+    console.log('[MoxusService] resetMemory() called - Stack trace:', new Error().stack);
     moxusStructuredMemory = createDefaultMemoryStructure();
     taskQueue = [];
     nextTaskId = 1;
