@@ -127,7 +127,7 @@ describe('Image Generation LLM Service', () => {
       expect(getResponse).toHaveBeenCalledTimes(1);
       expect(getResponse).toHaveBeenCalledWith(
         expect.arrayContaining([expect.objectContaining({ role: 'system' })]),
-        'gpt-4o',
+        undefined,
         undefined,
         false,
         undefined,

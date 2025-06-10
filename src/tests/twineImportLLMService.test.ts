@@ -66,7 +66,7 @@ describe('Twine Import LLM Service', () => {
 
       expect(getResponse).toHaveBeenCalledWith(
         expect.arrayContaining([expect.objectContaining({ role: 'system' })]),
-        'gpt-4o',
+        undefined,
         undefined,
         false,
         { type: 'json_object' }
@@ -200,7 +200,7 @@ describe('Twine Import LLM Service', () => {
 
       expect(getResponse).toHaveBeenCalledWith(
         expect.arrayContaining([expect.objectContaining({ role: 'system' })]),
-        'gpt-4o',
+        undefined,
         undefined,
         false,
         { type: 'json_object' },

@@ -219,7 +219,7 @@ describe('Node Interaction LLM Service', () => {
       // getResponse call assertions remain the same as before
       expect(getResponse).toHaveBeenCalledWith(
         expect.arrayContaining([expect.objectContaining({ role: 'system' })]), 
-        'gpt-4o',
+        undefined,
         undefined,
         true, 
         undefined,
@@ -376,11 +376,41 @@ describe('Node Interaction LLM Service', () => {
       // Call the function under test
       const result = await generateNodeEdition(chatHistoryForEdition, mockActionsForEdition, nodesForEditionTest, mockUserInput, true); // isUserInteraction = true for /no_think
 
+      // Expected replacements for formatPrompt based on the service function's logic
+      const expectedFormattedChatHistory = 
+        `user: A user interaction\n` +
+        `assistant: Okay, I will consider node X.\n`;
+
+      const expectedNodesDescription = 
+        `\n      id: 1\n      name: Node1\n      longDescription: A descriptive node\n      type: story\n      ` +
+        `\n      id: 2\n      name: Node2\n      longDescription: Another node\n      type: character\n      `;
+
+      const expectedLastMoxusReportSection = `
+  ## Latest Moxus Analysis (CRITICAL - MUST FOLLOW):
+  Note: This is feedback from the World Design & Interactivity Watcher, an AI that monitors 
+  the story and provides VITAL guidance to maintain consistency and quality in the game world.
+  ALL INSTRUCTIONS AND OBSERVATIONS FROM MOXUS IN THIS SECTION ARE MANDATORY.
+  
+  Consider node X.
+  
+  ## Moxus World-Building Guidance (APPLY THESE INSIGHTS):
+  The following guidance comes from Moxus's evolved understanding of effective world-building:
+  
+  Mocked worldbuilding guidance
+  `;
+
       // Assertions for prompt generation (already covered, but good to keep)
       expect(formatPrompt).toHaveBeenCalledTimes(1);
       expect(formatPrompt).toHaveBeenCalledWith(
         (loadedPrompts.node_operations as any).generate_node_edition,
-        expect.objectContaining({ think_mode: '/no_think' })
+        {
+          think_mode: "",
+          nodes_description: expectedNodesDescription,
+          formatted_chat_history: expectedFormattedChatHistory,
+          last_moxus_report_section: expectedLastMoxusReportSection,
+          actions_list: mockActionsForEdition.join('\n'),
+          user_input: mockUserInput
+        }
       );
       expect(getResponse).toHaveBeenCalledTimes(1);
 

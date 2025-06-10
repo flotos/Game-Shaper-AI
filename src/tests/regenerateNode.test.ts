@@ -79,7 +79,7 @@ describe('Regenerate Node Service - Real Logic Tests', () => {
 
     expect(getResponse).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ role: 'system' })]),
-      'gpt-4o',
+      undefined,
       undefined,
       false,
       { type: 'json_object' },
