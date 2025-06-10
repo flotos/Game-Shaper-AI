@@ -32,7 +32,7 @@ vi.mock('../prompts-instruct.yaml', () => {
   const MOCKED_NODE_EDITION_TEACHING_PROMPT = 'moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}';
   const MOCKED_MANUAL_EDIT_LEARNING_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher. You are learning about the user\'s creative vision by observing their manual edits. {assistant_nodes_content} {current_general_memory} {original_node} {user_changes} {edit_context} {current_manual_edit_memory}';
   const MOCKED_GENERIC_MEMORY_UPDATE_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {current_general_memory} {existing_memory} {task_type} {task_data} {formatted_chat_history}';
-  const MOCKED_FINAL_REPORT_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {chat_history_context} {general_memory} {chat_text_analysis} {node_editions_analysis}';
+  const MOCKED_FINAL_REPORT_PROMPT = 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {chat_history_context} {previous_report_analysis} {compliance_analysis} {current_general_memory} {chat_text_analysis} {node_editions_analysis}';
   const MOCKED_DIFF_PROMPT = 'Test diff prompt instructions for JSON memory updates using rpl and df formats';
   
   return {
@@ -74,7 +74,7 @@ vi.mock('../services/llmCore', async (importOriginal) => {
         moxus_feedback_on_node_edition_json: 'moxus_feedback_on_node_edition_json: Teaching the World-Builder AI about node creation: {assistant_nodes_content} {current_general_memory} {recent_chat_history} {node_edition_response} {all_nodes_context} {current_node_edition_memory}',
         moxus_feedback_on_manual_node_edit: 'Your name is Moxus, the World Design & Interactivity Watcher. You are learning about the user\'s creative vision by observing their manual edits. {assistant_nodes_content} {current_general_memory} {original_node} {user_changes} {edit_context} {current_manual_edit_memory}',
         memory_section_update: 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {current_general_memory} {existing_memory} {task_type} {task_data} {formatted_chat_history}',
-        moxus_final_report: 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {chat_history_context} {general_memory} {chat_text_analysis} {node_editions_analysis}',
+        moxus_final_report: 'Your name is Moxus, the World Design & Interactivity Watcher for this game engine. {assistant_nodes_content} {chat_history_context} {previous_report_analysis} {compliance_analysis} {current_general_memory} {chat_text_analysis} {node_editions_analysis}',
       },
       utils: {
         diffPrompt: 'Test diff prompt instructions for JSON memory updates using rpl and df formats',
@@ -602,9 +602,12 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       const initialNodeEditionMemory = "Some node edition analysis.";
       const initialGeneralMemory = "Initial General Memory.";
 
-      moxusService.getMoxusMemory().featureSpecificMemory.chatText = initialChatTextMemory;
-      moxusService.getMoxusMemory().featureSpecificMemory.nodeEdition = initialNodeEditionMemory;
-      moxusService.getMoxusMemory().GeneralMemory = initialGeneralMemory;
+      // Set up the memory state using the memory import pattern that works
+      const memory = moxusService.getMoxusMemory();
+      memory.featureSpecificMemory.chatText = initialChatTextMemory;
+      memory.featureSpecificMemory.nodeEdition = initialNodeEditionMemory;
+      memory.GeneralMemory = initialGeneralMemory;
+      moxusService.setMoxusMemory(memory);
 
       (moxusService as any).hasNodeEditionFeedbackCompletedForReport = true;
       (moxusService as any).hasChatTextFeedbackCompletedForReport = true;   
@@ -623,14 +626,12 @@ describe('Moxus Service - Consciousness-Driven System', () => {
 
       moxusService.addTask('finalReport', { reason: "Test trigger" }, mockChatHistoryForReport);
 
-      // Wait for first task to complete (finalReport)
-      await advanceTimersByTime(500);
-      
-      // Wait for the second task to be added to the queue and processed
-      await advanceTimersByTime(100);
-      
-      // Process the second task (GeneralMemory update)
-      await advanceTimersByTime(500);
+      // Wait for task queue to be empty AND no active tasks to ensure all async operations complete
+      let attempts = 0;
+      while ((moxusService.getPendingTaskCount() > 0 || moxusService.hasActiveTasks()) && attempts < 10) {
+        await advanceTimersByTime(100);
+        attempts++;
+      }
       
       expect(mockGetMoxusFeedbackImpl).toHaveBeenCalledTimes(2);
 
