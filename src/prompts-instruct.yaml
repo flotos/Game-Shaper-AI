@@ -1059,5 +1059,5 @@ utils:
     short: "Generate a brief response in 1 sentence that advances the story efficiently."
     "1 paragraph": "Generate exactly one paragraph (4-5 sentences) that develops the current scene with focused detail."
     "3 paragraphs": "Generate a chapter (3 paragraphs) making the story progress over one action."
-    lengthy: "Generate an extended narrative spanning a chapter (4-5 paragraphs) with rich detail and character development."
-    "full page": "Generate a comprehensive full-page response (6-8 paragraphs) with extensive world-building, character interaction, and story progression."
+    lengthy: "Generate an extended narrative spanning a chapter (5 paragraphs) with rich detail and character development."
+    "full page": "Generate a comprehensive full-page response (10 paragraphs) with extensive world-building, character interaction, and story progression."
