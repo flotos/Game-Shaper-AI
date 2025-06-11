@@ -302,13 +302,15 @@ node_operations:
     The princess lost another game of cyvasse to Daemon Sand, won one from Joss Hood, then retired as the two of them began to teach Jayne Ladybright the rules. She was tired of such games.
     
     ## To wrap up
-    Generate a chapter (3 paragraphs) making the story progress over one action.
     Don't ask questions to the player unless it is through a character dialogue.
     Use proper book writing style, don't use complex sentences and words.
     Your wording should be grounded, making each action detailled and understandable for the reader. Take time to explain what happens, don't skip to the next action right away.
     Note, the formal wording of the nodes should not be reflected in the textual output, we should be properly written book text.
 
     If writing dialogues, make them natural and like in any book, with proper sentences. They should feel natural.
+
+    ## Response length
+    {response_length_instruction}
 
     You should take into account the nodes from the game content, but focus on keeping the story coherent with the chat history.
   generate_actions: |
@@ -1003,7 +1005,6 @@ utils:
     chat_text_analysis: "NARRATIVE TEACHING INSIGHTS"
     node_editions_analysis: "WORLD-BUILDING TEACHING INSIGHTS"
     node_edit_analysis: "USER CREATIVE VISION LEARNING"
-    assistant_feedback_analysis: "ASSISTANT INTERACTION INSIGHTS"
     previous_report_analysis: "Previous Final Report Analysis"
     compliance_analysis: "Narrative AI Compliance Assessment"
 
@@ -1052,3 +1053,11 @@ utils:
     ## Integration Instructions:
     - Apply Moxus's learned insights about what works well for this user
     This guidance represents accumulated wisdom from extensive creative mentorship. Apply it thoughtfully to create the best possible result.
+
+  # Response Length Options for Chat Text Generation
+  responseLength:
+    short: "Generate a brief response in 1 sentence that advances the story efficiently."
+    "1 paragraph": "Generate exactly one paragraph (4-5 sentences) that develops the current scene with focused detail."
+    "3 paragraphs": "Generate a chapter (3 paragraphs) making the story progress over one action."
+    lengthy: "Generate an extended narrative spanning a chapter (4-5 paragraphs) with rich detail and character development."
+    "full page": "Generate a comprehensive full-page response (6-8 paragraphs) with extensive world-building, character interaction, and story progression."

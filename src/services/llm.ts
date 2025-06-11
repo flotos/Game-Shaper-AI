@@ -25,6 +25,9 @@ export {
   refocusStory,
 } from './nodeInteractionLLMService';
 
+// Export configuration utilities for external use
+export { getTaskConfig, invalidateConfigCache } from './modelTasksConfigService';
+
 // It's generally not recommended to export core functionalities like getResponse, formatPrompt, or loadedPrompts directly
 // from the barrel file if they are meant for internal use within the LLM services group.
 // However, if any of the helper functions from llmCore.ts are needed by UI or other non-LLM services, they could be exported here.

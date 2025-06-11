@@ -28,6 +28,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
   const [showDebug, setShowDebug] = useState(true);
   const [inspectMode, setInspectMode] = useState(false);
   const [disableImageGeneration, setDisableImageGeneration] = useState(false);
+  const [responseLength, setResponseLength] = useState<'short' | '1 paragraph' | '3 paragraphs' | 'lengthy' | 'full page'>('3 paragraphs');
   const [lastNodeEdition, setLastNodeEdition] = useState<LLMNodeEditionResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [actionTriggered, setActionTriggered] = useState(false);
@@ -87,7 +88,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
       }
 
       console.log('Starting chat text generation');
-      const chatTextResult = await generateChatText(currentInput, contextHistory.slice(-20), nodes, detailedNodeIds);
+      const chatTextResult = await generateChatText(currentInput, contextHistory.slice(-20), nodes, detailedNodeIds, responseLength);
       const chatTextResponse = chatTextResult.streamResponse;
       chatTextCallId_to_finalize = chatTextResult.callId;
       
@@ -459,6 +460,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ nodes, updateGraph, addMe
         >
           {disableImageGeneration ? 'Enable Image Generation' : 'Disable Image Generation'}
         </button>
+        <div className="py-2 text-sm">
+          <label className="text-blue-500 mr-2">Response length:</label>
+          <select 
+            value={responseLength} 
+            onChange={(e) => setResponseLength(e.target.value as 'short' | '1 paragraph' | '3 paragraphs' | 'lengthy' | 'full page')}
+            className="bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600"
+          >
+            <option value="short">Short</option>
+            <option value="1 paragraph">1 paragraph</option>
+            <option value="3 paragraphs">3 paragraphs</option>
+            <option value="lengthy">Lengthy</option>
+            <option value="full page">Full page</option>
+          </select>
+        </div>
       </div>
       <DetailsOverlay isCollapsed={isCollapsed} toggleCollapse={toggleCollapse} lastNodeEdition={[]} nodes={nodes} />
     </div>

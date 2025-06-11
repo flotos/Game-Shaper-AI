@@ -66,7 +66,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   return processJsonResponse('NodeInteractionService', 'getRelevantNodes', responsePayload, (jsonString) => safeJsonParse(jsonString).relevantNodes);
 };
 
-export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], _detailledNodeIds: String[]): Promise<{ streamResponse: Response, callId: string }> => {
+export const generateChatText = async(userInput: string, chatHistory: Message[], nodes: Node[], _detailledNodeIds: String[], responseLength: 'short' | '1 paragraph' | '3 paragraphs' | 'lengthy' | 'full page' = '3 paragraphs'): Promise<{ streamResponse: Response, callId: string }> => {
   console.log('LLM Call (NodeInteractionService): Generating chat text');
   
   const lastFiveInteractions = getLastFiveInteractions(chatHistory);
@@ -101,11 +101,15 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   ${moxusGuidance}
   ` : '';
 
+  // Get response length instruction from prompts
+  const responseLengthInstruction = loadedPrompts.utils?.responseLength?.[responseLength] || loadedPrompts.utils?.responseLength?.['3 paragraphs'] || 'Generate a chapter (3 paragraphs) making the story progress over one action.';
+
   const chatTextPrompt = formatPrompt(loadedPrompts.node_operations.generate_chat_text, {
     nodes_description: nodesDescription,
     string_history: stringHistory,
     last_moxus_report_section: lastMoxusReportSection + moxusGuidanceSection,
-    user_input: userInput
+    user_input: userInput,
+    response_length_instruction: responseLengthInstruction
   });
 
   const chatTextMessages: Message[] = [{ role: 'system', content: chatTextPrompt }];
@@ -278,13 +282,6 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
     }
   }
 
-  const modelsTasksConfig = (await import('../config/modelsTasks.yaml')).default as any;
-  const taskOverride = modelsTasksConfig?.modelsTasks?.find((t: any) => t.promptName === 'generate_nodes_from_prompt');
-
-  const modelOverride: string | undefined = taskOverride?.model;
-  const temperatureOverride: number | undefined = taskOverride?.temperature;
-  const freqPenaltyOverride: number | undefined = taskOverride?.frequency_penalty;
-
   const promptMessageContent = formatPrompt(loadedPrompts.node_operations.generate_nodes_from_prompt, {
     user_prompt: userPrompt,
     moxus_context_string: moxusContextString,
@@ -294,18 +291,14 @@ export const generateNodesFromPrompt = async (userPrompt: string, nodes: Node[],
   const messages: Message[] = [{ role: 'system', content: promptMessageContent }];
   let responsePayload: { llmResult: string, callId: string };
   try {
-    const llmOptions: any = {};
-    if (temperatureOverride !== undefined) llmOptions.temperature = temperatureOverride;
-    if (freqPenaltyOverride !== undefined) llmOptions.frequency_penalty = freqPenaltyOverride;
-
     responsePayload = await getResponse(
       messages,
-      modelOverride,
+      undefined,
       undefined,
       false,
       { type: 'json_object' },
-      llmOptions,
-      'node_creation_from_prompt'
+      undefined,
+      'generate_nodes_from_prompt'
     ) as { llmResult: string, callId: string };
   } catch (error) {
     console.error('[NodeInteractionService] generateNodesFromPrompt: getResponse failed.', error);

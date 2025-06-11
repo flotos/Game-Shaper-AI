@@ -211,7 +211,8 @@ describe('Node Interaction LLM Service', () => {
           nodes_description: expectedNodesDescription,
           string_history: expectedStringHistory,
           last_moxus_report_section: expectedLastMoxusReportSection,
-          user_input: mockUserInput
+          user_input: mockUserInput,
+          response_length_instruction: "Generate a chapter (3 paragraphs) making the story progress over one action."
         }
       );
 

@@ -2,6 +2,7 @@ import { Message } from '../context/ChatContext';
 import { moxusService } from './MoxusService'; // MoxusService will use setMoxusFeedbackImpl with getMoxusFeedback from this file
 import { Node } from '../models/Node'; // Needed for types in helper functions if they remain here
 import { safeJsonParse } from '../utils/jsonUtils';
+import { getModelOverride, getLLMOptions } from './modelTasksConfigService';
 
 // Load and parse prompts
 export interface PromptsConfig {
@@ -37,6 +38,9 @@ export interface PromptsConfig {
     diffPrompt: string;
     moxus_feedback_system_message: string;
     wrappers: {
+      [key: string]: string;
+    };
+    responseLength: {
       [key: string]: string;
     };
   };
@@ -208,12 +212,22 @@ export const getResponse = async (
   const maxRetries = 3;
   const retryDelay = 1000;
 
+  const taskConfigModel = await getModelOverride(callType);
+  const taskConfigOptions = await getLLMOptions(callType);
+  
+  const finalModel = taskConfigModel || model;
+  const finalOptions = {
+    ...options,
+    ...taskConfigOptions,
+    ...options
+  };
+
   const callId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   const originalPromptString = JSON.stringify(messages);
 
-  moxusService.initiateLLMCallRecord(callId, callType, model ?? '', originalPromptString);
+  moxusService.initiateLLMCallRecord(callId, callType, finalModel ?? '', originalPromptString);
 
-  if (!options?.skipMoxusFeedback && !stream) {
+  if (!finalOptions?.skipMoxusFeedback && !stream) {
     const moxusFeedbackContent = formatPrompt(loadedPrompts.utils.moxus_feedback_system_message, {
       moxus_llm_calls_memory_yaml: moxusService.getLLMCallsMemoryJSON()
     });
@@ -257,26 +271,65 @@ export const getResponse = async (
     try {
       let response;
       if (apiType === 'openai') {
-        const openaiModel = model ?? import.meta.env.VITE_OAI_MODEL;
+        const openaiModel = finalModel ?? import.meta.env.VITE_OAI_MODEL;
         if (!openaiModel) {
           throw new Error('OpenAI model not specified via argument or VITE_OAI_MODEL');
         }
+        
+        const payload: any = {
+          model: openaiModel,
+          messages: messages,
+          stream: stream,
+          temperature: finalOptions?.temperature ?? 0.2,
+          frequency_penalty: finalOptions?.frequency_penalty ?? 0,
+        };
+
+        if (finalOptions?.max_tokens !== undefined) payload.max_tokens = finalOptions.max_tokens;
+        if (finalOptions?.top_p !== undefined) payload.top_p = finalOptions.top_p;
+        if (finalOptions?.presence_penalty !== undefined) payload.presence_penalty = finalOptions.presence_penalty;
+        if (responseFormat) payload.response_format = responseFormat;
+
         response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_OAI_KEY}`
           },
-          body: JSON.stringify({
-            model: openaiModel,
-            messages: messages,
-            stream: stream,
-            response_format: responseFormat
-          })
+          body: JSON.stringify(payload)
         });
       } else if (apiType === 'openrouter') {
-        const openrouterModel = import.meta.env.VITE_OPENROUTER_MODEL || 'anthropic/claude-3-opus-20240229';
+        const openrouterModel = finalModel || import.meta.env.VITE_OPENROUTER_MODEL || 'anthropic/claude-3-opus-20240229';
         const openrouterProvider = import.meta.env.VITE_OPENROUTER_PROVIDER;
+
+        const payload: any = {
+          model: openrouterModel,
+          messages: messages.map(msg => ({
+            role: msg.role,
+            content: [{
+              type: "text",
+              text: msg.content
+            }]
+          })),
+          provider: {
+            order: openrouterProvider ? [openrouterProvider] : undefined,
+            allow_fallbacks: true
+          },
+          temperature: finalOptions?.temperature ?? 0.6,
+          top_p: finalOptions?.top_p ?? 1,
+          top_k: 20,
+          min_p: 0,
+          enable_thinking: includeReasoning,
+          include_reasoning: true,
+          presence_penalty: finalOptions?.presence_penalty ?? 0.1,
+          reasoning: {
+            effort: "low"
+          },
+          stream: stream,
+        };
+
+        if (finalOptions?.max_tokens !== undefined) payload.max_tokens = finalOptions.max_tokens;
+        if (finalOptions?.frequency_penalty !== undefined) payload.frequency_penalty = finalOptions.frequency_penalty;
+        if (responseFormat) payload.response_format = responseFormat;
 
         response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
@@ -286,53 +339,32 @@ export const getResponse = async (
             'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
             'X-Title': 'Game Shaper AI'
           },
-          body: JSON.stringify({
-            model: openrouterModel,
-            messages: messages.map(msg => ({
-              role: msg.role,
-              content: [{
-                type: "text",
-                text: msg.content
-              }]
-            })),
-            provider: {
-              order: openrouterProvider ? [openrouterProvider] : undefined,
-              allow_fallbacks: true
-            },
-            temperature: 0.6,
-            top_p: 1,
-            top_k: 20,
-            min_p: 0,
-            enable_thinking: includeReasoning,
-            include_reasoning: true,
-            presence_penalty: 0.1,
-            reasoning: {
-              effort: "low"
-            },
-            stream: stream,
-            response_format: responseFormat
-          })
+          body: JSON.stringify(payload)
         });
       } else if (apiType === 'koboldcpp') {
         const prompt = messages.map(message => `${message.role}: ${message.content}`).join('\n');
-        const requestBody = {
+        const requestBody: any = {
           max_context_length: 4096,
-          max_length: 768,
+          max_length: finalOptions?.max_tokens ?? 768,
           prompt: prompt,
           quiet: false,
-          rep_pen: 1.0,
+          rep_pen: finalOptions?.frequency_penalty ?? 1.0,
           rep_pen_range: 256,
           rep_pen_slope: 1.0,
-          temperature: 0.2,
+          temperature: finalOptions?.temperature ?? 0.2,
           tfs: 1,
           top_a: 0,
           top_k: 80,
-          top_p: 0.9,
+          top_p: finalOptions?.top_p ?? 0.9,
           typical: 1,
           password: "nodegame",
           grammar,
           stream: stream
         };
+
+        if (finalOptions?.presence_penalty !== undefined) {
+          requestBody.rep_pen = finalOptions.presence_penalty;
+        }
 
         response = await fetch(import.meta.env.VITE_KOBOLDCPP_API_URL + '/api/v1/generate', {
           method: 'POST',
@@ -344,10 +376,10 @@ export const getResponse = async (
         });
       } else if (apiType === 'deepseek') {
         let deepseekModel: string;
-        if (model === 'reasoning') {
+        if (finalModel === 'reasoning') {
           deepseekModel = import.meta.env.VITE_DEEPSEEK_REASONING_MODEL || 'deepseek-reasoner';
-        } else if (model) {
-          deepseekModel = model;
+        } else if (finalModel) {
+          deepseekModel = finalModel;
         } else {
           deepseekModel = import.meta.env.VITE_DEEPSEEK_MODEL || 'deepseek-chat';
         }
@@ -356,9 +388,13 @@ export const getResponse = async (
           model: deepseekModel,
           messages: messages,
           stream: stream,
-          temperature: options?.temperature ?? 0.2,
-          frequency_penalty: options?.frequency_penalty ?? 0,
+          temperature: finalOptions?.temperature ?? 0.2,
+          frequency_penalty: finalOptions?.frequency_penalty ?? 0,
         };
+
+        if (finalOptions?.max_tokens !== undefined) deepSeekPayload.max_tokens = finalOptions.max_tokens;
+        if (finalOptions?.top_p !== undefined) deepSeekPayload.top_p = finalOptions.top_p;
+        if (finalOptions?.presence_penalty !== undefined) deepSeekPayload.presence_penalty = finalOptions.presence_penalty;
 
         if (responseFormat) {
           if (!(deepseekModel === 'deepseek-reasoner' && responseFormat.type === 'json_object')) {
