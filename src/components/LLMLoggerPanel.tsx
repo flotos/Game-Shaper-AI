@@ -128,7 +128,7 @@ export const LLMLoggerPanel: React.FC<LLMLoggerPanelProps> = ({ isOpen, togglePa
   const appCalls = logEntries.filter(call => !isMoxusCall(call.callType));
 
   const renderLogColumn = (calls: LLMCall[], title: string, icon: React.ReactNode, columnInitialLogCount?: number) => (
-    <div className="flex-1 flex flex-col min-w-[calc(50%-0.5rem)]">
+    <div className="w-[400px] flex flex-col flex-shrink-0">
       <h3 className="text-lg font-semibold mb-2 sticky top-0 bg-gray-800 z-10 py-2 flex items-center">
         {icon}{title} <span className="ml-2 text-xs text-gray-400">({calls.length})</span>
       </h3>
@@ -164,7 +164,7 @@ export const LLMLoggerPanel: React.FC<LLMLoggerPanelProps> = ({ isOpen, togglePa
       }}
     >
       <div
-        className="w-full max-w-6xl h-full bg-gray-800 text-white shadow-xl flex flex-col p-4 z-[995]"
+        className={`w-full ${selectedCall ? 'max-w-[90vw]' : 'max-w-[800px]'} h-full bg-gray-800 text-white shadow-xl flex flex-col p-4 z-[995] transition-all duration-300`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
@@ -299,7 +299,7 @@ export const LLMLoggerPanel: React.FC<LLMLoggerPanelProps> = ({ isOpen, togglePa
               </div>
             </div>
           )}
-          <div className="flex space-x-4 w-full flex-shrink-0">
+          <div className="flex space-x-4 w-[900px] flex-shrink-0">
             {renderLogColumn(appCalls, "Application Calls", <Puzzle size={18} className="mr-2 text-sky-400" />, initialAppLogCount)}
             {renderLogColumn(moxusCalls, "Moxus Internal", <Brain size={18} className="mr-2 text-emerald-400" />, initialMoxusLogCount)}
           </div>
