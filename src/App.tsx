@@ -272,64 +272,64 @@ const StorageManagerModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-gray-800 rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto text-white">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">Storage Manager</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-xl">×</button>
+          <h2 className="text-2xl font-bold text-white">Storage Manager</h2>
+          <button onClick={onClose} className="text-gray-300 hover:text-white text-xl">×</button>
         </div>
 
         {isLoading ? (
-          <div className="text-center py-8">Loading storage information...</div>
+          <div className="text-center py-8 text-gray-200">Loading storage information...</div>
         ) : (
           <div className="space-y-6">
             {/* Storage Overview */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold mb-2">Storage Overview</h3>
+            <div className="bg-gray-700 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2 text-white">Storage Overview</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <div className="text-sm text-gray-600">Total Used</div>
-                  <div className="font-mono">{storageInfo?.formattedTotalSize || '0 B'}</div>
+                  <div className="text-sm text-gray-400">Total Used</div>
+                  <div className="font-mono text-gray-200">{storageInfo?.formattedTotalSize || '0 B'}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-gray-600">Items Count</div>
-                  <div className="font-mono">{storageInfo?.itemCount || 0}</div>
+                  <div className="text-sm text-gray-400">Items Count</div>
+                  <div className="font-mono text-gray-200">{storageInfo?.itemCount || 0}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-gray-600">Browser Quota</div>
-                  <div className="font-mono">{quotaInfo?.formattedQuota || 'Unknown'}</div>
+                  <div className="text-sm text-gray-400">Browser Quota</div>
+                  <div className="font-mono text-gray-200">{quotaInfo?.formattedQuota || 'Unknown'}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-gray-600">Available</div>
-                  <div className="font-mono">{quotaInfo?.formattedAvailable || 'Unknown'}</div>
+                  <div className="text-sm text-gray-400">Available</div>
+                  <div className="font-mono text-gray-200">{quotaInfo?.formattedAvailable || 'Unknown'}</div>
                 </div>
               </div>
             </div>
 
             {/* Cleanup Actions */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold mb-2">Cleanup Actions</h3>
+            <div className="bg-gray-700 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2 text-white">Cleanup Actions</h3>
               <div className="space-y-2">
                 <button 
                   onClick={handleCleanupImages}
-                  className="w-full md:w-auto px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  className="w-full md:w-auto px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                 >
                   Clean Orphaned Images
                 </button>
                 <button 
                   onClick={handleCleanupMoxusMemory}
-                  className="w-full md:w-auto px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 ml-0 md:ml-2"
+                  className="w-full md:w-auto px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 ml-0 md:ml-2"
                 >
                   Reset Moxus Memory
                 </button>
                 <button 
                   onClick={handleCleanupChatHistory}
-                  className="w-full md:w-auto px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 ml-0 md:ml-2"
+                  className="w-full md:w-auto px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 ml-0 md:ml-2"
                 >
                   Clear Chat History
                 </button>
                 <button 
                   onClick={refreshStorageInfo}
-                  className="w-full md:w-auto px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 ml-0 md:ml-2"
+                  className="w-full md:w-auto px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 ml-0 md:ml-2"
                 >
                   Refresh Info
                 </button>
@@ -337,21 +337,21 @@ const StorageManagerModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             </div>
 
             {/* Largest Items */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold mb-2">Largest Storage Items</h3>
+            <div className="bg-gray-700 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2 text-white">Largest Storage Items</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-1">Key</th>
-                      <th className="text-right py-1">Size</th>
+                    <tr className="border-b border-gray-600">
+                      <th className="text-left py-1 text-gray-200">Key</th>
+                      <th className="text-right py-1 text-gray-200">Size</th>
                     </tr>
                   </thead>
                   <tbody>
                     {getLargestItems().map(([key, size]) => (
-                      <tr key={key} className="border-b">
-                        <td className="py-1 font-mono text-xs truncate max-w-xs">{key}</td>
-                        <td className="py-1 text-right font-mono">{formatBytes(size as number)}</td>
+                      <tr key={key} className="border-b border-gray-600">
+                        <td className="py-1 font-mono text-xs truncate max-w-xs text-gray-300">{key}</td>
+                        <td className="py-1 text-right font-mono text-gray-200">{formatBytes(size as number)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -360,9 +360,9 @@ const StorageManagerModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
             </div>
 
             {/* Storage Tips */}
-            <div className="bg-yellow-50 p-4 rounded-lg">
-              <h3 className="text-lg font-semibold mb-2">Storage Management Tips</h3>
-              <ul className="text-sm space-y-1">
+            <div className="bg-amber-900/30 border border-amber-700/50 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2 text-amber-200">Storage Management Tips</h3>
+              <ul className="text-sm space-y-1 text-gray-300">
                 <li>• Generated images (data URLs) can be very large - consider regenerating them if needed</li>
                 <li>• Moxus memory grows over time with AI analysis - reset periodically if storage is limited</li>
                 <li>• Export your game state before major cleanups to preserve your progress</li>
