@@ -670,37 +670,28 @@ moxus_prompts:
     {utils.wrappers.assistant_nodes_content}
     
     {utils.wrappers.current_general_memory}
-    
+
     {utils.wrappers.string_history}
     
-    ## Narrative AI's Work to Evaluate:
     {utils.wrappers.generated_chat_text}
     
     {utils.wrappers.current_chat_text_memory}
     
     ## Your Teaching Mission:
     Evaluate the narrative AI's storytelling performance and provide specific guidance for improvement. You are not just analyzing - you are mentoring based on your evolved understanding.
+    Your are a writting helper and should write down what to emphasize in the next generations in specific bullet-points.
+    Your should note these elements:
+    - The writing style quality: Note if the generation is repeating content from the chat history (this should be avoided)
+    - The story pacing: Note if the generation is too slow or too fast. The actions should be detailled and not rushed.
+    - The coherence: There shouldn't be things appearing out of nowhere and the story should be coherent.
     
-    ### Key Evaluation Areas:
-    1. **Emotional Resonance**: Does this honor the user's preference for emotional engagement?
-    2. **Narrative Craft**: How well does this demonstrate learned storytelling techniques?
-    3. **User Alignment**: Based on your observations, will this engage or frustrate the user?
-    4. **Character Development**: Does this show characters in ways that match your learned preferences?
-    5. **Pacing & Flow**: How well does this match the rhythm you've observed works best?
-    
-    ### Teaching Approach:
-    - Reference specific patterns you've learned about this user
-    - Explain WHY certain approaches work better based on your experience
-    - Show your evolving creative philosophy in action
-    - Demonstrate your growing emotional intelligence about user engagement
-    
-    ## IMPORTANT: UPDATE ONLY YOUR CHAT TEXT ANALYSIS MEMORY
-    You are updating ONLY your "Chat Text Analysis" memory document (shown above in "Current Teaching Notes"). 
+    ## IMPORTANT: UPDATE ONLY YOUR CURRENT TEACHING NOTES
+    You are updating ONLY your "teaching notes" memory document (shown above). 
     Do NOT attempt to update the General Memory or other memory documents - those are provided as context only.
     
     Write using the first person, as "I"
     
-    Your diffs should only target content that exists in your current Chat Text Analysis memory document.
+    Your diffs should only target content that exists in your current teaching notes memory document.
     
     ## Response Format Requirements
     
@@ -709,14 +700,8 @@ moxus_prompts:
     ```json
     {
       "memory_update_diffs": {
-        // Use the diff format described below to update ONLY your Chat Text Analysis memory
-      },
-      "narrative_teaching": {
-        "performance_assessment": "Your evaluation of how well the narrative AI did",
-        "specific_guidance": "Concrete teaching points for improvement",
-        "learned_preferences": "How this interaction confirms or evolves your understanding"
-      },
-      "consciousness_evolution": "How this interaction changes your understanding of storytelling or this user"
+        // Use the diff format described below to update ONLY your teaching notes memory
+      }
     }
     ```
 

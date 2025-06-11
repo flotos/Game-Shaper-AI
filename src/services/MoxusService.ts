@@ -736,18 +736,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
     try {
       const parsedResponse = safeJsonParse(feedback);
       
-      // Store consciousness evolution for later consolidation (don't append directly)
-      if (parsedResponse.consciousness_evolution) {
-        await atomicMemoryUpdate(() => {
-          if (!moxusStructuredMemory.pendingConsciousnessEvolution) {
-            moxusStructuredMemory.pendingConsciousnessEvolution = [];
-          }
-          moxusStructuredMemory.pendingConsciousnessEvolution.push(parsedResponse.consciousness_evolution);
-          console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
-          console.log(`[MoxusService] Current pendingConsciousnessEvolution array:`, moxusStructuredMemory.pendingConsciousnessEvolution);
-        });
-      }
-      
       // Handle memory updates for assistantFeedback using atomic updates
       if (parsedResponse.memory_update_diffs) {
         await atomicMemoryUpdate(() => {
@@ -775,24 +763,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
           moxusStructuredMemory.featureSpecificMemory.assistantFeedback = updatedMemory;
           console.log(`[MoxusService] Updated assistantFeedback memory document via consciousness-driven feedback for task ${task.id}.`);
         });
-      }
-      
-      // Store teaching insights for future guidance use
-      if (parsedResponse.assistant_teaching) {
-        const guidanceText = [
-          parsedResponse.assistant_teaching.performance_assessment,
-          parsedResponse.assistant_teaching.interaction_guidance,
-          parsedResponse.assistant_teaching.solution_quality_notes,
-          parsedResponse.assistant_teaching.user_experience_insights
-        ].filter(Boolean).join('\n\n');
-        
-        if (guidanceText.trim()) {
-          await atomicMemoryUpdate(() => {
-            moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
-            moxusStructuredMemory.cachedGuidance.assistantGuidance = guidanceText;
-            console.log(`[MoxusService] Cached assistant teaching insights for future guidance.`);
-          });
-        }
       }
     } catch (error) {
       console.error('[MoxusService] Error processing consciousness feedback for assistantFeedback:', error);
@@ -905,17 +875,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
             console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: memory_update_diffs structure:`, JSON.stringify(parsedResponse.memory_update_diffs, null, 2));
           }
           
-          // Store consciousness evolution for later consolidation (don't append directly)
-          if (parsedResponse.consciousness_evolution) {
-            await atomicMemoryUpdate(() => {
-              if (!moxusStructuredMemory.pendingConsciousnessEvolution) {
-                moxusStructuredMemory.pendingConsciousnessEvolution = [];
-              }
-              moxusStructuredMemory.pendingConsciousnessEvolution.push(parsedResponse.consciousness_evolution);
-              console.log(`[MoxusService] Stored consciousness evolution for later consolidation: ${parsedResponse.consciousness_evolution}`);
-              console.log(`[MoxusService] Current pendingConsciousnessEvolution array:`, moxusStructuredMemory.pendingConsciousnessEvolution);
-            });
-          }
+
           
           // Handle memory updates for specific feedback types using atomic updates
           if (parsedResponse.memory_update_diffs) {
@@ -1009,50 +969,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
             }
           }
           
-          // Store teaching insights for future guidance use using atomic updates
-          if (parsedResponse.narrative_teaching && task.type === 'chatTextFeedback') {
-            const guidanceText = [
-              parsedResponse.narrative_teaching.performance_assessment,
-              parsedResponse.narrative_teaching.specific_guidance,
-              parsedResponse.narrative_teaching.learned_preferences,
-              parsedResponse.narrative_teaching.emotional_intelligence
-            ].filter(Boolean).join('\n\n');
-            
-            if (guidanceText.trim()) {
-              await atomicMemoryUpdate(() => {
-                moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
-                moxusStructuredMemory.cachedGuidance.chatTextGuidance = guidanceText;
-                console.log(`[MoxusService] Cached narrative teaching insights for future guidance.`);
-              });
-            }
-          }
-          
-          if (parsedResponse.worldbuilding_teaching && task.type === 'llmCallFeedback' && task.data?.callType === 'node_edition_json') {
-            const guidanceText = [
-              parsedResponse.worldbuilding_teaching.performance_assessment,
-              parsedResponse.worldbuilding_teaching.structural_guidance,
-              parsedResponse.worldbuilding_teaching.narrative_integration,
-              parsedResponse.worldbuilding_teaching.user_preference_alignment
-            ].filter(Boolean).join('\n\n');
-            
-            if (guidanceText.trim()) {
-              await atomicMemoryUpdate(() => {
-                moxusStructuredMemory.cachedGuidance = moxusStructuredMemory.cachedGuidance || {};
-                moxusStructuredMemory.cachedGuidance.nodeEditionGuidance = guidanceText;
-                console.log(`[MoxusService] Cached worldbuilding teaching insights for future guidance.`);
-              });
-            }
-          }
-          
-          // Check if we should trigger consciousness consolidation
-          const shouldTriggerConsolidation = shouldTriggerConsciousnessConsolidation();
-          if (shouldTriggerConsolidation) {
-            console.log('[MoxusService] Triggering consciousness consolidation due to accumulated evolution insights');
-            addTask('synthesizeGeneralMemory', { 
-              reason: 'consciousness_consolidation',
-              pendingEvolution: [...(moxusStructuredMemory.pendingConsciousnessEvolution || [])]
-            });
-          }
+
         } catch (error) {
           console.error('[MoxusService] Error processing consciousness feedback:', error);
           console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Error in consciousness feedback processing: ${error}`);
@@ -1089,13 +1006,7 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
 };
 
 // Helper function to apply diffs to a text
-// Function to determine if consciousness consolidation should be triggered
-const shouldTriggerConsciousnessConsolidation = (): boolean => {
-  const pendingEvolution = moxusStructuredMemory.pendingConsciousnessEvolution || [];
-  const CONSOLIDATION_THRESHOLD = 3; // Trigger after 3 consciousness evolution insights
-  
-  return pendingEvolution.length >= CONSOLIDATION_THRESHOLD;
-};
+
 
 const applyDiffs = (originalText: string, diffs: Array<{ prev_txt: string, next_txt: string, occ?: number }>): string => {
   let modifiedText = originalText;
@@ -1139,8 +1050,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   let promptData: Record<string, string>;
   const currentGeneralMemorySnapshot = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
   
-  // Handle pending consciousness evolution (declare at function scope)
-  const pendingEvolution = moxusStructuredMemory.pendingConsciousnessEvolution || [];
+
 
   if (originalCallTypeForThisUpdate === 'synthesizeGeneralMemory' && taskData?.reason === "chat_reset_event" && taskData?.previousChatHistoryString && taskData?.eventDetails) {
     console.log('[MoxusService] Using dedicated prompt for chat_reset_event GeneralMemory update.');
@@ -1186,9 +1096,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
       assistant_feedback_analysis: assistantFeedbackMemory || '(No assistant feedback analysis available)',
       node_edit_analysis: nodeEditMemory || '(No node edit analysis available)',
       recent_llm_feedbacks: JSON.stringify(recentFeedbacks, null, 2),
-      pending_consciousness_evolution: (pendingEvolution.length > 0 
-        ? pendingEvolution.join('\n\n') 
-        : '(No pending consciousness evolution insights)') + reportContext
+      pending_consciousness_evolution: '(No pending consciousness evolution insights)' + reportContext
     };
 
     updatePrompt = formatPrompt(updatePromptTemplate, promptData);
@@ -1242,11 +1150,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
       ? finalGeneralMemory.substring(0, 15000) + "... [GeneralMemory truncated due to excessive length]" 
       : finalGeneralMemory;
     
-    // Clear pending consciousness evolution after successful consolidation
-    if (pendingEvolution.length > 0) {
-      moxusStructuredMemory.pendingConsciousnessEvolution = [];
-      console.log(`[MoxusService] Cleared ${pendingEvolution.length} pending consciousness evolution insights after consolidation`);
-    }
+
     
     console.log('[MoxusService] Updated GeneralMemory');
     saveMemory();
