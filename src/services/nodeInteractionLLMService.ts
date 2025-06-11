@@ -10,6 +10,16 @@ import { moxusService } from '../services/MoxusService';
 import { LLMNodeEditionResponse } from '../models/nodeOperations';
 import { safeJsonParse, parseNodeOperationJson } from '../utils/jsonUtils';
 
+// Helper function to map message roles to readable labels for prompts
+const mapRoleForPrompts = (role: string): string => {
+  if (role === 'assistant') {
+    return 'narrative ai';
+  } else if (role === 'user' || role === 'userMandatoryInstructions') {
+    return 'user';
+  }
+  return role; // fallback for any other roles
+};
+
 // Helper function to manage try/catch for JSON parsing and logging
 async function processJsonResponse<T>(
   serviceName: string, 
@@ -40,7 +50,7 @@ export const getRelevantNodes = async(userInput: string, chatHistory: Message[],
   console.log('LLM Call (NodeInteractionService): Getting relevant nodes');
   const stringHistory = chatHistory.reduce((acc, message) => {
     if(message.role === "user" || message.role === "assistant" || message.role === "userMandatoryInstructions") {
-      return acc + `${message.role}: ${message.content}\n`;
+      return acc + `${mapRoleForPrompts(message.role)}: ${message.content}\n`;
     }
     return acc;
   }, "");
@@ -73,7 +83,7 @@ export const generateChatText = async(userInput: string, chatHistory: Message[],
   const lastMoxusReportMessage = [...chatHistory].reverse().find(message => message.role === "moxus");
   
   const stringHistory = lastFiveInteractions.reduce((acc, message) => {
-    return acc + `${message.role}: ${message.content}\n`;
+    return acc + `${mapRoleForPrompts(message.role)}: ${message.content}\n`;
   }, "");
   
   const maxIncludedNodes = parseInt(import.meta.env.VITE_MAX_INCLUDED_NODES || '15', 10);
@@ -130,7 +140,7 @@ export const generateActions = async(chatText: string | Message[], nodes: Node[]
   if (Array.isArray(chatText)) {
     lastMoxusReportContent = [...chatText].reverse().find(message => message.role === "moxus");
     const lastFive = getLastFiveInteractions(chatText as Message[]); 
-    formattedChatText = lastFive.reduce((acc: string, message: Message) => acc + `${message.role}: ${message.content}\n`, "");
+    formattedChatText = lastFive.reduce((acc: string, message: Message) => acc + `${mapRoleForPrompts(message.role)}: ${message.content}\n`, "");
   } else {
     formattedChatText = chatText;
   }
@@ -182,7 +192,7 @@ export const generateNodeEdition = async(chatText: string | Message[], actions: 
   if (Array.isArray(chatText)) {
     lastMoxusReportContent = [...chatText].reverse().find(message => message.role === "moxus");
     const lastFive = getLastFiveInteractions(chatText as Message[]); 
-    formattedChatHistory = lastFive.reduce((acc: string, message: Message) => acc + `${message.role}: ${message.content}\n`, "");
+    formattedChatHistory = lastFive.reduce((acc: string, message: Message) => acc + `${mapRoleForPrompts(message.role)}: ${message.content}\n`, "");
   } else {
     formattedChatHistory = chatText;
   }
@@ -382,7 +392,7 @@ export const sortNodesByRelevance = async (nodes: Node[], chatHistory: Message[]
   const lastMoxusReportMessage = [...chatHistory].reverse().find(message => message.role === "moxus");
   
   const stringHistory = lastFiveInteractions.reduce((acc, message) => {
-    return acc + `${message.role}: ${message.content}\n`;
+    return acc + `${mapRoleForPrompts(message.role)}: ${message.content}\n`;
   }, "");
 
   const nodesDescription = nodes.reduce((acc, node) => {
@@ -420,7 +430,7 @@ export const refocusStory = async (chatHistory: Message[], nodes: Node[]): Promi
   console.log('LLM Call (NodeInteractionService): Refocusing story');
   const pastChatHistory = chatHistory.reduce((acc, message) => {
     if (message.role === "user" || message.role === "assistant") {
-      return acc + `${message.role}: ${message.content}\n`;
+      return acc + `${mapRoleForPrompts(message.role)}: ${message.content}\n`;
     }
     return acc;
   }, "");

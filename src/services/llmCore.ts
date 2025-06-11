@@ -193,8 +193,7 @@ export const getChatHistoryForMoxus = (chatHistory: Message[], numAssistantTurns
   return historySlice.filter(message => 
     message.role === "user" || 
     message.role === "assistant" || 
-    message.role === "userMandatoryInstructions" ||
-    message.role === "moxus"
+    message.role === "userMandatoryInstructions"
   );
 };
 

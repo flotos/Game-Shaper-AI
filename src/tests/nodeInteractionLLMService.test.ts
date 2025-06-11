@@ -112,7 +112,7 @@ describe('Node Interaction LLM Service', () => {
       // Expected replacements for formatPrompt based on the service function's logic
       const expectedStringHistory = 
         `user: Hello\n` +
-        `assistant: Hi there!\n`;
+        `narrative ai: Hi there!\n`;
       
       const expectedNodesDescription = 
         `\n    ---\n    id: 1\n    name: Node1\n    type: story\n    ` +
@@ -178,7 +178,7 @@ describe('Node Interaction LLM Service', () => {
       // Expected replacements
       const expectedStringHistory = 
         `user: Old user message\n` +
-        `assistant: Old assistant message\n` +
+        `narrative ai: Old assistant message\n` +
         // Moxus message is filtered out by the improved getLastFiveInteractions mock
         `user: ${mockUserInput}\n`;
 
@@ -255,7 +255,7 @@ describe('Node Interaction LLM Service', () => {
       // getLastFiveInteractions (mocked) will filter historyForActions
       const expectedFormattedChatText = 
         `user: Earlier user message\n` +
-        `assistant: Earlier assistant response containing the story\n` +
+        `narrative ai: Earlier assistant response containing the story\n` +
         `user: ${mockUserInput}\n`; // Moxus message filtered out
 
       const expectedNodesDescription = 
@@ -380,7 +380,7 @@ describe('Node Interaction LLM Service', () => {
       // Expected replacements for formatPrompt based on the service function's logic
       const expectedFormattedChatHistory = 
         `user: A user interaction\n` +
-        `assistant: Okay, I will consider node X.\n`;
+        `narrative ai: Okay, I will consider node X.\n`;
 
       const expectedNodesDescription = 
         `\n      id: 1\n      name: Node1\n      longDescription: A descriptive node\n      type: story\n      ` +
@@ -540,7 +540,7 @@ describe('Node Interaction LLM Service', () => {
       const expectedStringHistory = 
         `user: What should I focus on?\n` +
         // moxus message filtered out by getLastFiveInteractions
-        `assistant: Let me check relevant nodes.\n`;
+        `narrative ai: Let me check relevant nodes.\n`;
 
       const expectedNodesDescription = 
         `\n      id: 1\n      name: Node1\n      longDescription: A descriptive node\n      type: story\n      ` +
@@ -594,7 +594,7 @@ describe('Node Interaction LLM Service', () => {
       // Expected replacements
       const expectedPastChatHistory = 
         `user: User says something\n` +
-        `assistant: Assistant responds\n`;
+        `narrative ai: Assistant responds\n`;
       
       const expectedNodesDescription = 
         `\n    ---\n    id: 1\n    name: Node1\n    longDescription: A descriptive node\n    type: story\n    ` +

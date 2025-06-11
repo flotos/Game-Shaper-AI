@@ -154,7 +154,18 @@ const getFormattedChatHistoryStringForMoxus = (chatHistory: Message[], numTurns:
   if (relevantHistory.length === 0) {
     return "(No relevant chat history for the last " + numTurns + " turns)";
   }
-  return relevantHistory.map(msg => `${msg.role}: ${msg.content}`).join('\\n');
+  return relevantHistory.map(msg => {
+    // Map roles to more readable labels
+    let roleLabel: string = msg.role;
+    if (msg.role === 'assistant') {
+      roleLabel = 'narrative ai';
+    } else if (msg.role === 'user') {
+      roleLabel = 'user';
+    } else if (msg.role === 'userMandatoryInstructions') {
+      roleLabel = 'user';
+    }
+    return `${roleLabel}: ${msg.content}`;
+  }).join('\\n');
 };
 
 // --- Memory Management ---
