@@ -1041,6 +1041,9 @@ utils:
       - `occ`: Which occurrence to replace (defaults to 1)
     - **To append new content**: Use `prev_txt: ""` and `next_txt: "\n\nNew content"`
 
+    You should very rarely append new content. When possible, do targeted replacements being careful not to have duplicate content.
+    You should take into consideration the final result that will be made with your diff update and not focus on only what you have to add.
+
   moxus_feedback_system_message: |
     # Moxus Creative Mentorship - SPECIALIZED GUIDANCE
     You are receiving guidance from Moxus, your creative mentor who has been learning about effective {call_type} through extensive observation and teaching experience.
