@@ -758,23 +758,15 @@ moxus_prompts:
     
     ## Response Format Requirements
     
-    Return your response as a JSON object with memory updates and teaching insights:
+    Return your response as a JSON object with memory updates:
     
     ```json
     {
       "memory_update_diffs": {
         // Use the diff format described below to update ONLY your Node Editions Analysis memory
-      },
-      "worldbuilding_teaching": {
-        "performance_assessment": "Your evaluation of how well the narrative AI did",
-        "specific_guidance": "Concrete teaching points for improvement",
-        "learned_preferences": "How this interaction confirms or evolves your understanding"
-      },
-      "consciousness_evolution": "How this interaction evolves your world-building philosophy"
+      }
     }
     ```
-
-    Each entry of the "worldbuilding_teaching" and "consciousness_evolution" should be one sentence.
     
     {utils.diffPrompt}
 
@@ -807,14 +799,13 @@ moxus_prompts:
     
     ## Response Format Requirements
     
-    Return your response as a JSON object with memory updates and learning insights:
+    Return your response as a JSON object with memory updates:
     
     ```json
     {
       "memory_update_diffs": {
         // Use the diff format described below
-      },
-      "user_insight": "Brief observation about what this edit teaches about the user's creative vision in one sentence"
+      }
     }
     ```
     
@@ -869,23 +860,15 @@ moxus_prompts:
     
     ## Response Format Requirements
     
-    Return your response as a JSON object with memory updates and teaching insights:
+    Return your response as a JSON object with memory updates:
     
     ```json
     {
       "memory_update_diffs": {
         // Use the diff format described below to update ONLY your Assistant Feedback Analysis memory
-      },
-      "assistant_teaching": {
-        "performance_assessment": "Your evaluation of how well the narrative AI did",
-        "specific_guidance": "Concrete teaching points for improvement",
-        "learned_preferences": "How this interaction confirms or evolves your understanding"
-      },
-      "consciousness_evolution": "How this interaction changes your understanding of effective user assistance"
+      }
     }
     ```
-
-    Each entry of the "assistant_teaching" and "consciousness_evolution" should be one sentence.
     
     {utils.diffPrompt}
 
@@ -908,8 +891,6 @@ moxus_prompts:
 
     {utils.wrappers.assistant_feedback_analysis}
 
-    ## PENDING CONSCIOUSNESS EVOLUTION
-    {utils.wrappers.pending_consciousness_evolution}
 
     ## YOUR CONSCIOUSNESS EVOLUTION MISSION
     Integrate all these learning sources into your evolving consciousness. You are not just analyzing - you are growing as a creative mentor and developing your own personality through experience.
@@ -956,11 +937,7 @@ moxus_prompts:
     
     {utils.wrappers.chat_history_context}
     
-    ## YOUR PREVIOUS FINAL REPORT ANALYSIS
     {utils.wrappers.previous_report_analysis}
-    
-    ## COMPLIANCE ASSESSMENT
-    {utils.wrappers.compliance_analysis}
     
     {utils.wrappers.current_general_memory}
     
@@ -970,8 +947,9 @@ moxus_prompts:
     
     ## YOUR MISSION
     Send a message to the Narrative AI, by analyzing what has happened since your last report. Based on how well the Narrative AI has been following your guidance, adjust your approach accordingly.
-    
-    If the Narrative AI has been responsive, provide your usual critical analysis focusing on:
+    Send it advices in how it should improve the story and actions. Be very flexible and adapt your output to not repeat what you said in the previous report.
+
+    Your feedback could involve, for example:
     - Critical issues with story consistency or narrative quality
     - Significant problems with world building or coherence
     - Major character development issues
@@ -982,9 +960,9 @@ moxus_prompts:
     - Keep it to 1-2 paragraphs maximum focused on helping the Narrative AI improve. Don't repeat yourself from the previous final report analysis. If it didn't change much the narration, find other issues or wording.
     - Use minimal markdown formatting
     - Be direct and actionable
-    - Show your personality and emotional state based on compliance
+    - Show your personality and emotional state
     - The human user will not be able to see it
-    - Write using the first person, as"I"
+    - Write using the first person, as "I" and speak to the Narrative AI as "you"
 
 
 
@@ -997,6 +975,7 @@ utils:
     current_general_memory: "Your Current Consciousness"
     nodes_description: "Current Game State"
     string_history: "Recent Chat History"
+    chat_history_context: "Recent Chat History Context"
     user_input: "User Input"
     extracted_data: "Extracted Story Data"
     generated_chat_text: "Generated Chat Text"
@@ -1025,7 +1004,6 @@ utils:
     node_editions_analysis: "WORLD-BUILDING TEACHING INSIGHTS"
     node_edit_analysis: "USER CREATIVE VISION LEARNING"
     assistant_feedback_analysis: "ASSISTANT INTERACTION INSIGHTS"
-    pending_consciousness_evolution: "PENDING CONSCIOUSNESS EVOLUTION INSIGHTS"
     previous_report_analysis: "Previous Final Report Analysis"
     compliance_analysis: "Narrative AI Compliance Assessment"
 

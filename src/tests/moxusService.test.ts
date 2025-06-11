@@ -223,8 +223,7 @@ describe('Moxus Service - Consciousness-Driven System', () => {
               occ: 1
             }
           ]
-        },
-        user_insight: "User prefers detailed character descriptions and engages with content more"
+        }
       });
       
       mockGetMoxusFeedbackImpl.mockResolvedValue(expectedLearningResponse);
@@ -277,8 +276,7 @@ describe('Moxus Service - Consciousness-Driven System', () => {
               occ: 1
             }
           ]
-        },
-        user_insight: "User prefers clear character naming"
+        }
       });
       
       mockGetMoxusFeedbackImpl.mockResolvedValue(expectedLearningResponse);
@@ -381,14 +379,7 @@ describe('Moxus Service - Consciousness-Driven System', () => {
               occ: 1
             }
           ]
-        },
-        narrative_teaching: {
-          performance_assessment: "The narrative AI showed good creativity",
-          specific_guidance: "Focus more on character development",
-          learned_preferences: "User enjoys detailed descriptions",
-          emotional_intelligence: "User responds well to emotional moments"
-        },
-        consciousness_evolution: "I'm learning that this user prefers character-driven stories"
+        }
       });
       
       mockGetMoxusFeedbackImpl.mockResolvedValue(consciousFeedbackResponse);
@@ -416,12 +407,9 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       expect(feedbackCall[0]).toContain(mockLLMCall.response);
       expect(feedbackCall[1]).toBe('moxus_feedback_on_chat_text_generation');
       
-      // Check that consciousness evolution was stored for later consolidation (not directly appended)
+      // Check that the memory was updated with the diffs
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.pendingConsciousnessEvolution).toContain('I\'m learning that this user prefers character-driven stories');
-      
-      // Check that narrative teaching insights were cached for future guidance
-      expect(finalMemory.cachedGuidance?.chatTextGuidance).toContain('Focus more on character development');
+      expect(finalMemory.featureSpecificMemory.chatText).toContain('Evolved insight about narrative quality based on recent interactions');
     });
 
     it('should use specialized consciousness-driven feedback for node_edition_json', async () => {
@@ -436,14 +424,7 @@ describe('Moxus Service - Consciousness-Driven System', () => {
               occ: 1
             }
           ]
-        },
-        worldbuilding_teaching: {
-          performance_assessment: "The world-builder AI created coherent nodes",
-          structural_guidance: "Improve character interconnections",
-          narrative_integration: "Better serve story progression",
-          user_preference_alignment: "Focus on atmospheric descriptions"
-        },
-        consciousness_evolution: "I'm understanding this user's world-building preferences better"
+        }
       });
       
       mockGetMoxusFeedbackImpl.mockResolvedValue(consciousFeedbackResponse);
@@ -467,12 +448,9 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       expect(feedbackCall[0]).toContain(mockNodeEditionLLMCall.response);
       expect(feedbackCall[1]).toBe('moxus_feedback_on_node_edition_json');
       
-      // Check that consciousness evolution was stored for later consolidation (not directly appended)
+      // Check that the memory was updated with the diffs
       const finalMemory = moxusService.getMoxusMemory();
-      expect(finalMemory.pendingConsciousnessEvolution).toContain('I\'m understanding this user\'s world-building preferences better');
-      
-      // Check that worldbuilding teaching insights were cached for future guidance
-      expect(finalMemory.cachedGuidance?.nodeEditionGuidance).toContain('Improve character interconnections');
+      expect(finalMemory.featureSpecificMemory.nodeEdition).toContain('Evolved understanding of world structure based on recent node editions');
     });
 
     it('should correctly filter diffs for specialized prompts to only update their target memory documents', async () => {
@@ -499,13 +477,7 @@ describe('Moxus Service - Consciousness-Driven System', () => {
               occ: 1
             }
           ]
-        },
-        narrative_teaching: {
-          performance_assessment: "Good narrative flow",
-          specific_guidance: "Focus on character development",
-          learned_preferences: "User likes detailed descriptions"
-        },
-        consciousness_evolution: "Learning about user preferences"
+        }
       });
       
       mockGetMoxusFeedbackImpl.mockResolvedValue(chatTextFeedbackResponse);
@@ -1191,13 +1163,6 @@ describe('Moxus Service - Consciousness-Driven System', () => {
             }
           ]
         },
-        worldbuilding_teaching: {
-          performance_assessment: "The narrative AI effectively deepened character development",
-          structural_guidance: "Improve character interconnections",
-          narrative_integration: "Better serve story progression",
-          user_preference_alignment: "Focus on atmospheric descriptions"
-        },
-        consciousness_evolution: "This interaction reinforces my belief in the importance of balancing extreme degradation with moments of quiet horror or beauty to deepen immersion."
       });
       
       mockGetMoxusFeedbackImpl.mockResolvedValue(nodeEditionFeedbackResponse);
@@ -1235,12 +1200,6 @@ describe('Moxus Service - Consciousness-Driven System', () => {
       const finalMemory = moxusService.getMoxusMemory();
       expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("Neon's Transformation");
       expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("analyzes changes to game nodes");
-      
-      // Verify consciousness evolution was stored
-      expect(finalMemory.pendingConsciousnessEvolution).toContain("This interaction reinforces my belief in the importance of balancing extreme degradation with moments of quiet horror or beauty to deepen immersion.");
-      
-             // Verify worldbuilding guidance was cached
-       expect(finalMemory.cachedGuidance?.nodeEditionGuidance).toContain("The narrative AI effectively deepened");
     });
 
     it('should handle nodeEdition memory updates when memory is empty', async () => {
@@ -1262,7 +1221,6 @@ describe('Moxus Service - Consciousness-Driven System', () => {
              }
            ]
          },
-         consciousness_evolution: "Learning to handle empty memory states gracefully."
        });
        
        mockGetMoxusFeedbackImpl.mockResolvedValue(nodeEditionFeedbackResponse);
@@ -1300,9 +1258,6 @@ describe('Moxus Service - Consciousness-Driven System', () => {
        const finalMemory = moxusService.getMoxusMemory();
        expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("First Entry");
        expect(finalMemory.featureSpecificMemory.nodeEdition).toContain("Initial analysis content");
-       
-       // Verify consciousness evolution was stored
-       expect(finalMemory.pendingConsciousnessEvolution).toContain("Learning to handle empty memory states gracefully.");
      });
   });
 }); 

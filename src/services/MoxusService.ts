@@ -68,7 +68,6 @@ interface MoxusMemoryStructure {
     nodeEditionGuidance?: string;
     assistantGuidance?: string;
   };
-  pendingConsciousnessEvolution?: string[];
 }
 
 // Default memory content templates
@@ -90,8 +89,7 @@ const createDefaultMemoryStructure = (): MoxusMemoryStructure => ({
     nodeEdit: DEFAULT_MEMORY.NODE_EDIT,
     llmCalls: {}
   },
-  cachedGuidance: {},
-  pendingConsciousnessEvolution: []
+  cachedGuidance: {}
 });
 
 // Storage key
@@ -174,8 +172,7 @@ const loadMemory = () => {
           nodeEdit: parsedMemory.featureSpecificMemory?.nodeEdit || DEFAULT_MEMORY.NODE_EDIT,
           llmCalls: parsedMemory.featureSpecificMemory?.llmCalls || {}
         },
-        cachedGuidance: parsedMemory.cachedGuidance || {},
-        pendingConsciousnessEvolution: parsedMemory.pendingConsciousnessEvolution || []
+        cachedGuidance: parsedMemory.cachedGuidance || {}
       };
       if (moxusStructuredMemory.featureSpecificMemory.llmCalls) {
         const migratedCalls: LLMCallsMemoryMap = {};
@@ -680,9 +677,6 @@ const handleFinalReport = async (task: MoxusTask) => {
     previous_report_analysis: previousReportData.previousReport ?
       `Previous Report Content:\n${previousReportData.previousReport}\n\nMessages since previous report: ${previousReportData.reportAge}` :
       "No previous final report found in chat history.",
-    compliance_analysis: previousReportData.previousReport ?
-      `You have a previous report from ${previousReportData.reportAge} messages ago. Analyze what has been applied and what hasn't based on the narrative AI's subsequent responses.` :
-      "No previous final report to analyze compliance against.",
     current_general_memory: moxusStructuredMemory.GeneralMemory || '(No general memory available)',
     chat_text_analysis: moxusStructuredMemory.featureSpecificMemory.chatText || '(No chat text analysis available)',
     node_editions_analysis: moxusStructuredMemory.featureSpecificMemory.nodeEdition || '(No node edition analysis available)'
@@ -875,7 +869,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
             console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: memory_update_diffs structure:`, JSON.stringify(parsedResponse.memory_update_diffs, null, 2));
           }
           
-
           
           // Handle memory updates for specific feedback types using atomic updates
           if (parsedResponse.memory_update_diffs) {
@@ -969,7 +962,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
             }
           }
           
-
         } catch (error) {
           console.error('[MoxusService] Error processing consciousness feedback:', error);
           console.log(`[MoxusService] 🔍 NODEDIT-DEBUG: Error in consciousness feedback processing: ${error}`);
@@ -1006,7 +998,6 @@ const handleMemoryUpdate = async (task: MoxusTask) => {
 };
 
 // Helper function to apply diffs to a text
-
 
 const applyDiffs = (originalText: string, diffs: Array<{ prev_txt: string, next_txt: string, occ?: number }>): string => {
   let modifiedText = originalText;
@@ -1051,7 +1042,6 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
   const currentGeneralMemorySnapshot = moxusStructuredMemory.GeneralMemory || DEFAULT_MEMORY.GENERAL;
   
 
-
   if (originalCallTypeForThisUpdate === 'synthesizeGeneralMemory' && taskData?.reason === "chat_reset_event" && taskData?.previousChatHistoryString && taskData?.eventDetails) {
     console.log('[MoxusService] Using dedicated prompt for chat_reset_event GeneralMemory update.');
     updatePrompt = getChatResetMemoryUpdatePrompt(
@@ -1095,8 +1085,7 @@ const updateGeneralMemoryFromAllSources = async (originalCallTypeForThisUpdate: 
       node_editions_analysis: nodeEditionMemory || '(No node edition analysis available)',
       assistant_feedback_analysis: assistantFeedbackMemory || '(No assistant feedback analysis available)',
       node_edit_analysis: nodeEditMemory || '(No node edit analysis available)',
-      recent_llm_feedbacks: JSON.stringify(recentFeedbacks, null, 2),
-      pending_consciousness_evolution: '(No pending consciousness evolution insights)' + reportContext
+      recent_llm_feedbacks: JSON.stringify(recentFeedbacks, null, 2)
     };
 
     updatePrompt = formatPrompt(updatePromptTemplate, promptData);
@@ -1448,8 +1437,7 @@ export const moxusService = {
           nodeEdit: importedMemory.featureSpecificMemory?.nodeEdit || DEFAULT_MEMORY.NODE_EDIT,
           llmCalls: importedMemory.featureSpecificMemory?.llmCalls || {}
         },
-        cachedGuidance: importedMemory.cachedGuidance || {},
-        pendingConsciousnessEvolution: importedMemory.pendingConsciousnessEvolution || []
+        cachedGuidance: importedMemory.cachedGuidance || {}
       };
       saveMemory();
       console.log('[MoxusService] Memory imported successfully');
