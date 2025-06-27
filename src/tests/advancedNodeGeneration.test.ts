@@ -163,7 +163,7 @@ describe('Advanced Node Generation Service', () => {
 
     it('should handle NEW_NODE pattern without "node not found" error', () => {
       // Test that NEW_NODE patterns are detected correctly
-      const isNewNode = 'NEW_NODE_1'.match(/^NEW_NODE_\d+$/);
+      const isNewNode = 'NEW_NODE_testCharacter'.match(/^NEW_NODE_[a-zA-Z0-9_]+$/);
       expect(isNewNode).toBeTruthy();
       
       // Test that the method recognizes this as a new node pattern

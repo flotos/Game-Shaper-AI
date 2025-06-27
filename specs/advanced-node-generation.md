@@ -66,7 +66,7 @@ Analyzes the user request and game context to create a structured plan for node 
 ### Output Structure
 ```typescript
 interface PlanningStageOutput {
-  targetNodeIds: string[];      // Mix of existing node IDs and "NEW_NODE_N" for new nodes
+  targetNodeIds: string[];      // Mix of existing node IDs and "NEW_NODE_descriptiveName" for new nodes
   objectives: string;           // Paragraph describing update goals
   successRules: string[];       // Boolean-testable validation criteria
   searchQueries: string[];      // Exactly 2 queries: [broad, precise]
@@ -76,7 +76,7 @@ interface PlanningStageOutput {
 ### Example Output
 ```json
 {
-  "targetNodeIds": ["char_001", "NEW_NODE_1"],
+  "targetNodeIds": ["char_001", "NEW_NODE_magicalArtifact"],
   "objectives": "Enhance the merchant character with quest-giving capabilities and create a new magical artifact for trade",
   "successRules": [
     "Merchant node contains minimum 2 new quest hooks",
@@ -92,7 +92,7 @@ interface PlanningStageOutput {
 
 ### Validation
 - Ensures exactly 2 search queries are provided
-- Validates target node ID format (existing IDs or NEW_NODE_N pattern)
+- Validates target node ID format (existing IDs or NEW_NODE_descriptiveName pattern)
 - Confirms success rules are concrete and testable
 - Verifies JSON structure integrity
 
@@ -188,7 +188,7 @@ Uses the existing diff format for consistency:
 ```
 
 ### Key Features
-- **NEW_NODE_N Replacement**: Converts placeholder IDs to permanent descriptive IDs
+- **NEW_NODE_descriptiveName Replacement**: Converts placeholder IDs to permanent descriptive IDs
 - **Context Integration**: Weaves search results naturally into node content
 - **Failure Recovery**: Addresses specific validation failures from previous loops
 - **Quality Control**: Higher temperature (0.8) for creative content generation

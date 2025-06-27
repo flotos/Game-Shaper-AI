@@ -988,7 +988,7 @@ advanced_nodes_generation:
     ## OUTPUT REQUIREMENTS (STRICT JSON)
     ```json
     {
-      "targetNodeIds": ["existingNodeID1", "NEW_NODE_1", "NEW_NODE_2"],
+      "targetNodeIds": ["existingNodeID1", "NEW_NODE_merchantKael", "NEW_NODE_magicSword"],
       "objectives": "Concise paragraph describing update goals",
       "successRules": [
         "Measurable rule 1 (true/false verifiable)",
@@ -1003,7 +1003,7 @@ advanced_nodes_generation:
 
     ## TARGET NODE ID FORMAT
     - **Existing nodes**: Use actual node IDs from the provided game state
-    - **New nodes**: Use format "NEW_NODE_N" where N is a sequential number (NEW_NODE_1, NEW_NODE_2, etc.)
+    - **New nodes**: Use format "NEW_NODE_descriptiveName" where descriptiveName describes the node (NEW_NODE_merchantKael, NEW_NODE_magicSword, etc.)
     - **Mixed approach**: You can combine both existing node edits and new node creation in the same plan
 
     ## SUCCESS RULES CRITERIA
@@ -1075,7 +1075,7 @@ advanced_nodes_generation:
     ### IF OPERATION TYPE = "CREATE_NEW_NODE":
     - Generate a complete new node from scratch
     - Use research data to inform the node's design and content
-    - Assign a unique permanent node ID (replace NEW_NODE_N with descriptive ID)
+          - Assign a unique permanent node ID (replace NEW_NODE_descriptiveName with a proper permanent ID)
     - Include all required fields: id, name, longDescription, type, updateImage
     - Choose appropriate node type from: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'
 

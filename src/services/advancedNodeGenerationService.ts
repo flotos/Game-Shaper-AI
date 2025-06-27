@@ -20,6 +20,24 @@ class AdvancedNodeGenerationService {
   
   private pipelineTimeouts = new Map<string, NodeJS.Timeout>();
 
+  private sanitizeNodeForPrompt(node: Node): Omit<Node, 'image' | 'updateImage' | 'imageSeed'> {
+    const { image, updateImage, imageSeed, ...sanitizedNode } = node;
+    return sanitizedNode;
+  }
+
+  private sanitizeEditedNodesForPrompt(editedNodes: { [nodeId: string]: any }): { [nodeId: string]: any } {
+    const sanitized: { [nodeId: string]: any } = {};
+    for (const [nodeId, nodeData] of Object.entries(editedNodes)) {
+      if (nodeData && typeof nodeData === 'object') {
+        const { image, updateImage, imageSeed, ...sanitizedNodeData } = nodeData;
+        sanitized[nodeId] = sanitizedNodeData;
+      } else {
+        sanitized[nodeId] = nodeData;
+      }
+    }
+    return sanitized;
+  }
+
   // Stage 1: Planning
   async runPlanningStage(
     allNodes: Node[], 
@@ -82,7 +100,7 @@ class AdvancedNodeGenerationService {
     userPrompt: string,
     previousFailures?: string[]
   ): Promise<any> {
-    const isNewNode = nodeId.match(/^NEW_NODE_\d+$/);
+    const isNewNode = nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/);
     
     let originalNodeContent = '';
     if (isNewNode) {
@@ -142,9 +160,10 @@ class AdvancedNodeGenerationService {
     planningOutput: PlanningStageOutput,
     chatHistory: Message[]
   ): Promise<ValidationResult> {
+    const sanitizedEditedNodes = this.sanitizeEditedNodesForPrompt(editedNodes);
     const replacements = {
       nodes_description: this.formatNodesForPrompt(allNodes),
-      edited_nodes: JSON.stringify(editedNodes, null, 2),
+      edited_nodes: JSON.stringify(sanitizedEditedNodes, null, 2),
       successRules: planningOutput.successRules.join('\n'),
       string_history: this.formatChatHistoryForPrompt(chatHistory),
     };
@@ -269,6 +288,10 @@ class AdvancedNodeGenerationService {
           
           const generatedDiffs: { [nodeId: string]: any } = {};
           
+          // Create a working copy of nodes that will be updated with each generation
+          let workingNodes = [...state.allNodes];
+          let workingNodesMap = this.createNodeSnapshot(workingNodes);
+          
           for (const nodeId of state.planningOutput.targetNodeIds) {
             const previousFailures = state.validationResult?.failedRules
               .filter(fr => fr.nodeId === nodeId)
@@ -276,7 +299,7 @@ class AdvancedNodeGenerationService {
               
             const diff = await this.generateNodeDiff(
               nodeId,
-              state.allNodes,
+              workingNodes, // Use the working copy that includes previous generations
               state.planningOutput,
               state.searchResults,
               state.chatHistory || [],
@@ -285,6 +308,30 @@ class AdvancedNodeGenerationService {
             );
             
             generatedDiffs[nodeId] = diff;
+            
+            // Apply this diff to the working nodes immediately so next generations can see it
+            const tempDiffState = { [nodeId]: diff };
+            const updatedNodesMap = this.applyDiffsToNodes(workingNodesMap, tempDiffState);
+            
+            // Update working nodes array with new nodes if any were created
+            if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
+              for (const newNode of diff.n_nodes) {
+                if (newNode.id && !workingNodes.find(n => n.id === newNode.id)) {
+                  workingNodes.push(newNode);
+                }
+              }
+            }
+            
+            // Update working nodes array with updated existing nodes
+            for (const [updatedNodeId, updatedNodeData] of Object.entries(updatedNodesMap)) {
+              const nodeIndex = workingNodes.findIndex(n => n.id === updatedNodeId);
+              if (nodeIndex !== -1) {
+                workingNodes[nodeIndex] = { ...updatedNodeData };
+              }
+            }
+            
+            // Update the working map for the next iteration
+            workingNodesMap = updatedNodesMap;
           }
           
           state.generatedDiffs = generatedDiffs;
@@ -359,12 +406,12 @@ class AdvancedNodeGenerationService {
       return false;
     }
 
-    // Validate targetNodeIds format (existing node IDs or NEW_NODE_N pattern)
+    // Validate targetNodeIds format (existing node IDs or NEW_NODE_descriptiveName pattern)
     for (const nodeId of data.targetNodeIds) {
       if (typeof nodeId !== 'string') return false;
       
-      // Allow existing node IDs or NEW_NODE_N pattern
-      if (!nodeId.match(/^NEW_NODE_\d+$/) && !this.isValidExistingNodeId(nodeId)) {
+      // Allow existing node IDs or NEW_NODE_descriptiveName pattern
+      if (!nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/) && !this.isValidExistingNodeId(nodeId)) {
         // For validation purposes, we'll accept any string that doesn't match NEW_NODE pattern
         // The actual existence check will be done in the generation stage
       }
@@ -376,7 +423,7 @@ class AdvancedNodeGenerationService {
   private isValidExistingNodeId(nodeId: string): boolean {
     // This will be used in context where we have access to actual nodes
     // For now, we'll be permissive and let the generation stage handle validation
-    return !nodeId.match(/^NEW_NODE_\d+$/);
+    return !nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/);
   }
 
   private validateValidationOutput(data: any): boolean {
@@ -387,13 +434,15 @@ class AdvancedNodeGenerationService {
   }
 
   private formatNodesForPrompt(nodes: Node[]): string {
-    return nodes.map(node => 
-      `---\nid: "${node.id}"\nname: ${node.name}\nlongDescription: ${node.longDescription}\ntype: ${node.type}`
-    ).join('\n');
+    return nodes.map(node => {
+      const sanitizedNode = this.sanitizeNodeForPrompt(node);
+      return `---\nid: "${sanitizedNode.id}"\nname: ${sanitizedNode.name}\nlongDescription: ${sanitizedNode.longDescription}\ntype: ${sanitizedNode.type}`;
+    }).join('\n');
   }
 
   private formatSingleNodeForPrompt(node: Node): string {
-    return `---\nid: "${node.id}"\nname: ${node.name}\nlongDescription: ${node.longDescription}\ntype: ${node.type}`;
+    const sanitizedNode = this.sanitizeNodeForPrompt(node);
+    return `---\nid: "${sanitizedNode.id}"\nname: ${sanitizedNode.name}\nlongDescription: ${sanitizedNode.longDescription}\ntype: ${sanitizedNode.type}`;
   }
 
   private formatChatHistoryForPrompt(chatHistory: Message[]): string {
