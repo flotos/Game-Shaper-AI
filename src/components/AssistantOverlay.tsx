@@ -558,13 +558,22 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         }
       }
       
-      // Process nodes to delete (filter to only include confirmed deletions)
+      // Process nodes to delete
       let d_nodes = preview.llmResponse.delete ? [...preview.llmResponse.delete] : [];
-      if (preview.deletedNodesConfirm && preview.deletedNodesConfirm.size > 0) {
-        d_nodes = d_nodes.filter(nodeId => preview.deletedNodesConfirm?.has(nodeId));
+      
+      // For advanced mode, deletions are already validated through the pipeline
+      // For standard mode, require manual confirmation
+      if (isAdvancedMode) {
+        // Advanced mode: trust the pipeline's deletion decisions
+        // d_nodes already contains the correct deletions
       } else {
-        // If user didn't confirm any deletions, don't delete anything
-        d_nodes = [];
+        // Standard mode: filter to only include confirmed deletions
+        if (preview.deletedNodesConfirm && preview.deletedNodesConfirm.size > 0) {
+          d_nodes = d_nodes.filter(nodeId => preview.deletedNodesConfirm?.has(nodeId));
+        } else {
+          // If user didn't confirm any deletions, don't delete anything
+          d_nodes = [];
+        }
       }
       
       const nodeEditionPayload: LLMNodeEditionResponse = {
