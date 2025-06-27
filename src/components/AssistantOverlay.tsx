@@ -114,10 +114,27 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         setPipelineState(result);
         
         // Convert pipeline result to preview format
-        if (result.generatedDiffs && result.stage === 'completed') {
+        if (result.generatedDiffs && (result.stage === 'completed' || result.stage === 'failed')) {
           const mergeUpdates: Partial<Node>[] = [];
+          const newNodes: Partial<Node>[] = [];
           
           for (const [nodeId, diff] of Object.entries(result.generatedDiffs)) {
+            // Handle new node creation (n_nodes format)
+            if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
+              for (const newNode of diff.n_nodes) {
+                if (newNode.id) {
+                  newNodes.push({
+                    id: newNode.id,
+                    name: newNode.name,
+                    longDescription: newNode.longDescription,
+                    type: newNode.type,
+                    updateImage: newNode.updateImage || false
+                  });
+                }
+              }
+            }
+            
+            // Handle existing node updates (u_nodes format)
             if (diff.u_nodes && diff.u_nodes[nodeId]) {
               const nodeUpdates = diff.u_nodes[nodeId];
               const originalNode = nodes.find(n => n.id === nodeId) || null;
@@ -143,12 +160,19 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             }
           }
           
+          // Check if any actual changes were generated
+          if (mergeUpdates.length === 0 && newNodes.length === 0) {
+            setError('Advanced generation completed but no changes were produced. Try refining your request or checking the success rules.');
+            return;
+          }
+          
+          // Show preview with the generated changes
           setPreview({
             showPreview: true,
             llmResponse: {
               merge: mergeUpdates,
               delete: [],
-              newNodes: [],
+              newNodes: newNodes,
             },
             originalNodes: nodes,
             prompt: query,
@@ -156,6 +180,9 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             newNodesEdits: new Map<string, Partial<Node>>(),
             deletedNodesConfirm: new Set<string>()
           });
+        } else {
+          // Fallback: show empty preview with error information
+          setError(`Advanced generation ${result.stage}. ${result.errors?.length ? 'Errors: ' + result.errors.map(e => e.error).join(', ') : ''}`);
         }
         
         return;

@@ -160,6 +160,19 @@ describe('Advanced Node Generation Service', () => {
         )
       ).rejects.toThrow('Target node non-existent not found');
     });
+
+    it('should handle NEW_NODE pattern without "node not found" error', () => {
+      // Test that NEW_NODE patterns are detected correctly
+      const isNewNode = 'NEW_NODE_1'.match(/^NEW_NODE_\d+$/);
+      expect(isNewNode).toBeTruthy();
+      
+      // Test that the method recognizes this as a new node pattern
+      const isValidExisting = (advancedNodeGenerationService as any).isValidExistingNodeId('NEW_NODE_1');
+      expect(isValidExisting).toBe(false); // Should be false because it's a NEW_NODE pattern
+      
+      const isValidExisting2 = (advancedNodeGenerationService as any).isValidExistingNodeId('regular-node-id');
+      expect(isValidExisting2).toBe(true); // Should be true because it's not a NEW_NODE pattern
+    });
   });
 
   describe('validateOutput', () => {
@@ -198,6 +211,22 @@ describe('Advanced Node Generation Service', () => {
 
       // Act - directly access the private method for testing
       const isValid = (advancedNodeGenerationService as any).validatePlanningOutput(validPlanningOutput);
+
+      // Assert
+      expect(isValid).toBe(true);
+    });
+
+    it('should validate planning output with new node creation', () => {
+      // Arrange
+      const validPlanningWithNewNodes = {
+        targetNodeIds: ['existing-node-1', 'NEW_NODE_1', 'NEW_NODE_2'],
+        objectives: 'Create new quest NPCs and update existing character',
+        successRules: ['New NPCs have unique personalities', 'NPCs integrate with existing lore'],
+        searchQueries: ['RPG NPC creation', 'fantasy character archetypes']
+      };
+
+      // Act - directly access the private method for testing
+      const isValid = (advancedNodeGenerationService as any).validatePlanningOutput(validPlanningWithNewNodes);
 
       // Assert
       expect(isValid).toBe(true);

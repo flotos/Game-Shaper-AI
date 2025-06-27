@@ -311,7 +311,10 @@ export const finalizeLLMCallRecord = (id: string, responseContent: string) => {
     trimmedCallType === 'chat_regenerate_event' ||
     trimmedCallType === 'chat_input_regenerate_event' ||
     trimmedCallType === 'refocus_story_generation' ||
-    trimmedCallType === 'node_creation_from_prompt';
+    trimmedCallType === 'node_creation_from_prompt' ||
+    trimmedCallType === 'advanced_node_planning' ||
+    trimmedCallType === 'advanced_node_content_generation' ||
+    trimmedCallType === 'advanced_node_validation';
   if (!isMoxusInternalProcessingCall) {
     addFeedbackTasksForCall(call);
   } else {

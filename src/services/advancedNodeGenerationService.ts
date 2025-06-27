@@ -32,7 +32,7 @@ class AdvancedNodeGenerationService {
       nodes_description: nodesDescription,
       moxus_context_string: moxusContext || '',
       user_prompt: userPrompt,
-      chat_history: this.formatChatHistoryForPrompt(chatHistory),
+      string_history: this.formatChatHistoryForPrompt(chatHistory),
     };
 
     const prompt = formatPrompt(loadedPrompts.advanced_nodes_generation.planning, replacements);
@@ -82,23 +82,35 @@ class AdvancedNodeGenerationService {
     userPrompt: string,
     previousFailures?: string[]
   ): Promise<any> {
-    const targetNode = allNodes.find(n => n.id === nodeId);
-    if (!targetNode) {
-      throw new Error(`Target node ${nodeId} not found`);
+    const isNewNode = nodeId.match(/^NEW_NODE_\d+$/);
+    
+    let originalNodeContent = '';
+    if (isNewNode) {
+      // For new nodes, provide empty content template
+      originalNodeContent = 'NEW NODE - No existing content. Create a complete new node.';
+    } else {
+      // For existing nodes, find and validate
+      const targetNode = allNodes.find(n => n.id === nodeId);
+      if (!targetNode) {
+        throw new Error(`Target node ${nodeId} not found`);
+      }
+      originalNodeContent = this.formatSingleNodeForPrompt(targetNode);
     }
 
     const replacements = {
-      all_nodes: this.formatNodesForPrompt(allNodes),
-      to_edit_node_content: this.formatSingleNodeForPrompt(targetNode),
+      all_nodes_context: this.formatNodesForPrompt(allNodes),
+      original_node: originalNodeContent,
+      node_operation_type: isNewNode ? 'CREATE_NEW_NODE' : 'EDIT_EXISTING_NODE',
+      target_node_id: nodeId,
       searchQuery1: planningOutput.searchQueries[0] || '',
       searchResults1: this.formatSearchResultsForPrompt(searchResults.broad),
       searchQuery2: planningOutput.searchQueries[1] || '',
       searchResults2: this.formatSearchResultsForPrompt(searchResults.precise),
-      userQuery: userPrompt,
+      user_query: userPrompt,
       objectives: planningOutput.objectives,
       successRules: planningOutput.successRules.join('\n'),
       previous_failures: previousFailures ? previousFailures.join('\n') : '',
-      chat_history: this.formatChatHistoryForPrompt(chatHistory),
+      string_history: this.formatChatHistoryForPrompt(chatHistory),
     };
 
     const prompt = formatPrompt(loadedPrompts.advanced_nodes_generation.node_edition, replacements);
@@ -131,10 +143,10 @@ class AdvancedNodeGenerationService {
     chatHistory: Message[]
   ): Promise<ValidationResult> {
     const replacements = {
-      existing_nodes: this.formatNodesForPrompt(allNodes),
+      nodes_description: this.formatNodesForPrompt(allNodes),
       edited_nodes: JSON.stringify(editedNodes, null, 2),
       successRules: planningOutput.successRules.join('\n'),
-      chat_history: this.formatChatHistoryForPrompt(chatHistory),
+      string_history: this.formatChatHistoryForPrompt(chatHistory),
     };
 
     const prompt = formatPrompt(loadedPrompts.advanced_nodes_generation.validation, replacements);
@@ -338,12 +350,33 @@ class AdvancedNodeGenerationService {
 
   // Utility methods
   private validatePlanningOutput(data: any): boolean {
-    return data &&
-           Array.isArray(data.targetNodeIds) &&
-           typeof data.objectives === 'string' &&
-           Array.isArray(data.successRules) &&
-           Array.isArray(data.searchQueries) &&
-           data.searchQueries.length === 2;
+    if (!data ||
+        !Array.isArray(data.targetNodeIds) ||
+        typeof data.objectives !== 'string' ||
+        !Array.isArray(data.successRules) ||
+        !Array.isArray(data.searchQueries) ||
+        data.searchQueries.length !== 2) {
+      return false;
+    }
+
+    // Validate targetNodeIds format (existing node IDs or NEW_NODE_N pattern)
+    for (const nodeId of data.targetNodeIds) {
+      if (typeof nodeId !== 'string') return false;
+      
+      // Allow existing node IDs or NEW_NODE_N pattern
+      if (!nodeId.match(/^NEW_NODE_\d+$/) && !this.isValidExistingNodeId(nodeId)) {
+        // For validation purposes, we'll accept any string that doesn't match NEW_NODE pattern
+        // The actual existence check will be done in the generation stage
+      }
+    }
+
+    return true;
+  }
+
+  private isValidExistingNodeId(nodeId: string): boolean {
+    // This will be used in context where we have access to actual nodes
+    // For now, we'll be permissive and let the generation stage handle validation
+    return !nodeId.match(/^NEW_NODE_\d+$/);
   }
 
   private validateValidationOutput(data: any): boolean {
@@ -385,6 +418,16 @@ class AdvancedNodeGenerationService {
     const editedNodes = { ...currentStates };
     
     for (const [nodeId, diff] of Object.entries(diffs)) {
+      // Handle new node creation (n_nodes format)
+      if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
+        for (const newNode of diff.n_nodes) {
+          if (newNode.id) {
+            editedNodes[newNode.id] = { ...newNode };
+          }
+        }
+      }
+      
+      // Handle existing node updates (u_nodes format)
       if (editedNodes[nodeId] && diff.u_nodes && diff.u_nodes[nodeId]) {
         const nodeUpdates = diff.u_nodes[nodeId];
         const editedNode = { ...editedNodes[nodeId] };

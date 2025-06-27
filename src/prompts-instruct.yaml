@@ -971,21 +971,24 @@ advanced_nodes_generation:
     **YOU ARE**: The Planning Module for Advanced Node Generation. Your task is to analyze the game context and user request to create inputs for subsequent pipeline stages.
 
     ## INPUT CONTEXT
-    ```
     {utils.wrappers.nodes_description}
 
     {utils.wrappers.moxus_context_string}
-    ```
+    
+    {utils.wrappers.user_prompt}
+    
+    {utils.wrappers.string_history}
 
     ## PLANNING OBJECTIVES
-    1. **Identify Target Nodes**: Select nodes requiring modification referenced in chat history
-    2. **Define Measurable Success Rules**: Create testable boolean requirements per node
-    3. **Generate Search Queries**: Craft two distinct queries for web research
+    1. **Identify Target Nodes**: Select nodes requiring modification referenced in chat history or user request
+    2. **Plan New Node Creation**: Specify new nodes to create when existing nodes don't cover the requirements
+    3. **Define Measurable Success Rules**: Create testable boolean requirements per node (existing and new)
+    4. **Generate Search Queries**: Craft two distinct queries for web research
 
     ## OUTPUT REQUIREMENTS (STRICT JSON)
     ```json
     {
-      "targetNodeIds": ["nodeID1", "nodeID2"],
+      "targetNodeIds": ["existingNodeID1", "NEW_NODE_1", "NEW_NODE_2"],
       "objectives": "Concise paragraph describing update goals",
       "successRules": [
         "Measurable rule 1 (true/false verifiable)",
@@ -997,6 +1000,11 @@ advanced_nodes_generation:
       ]
     }
     ```
+
+    ## TARGET NODE ID FORMAT
+    - **Existing nodes**: Use actual node IDs from the provided game state
+    - **New nodes**: Use format "NEW_NODE_N" where N is a sequential number (NEW_NODE_1, NEW_NODE_2, etc.)
+    - **Mixed approach**: You can combine both existing node edits and new node creation in the same plan
 
     ## SUCCESS RULES CRITERIA
     Create 3-5 verifiable boolean rules per node type, examples:
@@ -1029,14 +1037,17 @@ advanced_nodes_generation:
 
     **YOU MUST RETURN PURE JSON - NO MARKDOWN OR EXPLANATIONS**
   node_edition: |
-    # NODE CONTENT UPDATE INSTRUCTIONS
-    **YOU ARE**: The Content Generator for Advanced Node Editing. Update target nodes using research data while strictly enforcing success criteria.
+    # NODE CONTENT GENERATION INSTRUCTIONS
+    **YOU ARE**: The Content Generator for Advanced Node Operations. Create new nodes or update existing nodes using research data while strictly enforcing success criteria.
+
+    ## OPERATION TYPE: {node_operation_type}
+    **Target Node ID**: {target_node_id}
 
     ## INPUT CONTEXT
-    ```
-    {all_nodes}
+    {utils.wrappers.all_nodes_context}
 
-    {to_edit_node_content}
+    **Current Node Content**:
+    {utils.wrappers.original_node}
 
     **Broad Query** ({searchQuery1}):
     {searchResults1}
@@ -1044,8 +1055,7 @@ advanced_nodes_generation:
     **Precise Query** ({searchQuery2}):
     {searchResults2}
 
-    - USER QUERY:
-    {userQuery}
+    {utils.wrappers.user_query}
 
     - PLANNING OBJECTIVES:
     {objectives}
@@ -1056,20 +1066,47 @@ advanced_nodes_generation:
     - PREVIOUS FAILURES (if loop >1):
     {previous_failures}
 
-    - FULL CHAT HISTORY:
-    {chat_history}
-    ```
+    {utils.wrappers.string_history}
+
+    ## OPERATION-SPECIFIC INSTRUCTIONS
+
+    ### IF OPERATION TYPE = "CREATE_NEW_NODE":
+    - Generate a complete new node from scratch
+    - Use research data to inform the node's design and content
+    - Assign a unique permanent node ID (replace NEW_NODE_N with descriptive ID)
+    - Include all required fields: id, name, longDescription, type, updateImage
+    - Choose appropriate node type from: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'
+
+    ### IF OPERATION TYPE = "EDIT_EXISTING_NODE":
+    - Update the existing node using diff format
+    - Preserve existing content that remains valid
+    - Apply targeted changes based on success rules and objectives
 
     ## OUTPUT REQUIREMENTS
-    **Strictly follow diff syntax and validation rules:**
+    **For NEW NODES - Return complete n_nodes structure:**
+    ```json
+    {
+      "n_nodes": [
+        {
+          "id": "descriptive-permanent-id",
+          "name": "Node Name",
+          "longDescription": "Complete detailed description...",
+          "type": "character",
+          "updateImage": true
+        }
+      ]
+    }
+    ```
 
+    **For EXISTING NODES - Use diff syntax:**
     {utils.diffPrompt}
 
     ## MANDATORY CONSTRAINTS
     1. **Rule Compliance**: Address every success rule explicitly in output
-    2. **Content Preservation**: Maintain existing valid content not contradicted by updates
+    2. **Content Preservation**: (For edits) Maintain existing valid content not contradicted by updates
     3. **Failure Recovery**: Prioritize fixes for previous unmet rules first
     4. **Semantic Integrity**: Ensure updated content logically flows as whole
+    5. **New Node Quality**: (For creation) Ensure rich, detailed content worthy of its own node
 
     ## GENERATION GUIDELINES
     ```mermaid
@@ -1098,9 +1135,7 @@ advanced_nodes_generation:
     **YOU ARE**: The Rule Compliance Verifier for Advanced Node Generation. Your task is to objectively evaluate updated nodes against predefined success criteria.
 
     ## INPUT CONTEXT
-    ```
-    - ALL NODES LIST (current state):
-    {existing_nodes}
+    {utils.wrappers.nodes_description}
 
     - EDITED NODES (with proposed changes):
     {edited_nodes}
@@ -1108,9 +1143,7 @@ advanced_nodes_generation:
     - ORIGINAL SUCCESS RULES (from Planning Stage):
     {successRules}
 
-    - FULL CHAT HISTORY:
-    {chat_history}
-    ```
+    {utils.wrappers.string_history}
 
     ## OUTPUT REQUIREMENTS (STRICT JSON)
     ```json
