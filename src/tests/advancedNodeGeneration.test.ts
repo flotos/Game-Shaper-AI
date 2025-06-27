@@ -16,11 +16,23 @@ vi.mock('../services/llmCore', () => ({
   }
 }));
 vi.mock('../utils/jsonUtils');
-vi.mock('../utils/textUtils');
+vi.mock('../utils/textUtils', () => ({
+  applyTextDiffInstructions: vi.fn((originalText: string, diffs: any[]) => {
+    // Simple mock implementation that applies basic text replacements
+    let result = originalText;
+    for (const diff of diffs) {
+      if (diff.prev_txt && diff.next_txt) {
+        result = result.replace(diff.prev_txt, diff.next_txt);
+      }
+    }
+    return result;
+  })
+}));
 
 const mockBraveSearchService = vi.mocked(braveSearchService);
 const mockLlmCore = await vi.importMock('../services/llmCore');
 const mockJsonUtils = await vi.importMock('../utils/jsonUtils');
+const mockTextUtils = await vi.importMock('../utils/textUtils');
 
 describe('Advanced Node Generation Service', () => {
   beforeEach(() => {
@@ -37,6 +49,17 @@ describe('Advanced Node Generation Service', () => {
         console.log('safeJsonParse failed:', e);
         return null;
       }
+    });
+
+    // Ensure text utils mock is properly set up
+    (mockTextUtils as any).applyTextDiffInstructions.mockImplementation((originalText: string, diffs: any[]) => {
+      let result = originalText;
+      for (const diff of diffs) {
+        if (diff.prev_txt && diff.next_txt) {
+          result = result.replace(diff.prev_txt, diff.next_txt);
+        }
+      }
+      return result;
     });
   });
 
@@ -286,6 +309,219 @@ describe('Advanced Node Generation Service', () => {
       expect(formattedNodes).not.toContain('id: "img_002"');
       expect(formattedNodes).not.toContain('id: "img_003"');
       expect(formattedNodes).not.toContain('image_generation');
+    });
+  });
+
+  describe('applyDiffsToNodes - Direct diff format support', () => {
+    it('should handle direct df format for individual node updates', () => {
+      const currentStates = {
+        'character1': {
+          id: 'character1',
+          name: 'Test Character',
+          longDescription: 'Original description with old content that needs updating.',
+          type: 'character'
+        }
+      };
+
+      // This is the format that comes from individual node LLM calls in advanced generation
+      const generatedDiffs = {
+        'character1': {
+          "df": [
+            {
+              "prev_txt": "old content",
+              "next_txt": "new enhanced content",
+              "occ": 1
+            }
+          ]
+        }
+      };
+
+      const result = (advancedNodeGenerationService as any).applyDiffsToNodes(currentStates, generatedDiffs);
+
+      expect(result).toHaveProperty('character1');
+      expect(result.character1.longDescription).toContain('new enhanced content');
+      expect(result.character1.longDescription).not.toContain('old content');
+      expect(result.character1.name).toBe('Test Character'); // Should remain unchanged
+    });
+
+    it('should handle direct field replacement format', () => {
+      const currentStates = {
+        'location1': {
+          id: 'location1',
+          name: 'Old Name',
+          longDescription: 'Old description',
+          type: 'location'
+        }
+      };
+
+      const generatedDiffs = {
+        'location1': {
+          name: 'New Location Name',
+          type: { rpl: 'updated_location' }
+        }
+      };
+
+      const result = (advancedNodeGenerationService as any).applyDiffsToNodes(currentStates, generatedDiffs);
+
+      expect(result.location1.name).toBe('New Location Name');
+      expect(result.location1.type).toBe('updated_location');
+      expect(result.location1.longDescription).toBe('Old description'); // Should remain unchanged
+    });
+
+    it('should handle rpl format for longDescription', () => {
+      const currentStates = {
+        'item1': {
+          id: 'item1',
+          name: 'Magic Item',
+          longDescription: 'Old description that will be completely replaced',
+          type: 'item'
+        }
+      };
+
+      const generatedDiffs = {
+        'item1': {
+          rpl: 'Completely new description for the magic item'
+        }
+      };
+
+      const result = (advancedNodeGenerationService as any).applyDiffsToNodes(currentStates, generatedDiffs);
+
+      expect(result.item1.longDescription).toBe('Completely new description for the magic item');
+      expect(result.item1.name).toBe('Magic Item'); // Should remain unchanged
+    });
+
+    it('should handle mixed direct diff and field operations', () => {
+      const currentStates = {
+        'character2': {
+          id: 'character2',
+          name: 'Old Character',
+          longDescription: 'This character has old attributes. They are weak and slow.',
+          type: 'character'
+        }
+      };
+
+      const generatedDiffs = {
+        'character2': {
+          name: { rpl: 'Updated Character' },
+          longDescription: {
+            df: [
+              { prev_txt: 'old attributes', next_txt: 'enhanced abilities' },
+              { prev_txt: 'weak and slow', next_txt: 'strong and agile' }
+            ]
+          }
+        }
+      };
+
+      const result = (advancedNodeGenerationService as any).applyDiffsToNodes(currentStates, generatedDiffs);
+
+      expect(result.character2.name).toBe('Updated Character');
+      expect(result.character2.longDescription).toContain('enhanced abilities');
+      expect(result.character2.longDescription).toContain('strong and agile');
+      expect(result.character2.longDescription).not.toContain('old attributes');
+      expect(result.character2.longDescription).not.toContain('weak and slow');
+    });
+
+    it('should properly apply existing node updates with rpl and df operations (fix verification)', () => {
+      const currentStates = {
+        'character1': {
+          id: 'character1',
+          name: 'Old Hero',
+          longDescription: 'A brave warrior with strength 5/10. He fights dragons.',
+          type: 'character'
+        },
+        'location1': {
+          id: 'location1', 
+          name: 'Old Tavern',
+          longDescription: 'A tavern in the village.',
+          type: 'location'
+        }
+      };
+
+      const generatedDiffs = {
+        'character1': {
+          u_nodes: {
+            'character1': {
+              name: { rpl: 'New Hero' },
+              longDescription: { 
+                df: [
+                  { prev_txt: 'strength 5/10', next_txt: 'strength 8/10' },
+                  { prev_txt: 'fights dragons', next_txt: 'slays mighty beasts' }
+                ]
+              }
+            }
+          }
+        },
+        'location1': {
+          u_nodes: {
+            'location1': {
+              name: { rpl: 'Grand Tavern' },
+              type: { rpl: 'tavern' }
+            }
+          }
+        }
+      };
+
+      // This is the method that was previously failing
+      const result = (advancedNodeGenerationService as any).applyDiffsToNodes(currentStates, generatedDiffs);
+
+      // Verify both nodes were updated
+      expect(result).toHaveProperty('character1');
+      expect(result).toHaveProperty('location1');
+
+      // Verify character1 updates
+      expect(result.character1.name).toBe('New Hero');
+      expect(result.character1.longDescription).toContain('strength 8/10');
+      expect(result.character1.longDescription).toContain('slays mighty beasts');
+      expect(result.character1.longDescription).not.toContain('strength 5/10');
+      expect(result.character1.longDescription).not.toContain('fights dragons');
+
+      // Verify location1 updates  
+      expect(result.location1.name).toBe('Grand Tavern');
+      expect(result.location1.type).toBe('tavern');
+    });
+
+    it('should handle mixed new nodes and existing node updates', () => {
+      const currentStates = {
+        'existing1': {
+          id: 'existing1',
+          name: 'Existing Character',
+          longDescription: 'An existing character.',
+          type: 'character'
+        }
+      };
+
+      const generatedDiffs = {
+        'NEW_NODE_wizard': {
+          id: 'wizard123',
+          name: 'Powerful Wizard',
+          longDescription: 'A magical spellcaster.',
+          type: 'character'
+        },
+        'existing1': {
+          u_nodes: {
+            'existing1': {
+              name: { rpl: 'Updated Character' },
+              longDescription: { 
+                df: [{ prev_txt: 'existing character', next_txt: 'modified character' }]
+              }
+            }
+          }
+        }
+      };
+
+      const result = (advancedNodeGenerationService as any).applyDiffsToNodes(currentStates, generatedDiffs);
+
+      // Should have both existing updated node and new node
+      expect(result).toHaveProperty('existing1');
+      expect(result).toHaveProperty('wizard123');
+
+      // Verify existing node was updated
+      expect(result.existing1.name).toBe('Updated Character');
+      expect(result.existing1.longDescription).toContain('modified character');
+
+      // Verify new node was created
+      expect(result.wizard123.name).toBe('Powerful Wizard');
+      expect(result.wizard123.type).toBe('character');
     });
   });
 }); 
