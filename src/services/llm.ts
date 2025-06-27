@@ -25,6 +25,9 @@ export {
   refocusStory,
 } from './nodeInteractionLLMService';
 
+// From advancedNodeGenerationService.ts
+export { advancedNodeGenerationService } from './advancedNodeGenerationService';
+
 // Export configuration utilities for external use
 export { getTaskConfig, invalidateConfigCache } from './modelTasksConfigService';
 

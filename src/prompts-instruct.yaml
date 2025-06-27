@@ -966,7 +966,7 @@ moxus_prompts:
     - The human user will not be able to see it
     - Write using the first person, as "I" and speak to the Narrative AI as "you"
 advanced_nodes_generation:
-  planning:
+  planning: |
     # GAME CONTENT PLANNING INSTRUCTIONS
     **YOU ARE**: The Planning Module for Advanced Node Generation. Your task is to analyze the game context and user request to create inputs for subsequent pipeline stages.
 
@@ -1028,7 +1028,7 @@ advanced_nodes_generation:
     4. Node IDs exist in current game
 
     **YOU MUST RETURN PURE JSON - NO MARKDOWN OR EXPLANATIONS**
-  node_edition:
+  node_edition: |
     # NODE CONTENT UPDATE INSTRUCTIONS
     **YOU ARE**: The Content Generator for Advanced Node Editing. Update target nodes using research data while strictly enforcing success criteria.
 
@@ -1093,7 +1093,7 @@ advanced_nodes_generation:
     ✓ Update consistency with other nodes of same type
 
     **Return ONLY valid JSON diff object with NO explanatory text**
-  validation:
+  validation: |
     # NODE UPDATE VALIDATION INSTRUCTIONS
     **YOU ARE**: The Rule Compliance Verifier for Advanced Node Generation. Your task is to objectively evaluate updated nodes against predefined success criteria.
 

@@ -9,6 +9,8 @@ import { regenerateSingleNode } from '../services/twineImportLLMService';
 import { AssistantPromptSelector } from './AssistantPromptSelector';
 import { applyTextDiffInstructions } from '../utils/textUtils';
 import { FieldUpdateOperation } from '../models/nodeOperations';
+import { advancedNodeGenerationService } from '../services/llm';
+import { PipelineState } from '../types/advancedNodeGeneration';
 
 interface AssistantOverlayProps {
   nodes: Node[];
@@ -47,6 +49,8 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [sendMoxusContext, setSendMoxusContext] = useState(false);
+  const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+  const [pipelineState, setPipelineState] = useState<PipelineState | null>(null);
   const [preview, setPreview] = useState<PreviewState>({
     showPreview: false,
     originalNodes: nodes,
@@ -59,6 +63,36 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     setQuery(promptText);
   };
 
+  const handleRunNextLoop = async () => {
+    if (!pipelineState) return;
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const chatHistory: Message[] = []; // TODO: Get from context if available
+      const result = await advancedNodeGenerationService.runPipeline(
+        query,
+        nodes,
+        chatHistory,
+        {}, // Use default config
+        (state) => setPipelineState(state)
+      );
+      
+      setPipelineState(result);
+    } catch (err) {
+      setError('Failed to run next loop. Please try again.');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancelAdvanced = () => {
+    setPipelineState(null);
+    setIsAdvancedMode(false);
+  };
+
   const handleSubmit = async () => {
     if (!query.trim()) return;
     
@@ -66,6 +100,68 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     setError('');
     
     try {
+      if (isAdvancedMode) {
+        // Use advanced node generation pipeline
+        const chatHistory: Message[] = []; // TODO: Get from context if available
+        const result = await advancedNodeGenerationService.runPipeline(
+          query,
+          nodes,
+          chatHistory,
+          {}, // Use default config
+          (state) => setPipelineState(state) // Update UI with pipeline progress
+        );
+        
+        setPipelineState(result);
+        
+        // Convert pipeline result to preview format
+        if (result.generatedDiffs && result.stage === 'completed') {
+          const mergeUpdates: Partial<Node>[] = [];
+          
+          for (const [nodeId, diff] of Object.entries(result.generatedDiffs)) {
+            if (diff.u_nodes && diff.u_nodes[nodeId]) {
+              const nodeUpdates = diff.u_nodes[nodeId];
+              const originalNode = nodes.find(n => n.id === nodeId) || null;
+              const updatedNode: Partial<Node> = { id: nodeId };
+
+              for (const [fieldName, operation] of Object.entries(nodeUpdates)) {
+                if (fieldName === 'img_upd') continue;
+                const fieldOp = operation as FieldUpdateOperation;
+
+                if (fieldOp && typeof fieldOp === 'object') {
+                  if (fieldOp.rpl !== undefined) {
+                    (updatedNode as any)[fieldName] = fieldOp.rpl;
+                  } else if (fieldOp.df && originalNode) {
+                    const originalText = (originalNode as any)[fieldName] || '';
+                    (updatedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
+                  }
+                }
+              }
+
+              if (Object.keys(updatedNode).length > 1) {
+                mergeUpdates.push(updatedNode);
+              }
+            }
+          }
+          
+          setPreview({
+            showPreview: true,
+            llmResponse: {
+              merge: mergeUpdates,
+              delete: [],
+              newNodes: [],
+            },
+            originalNodes: nodes,
+            prompt: query,
+            editedNodes: new Map<string, Partial<Node>>(),
+            newNodesEdits: new Map<string, Partial<Node>>(),
+            deletedNodesConfirm: new Set<string>()
+          });
+        }
+        
+        return;
+      }
+
+      // Standard mode
       let moxusMemoryData: { general?: string; chatText?: string; nodeEdition?: string; } | undefined = undefined;
       let moxusPersonalityData: string | undefined = undefined;
 
@@ -625,6 +721,125 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             Include Moxus context for better AI responses
           </label>
         </div>
+        
+        <div className="flex items-center mb-4">
+          <input
+            type="checkbox"
+            id="advanced-mode-checkbox"
+            checked={isAdvancedMode}
+            onChange={() => setIsAdvancedMode(!isAdvancedMode)}
+            className="mr-2"
+          />
+          <label htmlFor="advanced-mode-checkbox" className="text-white text-sm">
+            Advanced Mode (Multi-step pipeline with web search)
+          </label>
+        </div>
+        
+        {pipelineState && (
+          <div className="mb-4">
+            {/* Advanced Pipeline Panel */}
+            <div className="bg-gray-800 border border-gray-600 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">Advanced Node Generation</h3>
+                <div className="flex gap-2">
+                  {(pipelineState.stage === 'completed' || pipelineState.stage === 'failed' ||
+                    (pipelineState.validationResult && pipelineState.validationResult.failedRules.length > 0)) && (
+                    <button
+                      onClick={handleRunNextLoop}
+                      disabled={isLoading}
+                      className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm disabled:bg-gray-600"
+                    >
+                      Run Next Loop
+                    </button>
+                  )}
+                  <button
+                    onClick={handleCancelAdvanced}
+                    className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-500 text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {/* Pipeline Status */}
+              <div className="mb-4">
+                <div className="flex items-center gap-4 mb-2">
+                  <span className="text-sm text-gray-300">
+                    Loop {pipelineState.currentLoop} / {pipelineState.maxLoops}
+                  </span>
+                  <span className={`text-sm font-medium ${
+                    pipelineState.stage === 'completed' ? 'text-green-400' :
+                    pipelineState.stage === 'failed' ? 'text-red-400' : 'text-yellow-400'
+                  }`}>
+                    Stage: {pipelineState.stage}
+                  </span>
+                </div>
+                
+                {/* Progress bar */}
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div 
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      pipelineState.stage === 'completed' ? 'bg-green-500' :
+                      pipelineState.stage === 'failed' ? 'bg-red-500' : 'bg-yellow-500'
+                    }`}
+                    style={{ 
+                      width: `${
+                        pipelineState.stage === 'planning' ? '25%' :
+                        pipelineState.stage === 'searching' ? '50%' :
+                        pipelineState.stage === 'generating' ? '75%' :
+                        pipelineState.stage === 'validating' ? '90%' :
+                        pipelineState.stage === 'completed' ? '100%' :
+                        pipelineState.stage === 'failed' ? '100%' : '0%'
+                      }`
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Validation Results */}
+              {pipelineState.validationResult && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-gray-300 mb-2">Validation Results</h4>
+                  <div className="bg-gray-900 rounded p-3 text-sm">
+                    <div className="mb-2">
+                      <span className="text-green-400">
+                        Passed: {pipelineState.validationResult.validatedRules.length} rules
+                      </span>
+                    </div>
+                    {pipelineState.validationResult.failedRules.length > 0 && (
+                      <div>
+                        <span className="text-red-400">
+                          Failed: {pipelineState.validationResult.failedRules.length} rules
+                        </span>
+                        <ul className="mt-1 space-y-1">
+                          {pipelineState.validationResult.failedRules.map((failure, index) => (
+                            <li key={index} className="text-xs text-red-300">
+                              <span className="font-medium">{failure.nodeId}:</span> {failure.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Errors */}
+              {pipelineState.errors.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-medium text-red-400 mb-2">Errors</h4>
+                  <div className="bg-gray-900 rounded p-3 text-sm">
+                    {pipelineState.errors.map((error, index) => (
+                      <div key={index} className="text-red-300 text-xs mb-1">
+                        Loop {error.loop}, {error.stage}: {error.error}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         
         <div className="flex justify-between">
           <button

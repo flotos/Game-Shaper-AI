@@ -34,6 +34,11 @@ export interface PromptsConfig {
     sort_nodes_by_relevance: string;
     refocus_story: string;
   };
+  advanced_nodes_generation: {
+    planning: string;
+    node_edition: string;
+    validation: string;
+  };
   utils: {
     diffPrompt: string;
     moxus_feedback_system_message: string;
