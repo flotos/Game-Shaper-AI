@@ -1049,18 +1049,20 @@ advanced_nodes_generation:
     **Current Node Content**:
     {utils.wrappers.original_node}
 
+    ## Web searches have been made to find information to help you create the node
     **Broad Query** ({searchQuery1}):
     {searchResults1}
 
     **Precise Query** ({searchQuery2}):
     {searchResults2}
 
+    ## USER QUERY
     {utils.wrappers.user_query}
 
-    - PLANNING OBJECTIVES:
+    ## OBJECTIVES:
     {objectives}
 
-    - CURRENT SUCCESS RULES (MUST satisfy all):
+    ## CURRENT SUCCESS RULES (MUST satisfy all):
     {successRules}
 
     - PREVIOUS FAILURES (if loop >1):
@@ -1081,6 +1083,7 @@ advanced_nodes_generation:
     - Update the existing node using diff format
     - Preserve existing content that remains valid
     - Apply targeted changes based on success rules and objectives
+    - Do not "convert" the node to a different one. There will be multiple steps. Your task is to update the current node, not override it.
 
     ## OUTPUT REQUIREMENTS
     **For NEW NODES - Return complete n_nodes structure:**
