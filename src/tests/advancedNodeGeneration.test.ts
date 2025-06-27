@@ -262,4 +262,30 @@ describe('Advanced Node Generation Service', () => {
       expect(isValid).toBe(true);
     });
   });
+
+  describe('Node filtering', () => {
+    it('should filter out image generation node types from prompts', () => {
+      const mockNodes = [
+        { id: 'char_001', name: 'Hero', longDescription: 'A brave hero', type: 'character' },
+        { id: 'img_001', name: 'Image Gen', longDescription: 'Image generation', type: 'image_generation' },
+        { id: 'img_002', name: 'Image Prompt', longDescription: 'Image prompt', type: 'image_generation_prompt' },
+        { id: 'img_003', name: 'Negative Prompt', longDescription: 'Negative prompt', type: 'image_generation_prompt_negative' },
+        { id: 'loc_001', name: 'Forest', longDescription: 'A dark forest', type: 'location' }
+      ];
+
+      // Use the private method via reflection to test filtering
+      const service = advancedNodeGenerationService as any;
+      const formattedNodes = service.formatNodesForPrompt(mockNodes);
+
+      // Should only contain character and location nodes
+      expect(formattedNodes).toContain('id: "char_001"');
+      expect(formattedNodes).toContain('id: "loc_001"');
+      
+      // Should not contain any image generation nodes
+      expect(formattedNodes).not.toContain('id: "img_001"');
+      expect(formattedNodes).not.toContain('id: "img_002"');
+      expect(formattedNodes).not.toContain('id: "img_003"');
+      expect(formattedNodes).not.toContain('image_generation');
+    });
+  });
 }); 

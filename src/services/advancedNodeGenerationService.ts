@@ -441,7 +441,11 @@ class AdvancedNodeGenerationService {
   }
 
   private formatNodesForPrompt(nodes: Node[]): string {
-    return nodes.map(node => {
+    const filteredNodes = nodes.filter(node => 
+      !['image_generation', 'image_generation_prompt', 'image_generation_prompt_negative'].includes(node.type)
+    );
+    
+    return filteredNodes.map(node => {
       const sanitizedNode = this.sanitizeNodeForPrompt(node);
       return `---\nid: "${sanitizedNode.id}"\nname: ${sanitizedNode.name}\nlongDescription: ${sanitizedNode.longDescription}\ntype: ${sanitizedNode.type}`;
     }).join('\n');
