@@ -152,18 +152,14 @@ Creates new nodes or updates existing nodes using all available context includin
 ### Output Format
 Uses the existing diff format for consistency:
 
-**New Nodes:**
+**New Nodes (CREATE_NEW_NODE - Single Node Only):**
 ```json
 {
-  "n_nodes": [
-    {
-      "id": "descriptive-permanent-id",
-      "name": "Node Name",
-      "longDescription": "Complete detailed description...",
-      "type": "character",
-      "updateImage": true
-    }
-  ]
+  "id": "descriptive-permanent-id",
+  "name": "Node Name",
+  "longDescription": "Complete detailed description...",
+  "type": "character",
+  "updateImage": true
 }
 ```
 
@@ -189,6 +185,7 @@ Uses the existing diff format for consistency:
 
 ### Key Features
 - **NEW_NODE_descriptiveName Replacement**: Converts placeholder IDs to permanent descriptive IDs
+- **Single Node Creation**: CREATE_NEW_NODE operations generate exactly one complete node without diff logic
 - **Context Integration**: Weaves search results naturally into node content
 - **Failure Recovery**: Addresses specific validation failures from previous loops
 - **Quality Control**: Higher temperature (0.8) for creative content generation

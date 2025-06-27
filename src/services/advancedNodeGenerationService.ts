@@ -314,7 +314,14 @@ class AdvancedNodeGenerationService {
             const updatedNodesMap = this.applyDiffsToNodes(workingNodesMap, tempDiffState);
             
             // Update working nodes array with new nodes if any were created
-            if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
+            // Handle direct node format for CREATE_NEW_NODE
+            if (diff && diff.id && diff.name && diff.longDescription && diff.type && nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
+              if (!workingNodes.find(n => n.id === diff.id)) {
+                workingNodes.push(diff);
+              }
+            }
+            // Handle legacy n_nodes format
+            else if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
               for (const newNode of diff.n_nodes) {
                 if (newNode.id && !workingNodes.find(n => n.id === newNode.id)) {
                   workingNodes.push(newNode);
@@ -467,8 +474,14 @@ class AdvancedNodeGenerationService {
     const editedNodes = { ...currentStates };
     
     for (const [nodeId, diff] of Object.entries(diffs)) {
-      // Handle new node creation (n_nodes format)
-      if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
+      // Handle new node creation (direct node format for CREATE_NEW_NODE)
+      if (diff && diff.id && diff.name && diff.longDescription && diff.type && nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
+        // This is a direct node object from CREATE_NEW_NODE operation
+        editedNodes[diff.id] = { ...diff };
+      }
+      
+      // Handle new node creation (legacy n_nodes format)
+      else if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
         for (const newNode of diff.n_nodes) {
           if (newNode.id) {
             editedNodes[newNode.id] = { ...newNode };
@@ -477,7 +490,7 @@ class AdvancedNodeGenerationService {
       }
       
       // Handle existing node updates (u_nodes format)
-      if (editedNodes[nodeId] && diff.u_nodes && diff.u_nodes[nodeId]) {
+      else if (editedNodes[nodeId] && diff.u_nodes && diff.u_nodes[nodeId]) {
         const nodeUpdates = diff.u_nodes[nodeId];
         const editedNode = { ...editedNodes[nodeId] };
         

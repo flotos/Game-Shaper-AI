@@ -119,8 +119,18 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
           const newNodes: Partial<Node>[] = [];
           
           for (const [nodeId, diff] of Object.entries(result.generatedDiffs)) {
-            // Handle new node creation (n_nodes format)
-            if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
+            // Handle new node creation (direct node format for CREATE_NEW_NODE)
+            if (diff && diff.id && diff.name && diff.longDescription && diff.type && nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
+              newNodes.push({
+                id: diff.id,
+                name: diff.name,
+                longDescription: diff.longDescription,
+                type: diff.type,
+                updateImage: diff.updateImage || false
+              });
+            }
+            // Handle new node creation (legacy n_nodes format)
+            else if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
               for (const newNode of diff.n_nodes) {
                 if (newNode.id) {
                   newNodes.push({

@@ -1073,11 +1073,12 @@ advanced_nodes_generation:
     ## OPERATION-SPECIFIC INSTRUCTIONS
 
     ### IF OPERATION TYPE = "CREATE_NEW_NODE":
-    - Generate a complete new node from scratch
+    - Generate exactly ONE complete new node from scratch
     - Use research data to inform the node's design and content
-          - Assign a unique permanent node ID (replace NEW_NODE_descriptiveName with a proper permanent ID)
+    - Assign a unique permanent node ID (replace NEW_NODE_descriptiveName with a proper permanent ID)
     - Include all required fields: id, name, longDescription, type, updateImage
     - Choose appropriate node type from: 'assistant', 'image-generation', 'system', 'character', 'location', 'event', 'item', 'object', 'mechanic', 'concept', 'library'
+    - Output the complete node directly WITHOUT using diff format
 
     ### IF OPERATION TYPE = "EDIT_EXISTING_NODE":
     - Update the existing node using diff format
@@ -1086,18 +1087,14 @@ advanced_nodes_generation:
     - Do not "convert" the node to a different one. There will be multiple steps. Your task is to update the current node, not override it.
 
     ## OUTPUT REQUIREMENTS
-    **For NEW NODES - Return complete n_nodes structure:**
+    **For NEW NODES - Return complete single node (NO diff logic):**
     ```json
     {
-      "n_nodes": [
-        {
-          "id": "descriptive-permanent-id",
-          "name": "Node Name",
-          "longDescription": "Complete detailed description...",
-          "type": "character",
-          "updateImage": true
-        }
-      ]
+      "id": "descriptive-permanent-id",
+      "name": "Node Name",
+      "longDescription": "Complete detailed description...",
+      "type": "character",
+      "updateImage": true
     }
     ```
 
