@@ -48,6 +48,7 @@ export interface PipelineState {
   // State tracking
   originalNodes: { [nodeId: string]: any }; // Snapshot of nodes at start
   currentNodeStates: { [nodeId: string]: any }; // Current state including manual edits
+  finalAppliedNodes?: { [nodeId: string]: any }; // Final state with all changes applied (for UI preview)
   
   // Error handling
   errors: Array<{

@@ -1003,6 +1003,8 @@ advanced_nodes_generation:
     }
     ```
 
+    Note that "targetNodeIds" contain the nodes to edit, and "deleteNodeIds" contain the nodes to delete. It is impossible to have the same node in both lists.
+
     ## TARGET NODE ID FORMAT
     - **Existing nodes**: Use actual node IDs from the provided game state
     - **New nodes**: Use format "NEW_NODE_descriptiveName" where descriptiveName describes the node (NEW_NODE_merchantKael, NEW_NODE_magicSword, etc.)

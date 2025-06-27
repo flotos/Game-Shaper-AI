@@ -370,6 +370,9 @@ class AdvancedNodeGenerationService {
             editedNodes = this.applyNodeDeletions(editedNodes, state.planningOutput.deleteNodeIds);
           }
           
+          // Store the final applied state for UI preview
+          state.finalAppliedNodes = editedNodes;
+          
           state.stage = 'completed';
           onStageUpdate?.(state);
           break;
@@ -401,6 +404,20 @@ class AdvancedNodeGenerationService {
     // If we've exhausted all loops without success
     if (state.stage !== 'completed') {
       state.stage = 'failed';
+      
+      // For failed states, still provide the final applied nodes for UI preview
+      // Apply diffs to current state one more time
+      let finalEditedNodes = this.applyDiffsToNodes(
+        state.currentNodeStates,
+        state.generatedDiffs || {}
+      );
+      
+      // Apply deletions if specified
+      if (state.planningOutput && state.planningOutput.deleteNodeIds.length > 0) {
+        finalEditedNodes = this.applyNodeDeletions(finalEditedNodes, state.planningOutput.deleteNodeIds);
+      }
+      
+      state.finalAppliedNodes = finalEditedNodes;
     }
     
     onStageUpdate?.(state);
