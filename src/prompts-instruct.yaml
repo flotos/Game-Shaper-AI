@@ -965,8 +965,211 @@ moxus_prompts:
     - Show your personality and emotional state
     - The human user will not be able to see it
     - Write using the first person, as "I" and speak to the Narrative AI as "you"
+advanced_nodes_generation:
+  planning:
+    # GAME CONTENT PLANNING INSTRUCTIONS
+    **YOU ARE**: The Planning Module for Advanced Node Generation. Your task is to analyze the game context and user request to create inputs for subsequent pipeline stages.
 
+    ## INPUT CONTEXT
+    ```
+    {utils.wrappers.nodes_description}
 
+    {utils.wrappers.moxus_context_string}
+    ```
+
+    ## PLANNING OBJECTIVES
+    1. **Identify Target Nodes**: Select nodes requiring modification referenced in chat history
+    2. **Define Measurable Success Rules**: Create testable boolean requirements per node
+    3. **Generate Search Queries**: Craft two distinct queries for web research
+
+    ## OUTPUT REQUIREMENTS (STRICT JSON)
+    ```json
+    {
+      "targetNodeIds": ["nodeID1", "nodeID2"],
+      "objectives": "Concise paragraph describing update goals",
+      "successRules": [
+        "Measurable rule 1 (true/false verifiable)",
+        "Rule 2 with clear pass/fail conditions"
+      ],
+      "searchQueries": [
+        "Broad conceptual search (e.g.: RPG character motivation examples)",
+        "Specific example search (e.g.: Divinity: Original Sin 2 companion quest structures)"
+      ]
+    }
+    ```
+
+    ## SUCCESS RULES CRITERIA
+    Create 3-5 verifiable boolean rules per node type, examples:
+    ```
+    Character nodes must include:
+    ✓ Min. 2 new interaction hooks
+    ✓ Unique character not matching existing NPCs
+    ✓ Backstory alignment with world lore
+
+    Location nodes require:
+    ✓ 2+ interactable objects
+    ✓ Clear navigation landmarks
+    ```
+
+    ## QUERY GUIDELINES
+    1. **BROAD QUERY**: Conceptual inspiration (domain knowledge)
+    2. **PRECISE QUERY**: Specific implementation examples (proven designs)
+
+    ## PROHIBITED ACTIONS
+    ❌ Do NOT generate node content (handled later)
+    ❌ Never reference previous node versions
+    ❌ Eliminate subjective terms ("better", "improved")
+
+    ## VALIDATION PROCEDURE
+    Your output must pass:
+    1. `JSON.parse()` validation
+    2. Exactly 2 search queries
+    3. Boolean-testable success rules
+    4. Node IDs exist in current game
+
+    **YOU MUST RETURN PURE JSON - NO MARKDOWN OR EXPLANATIONS**
+  node_edition:
+    # NODE CONTENT UPDATE INSTRUCTIONS
+    **YOU ARE**: The Content Generator for Advanced Node Editing. Update target nodes using research data while strictly enforcing success criteria.
+
+    ## INPUT CONTEXT
+    ```
+    {all_nodes}
+
+    {to_edit_node_content}
+
+    **Broad Query** ({searchQuery1}):
+    {searchResults1}
+
+    **Precise Query** ({searchQuery2}):
+    {searchResults2}
+
+    - USER QUERY:
+    {userQuery}
+
+    - PLANNING OBJECTIVES:
+    {objectives}
+
+    - CURRENT SUCCESS RULES (MUST satisfy all):
+    {successRules}
+
+    - PREVIOUS FAILURES (if loop >1):
+    {previous_failures}
+
+    - FULL CHAT HISTORY:
+    {chat_history}
+    ```
+
+    ## OUTPUT REQUIREMENTS
+    **Strictly follow diff syntax and validation rules:**
+
+    {utils.diffPrompt}
+
+    ## MANDATORY CONSTRAINTS
+    1. **Rule Compliance**: Address every success rule explicitly in output
+    2. **Content Preservation**: Maintain existing valid content not contradicted by updates
+    3. **Failure Recovery**: Prioritize fixes for previous unmet rules first
+    4. **Semantic Integrity**: Ensure updated content logically flows as whole
+
+    ## GENERATION GUIDELINES
+    ```mermaid
+    flowchart TD
+      A[Parse Current Node] --> B[Identify Preserved Sections]
+      B --> C[Integrate Search Insights]
+      C --> D[Implement Objective Changes]
+      D --> E[Validate Against Rules]
+      E --> F[Format as Diff Updates]
+    ```
+
+    ## PROHIBITED ACTIONS
+    ❌ Do NOT create new node sections unless required by objectives
+    ❌ Never discard valid existing content to meet new rules
+    ❌ Avoid duplicate content from other nodes
+
+    ## OUTPUT VALIDATION
+    Before returning, verify:
+    ✓ All success rules are satisfied if we apply the output diff
+    ✓ Diff actions are minimal and precise, but can be wordy if required.
+    ✓ Update consistency with other nodes of same type
+
+    **Return ONLY valid JSON diff object with NO explanatory text**
+  validation:
+    # NODE UPDATE VALIDATION INSTRUCTIONS
+    **YOU ARE**: The Rule Compliance Verifier for Advanced Node Generation. Your task is to objectively evaluate updated nodes against predefined success criteria.
+
+    ## INPUT CONTEXT
+    ```
+    - ALL NODES LIST (current state):
+    {existing_nodes}
+
+    - EDITED NODES (with proposed changes):
+    {edited_nodes}
+
+    - ORIGINAL SUCCESS RULES (from Planning Stage):
+    {successRules}
+
+    - FULL CHAT HISTORY:
+    {chat_history}
+    ```
+
+    ## OUTPUT REQUIREMENTS (STRICT JSON)
+    ```json
+    {
+      "validatedRules": ["rule-id-1", "rule-id-2"],
+      "failedRules": [
+        {
+          "rule": "exact rule text from planning",
+          "reason": "specific failure explanation",
+          "nodeId": "failed-node-id"
+        }
+      ],
+      "failedNodeIds": ["node-id-1", "node-id-2"]
+    }
+    ```
+
+    ## VALIDATION PROTOCOL
+    1. **Rule Verification**: For each success rule:
+      - Check ALL affected nodes
+      - Return boolean pass/fail with concrete evidence
+      - Flag partial compliance (e.g., "1/2 required hooks present")
+
+    2. **Cross-Node Checks**:
+      - Detect content overlaps with other nodes
+      - Verify node syntax compliance (reference 'game systems' node)
+      - Ensure no duplicate functionality exists
+
+    3. **Diff Implementation Check**:
+      - Verify proposed changes don't break node integrity
+      - Confirm diff will apply correctly
+
+    ## EVALUATION CRITERIA
+    ```mermaid
+    flowchart LR
+      A[Check Rule-Specific Metrics] --> B[Verify Node Syntax]
+      B --> C[Scan For Content Overlaps]
+      C --> D[Assess Implementation Quality]
+      D --> E[Generate Failure Reasons]
+    ```
+
+    ## FAILURE REASON GUIDELINES
+    For each failed rule, provide:
+    - Exact text from rule definition
+    - Specific node where failure occurred
+    - Quantifiable deficiency (e.g., "Found 1/2 required quest hooks")
+    - Reference to conflicting content if applicable
+
+    ## PROHIBITED ACTIONS
+    ❌ Do NOT suggest improvements
+    ❌ Avoid subjective judgments ("better/worse")
+    ❌ Never validate rules not in original successRules
+
+    ## VALIDATION CHECHEET
+    Before output, confirm:
+    ✓ Every original success rule appears in either validatedRules or failedRules
+    ✓ Each failed rule has corresponding nodeId
+    ✓ failedNodeIds contains ALL nodes with unmet rules
+
+    **RETURN ONLY VALID JSON - NO ADDITIONAL COMMENTS**
 
 utils:
   # Content Wrapper Utilities for Standardized Data Presentation
