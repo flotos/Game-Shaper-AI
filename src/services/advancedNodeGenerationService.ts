@@ -442,7 +442,7 @@ class AdvancedNodeGenerationService {
 
   private formatNodesForPrompt(nodes: Node[]): string {
     const filteredNodes = nodes.filter(node => 
-      !['image_generation', 'image_generation_prompt', 'image_generation_prompt_negative'].includes(node.type)
+      !['image_generation', 'image_generation_prompt', 'image_generation_prompt_negative', 'assistant'].includes(node.type)
     );
     
     return filteredNodes.map(node => {
@@ -493,26 +493,80 @@ class AdvancedNodeGenerationService {
         }
       }
       
-      // Handle existing node updates (u_nodes format)
-      else if (editedNodes[nodeId] && diff.u_nodes && diff.u_nodes[nodeId]) {
-        const nodeUpdates = diff.u_nodes[nodeId];
+      // Handle direct diff format (advanced node generation individual diffs)
+      else if (diff.df && Array.isArray(diff.df)) {
+        if (editedNodes[nodeId]) {
+          const editedNode = { ...editedNodes[nodeId] };
+          // Apply diff to longDescription by default for advanced node generation
+          const originalText = editedNode.longDescription || '';
+          editedNode.longDescription = applyTextDiffInstructions(originalText, diff.df);
+          editedNodes[nodeId] = editedNode;
+        } else {
+          console.warn(`Node ${nodeId} targeted for direct diff update but not found in current states. Skipping update.`);
+        }
+      }
+      
+      // Handle direct field operations (advanced node generation field-specific updates)
+      else if (editedNodes[nodeId] && (diff.name || diff.longDescription || diff.type || diff.rpl)) {
         const editedNode = { ...editedNodes[nodeId] };
+        let hasChanges = false;
         
-        for (const [fieldName, operation] of Object.entries(nodeUpdates)) {
-          if (fieldName === 'img_upd') continue;
-          
-          const fieldOp = operation as any;
-          if (fieldOp && typeof fieldOp === 'object') {
-            if (fieldOp.rpl !== undefined) {
-              (editedNode as any)[fieldName] = fieldOp.rpl;
-            } else if (fieldOp.df && Array.isArray(fieldOp.df)) {
-              const originalText = (editedNode as any)[fieldName] || '';
-              (editedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
-            }
-          }
+        // Handle direct field replacements
+        if (diff.rpl !== undefined) {
+          editedNode.longDescription = diff.rpl;
+          hasChanges = true;
         }
         
-        editedNodes[nodeId] = editedNode;
+        // Handle individual field operations
+        ['name', 'longDescription', 'type'].forEach(fieldName => {
+          const fieldOp = (diff as any)[fieldName];
+          if (fieldOp) {
+            if (typeof fieldOp === 'string') {
+              // Direct string replacement
+              (editedNode as any)[fieldName] = fieldOp;
+              hasChanges = true;
+            } else if (fieldOp && typeof fieldOp === 'object') {
+              if (fieldOp.rpl !== undefined) {
+                (editedNode as any)[fieldName] = fieldOp.rpl;
+                hasChanges = true;
+              } else if (fieldOp.df && Array.isArray(fieldOp.df)) {
+                const originalText = (editedNode as any)[fieldName] || '';
+                (editedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
+                hasChanges = true;
+              }
+            }
+          }
+        });
+        
+        if (hasChanges) {
+          editedNodes[nodeId] = editedNode;
+        }
+      }
+      
+      // Handle existing node updates (u_nodes format - legacy/standard system)
+      else if (diff.u_nodes && diff.u_nodes[nodeId]) {
+        if (editedNodes[nodeId]) {
+          const nodeUpdates = diff.u_nodes[nodeId];
+          const editedNode = { ...editedNodes[nodeId] };
+          
+          for (const [fieldName, operation] of Object.entries(nodeUpdates)) {
+            if (fieldName === 'img_upd') continue;
+            
+            const fieldOp = operation as any;
+            if (fieldOp && typeof fieldOp === 'object') {
+              if (fieldOp.rpl !== undefined) {
+                (editedNode as any)[fieldName] = fieldOp.rpl;
+              } else if (fieldOp.df && Array.isArray(fieldOp.df)) {
+                const originalText = (editedNode as any)[fieldName] || '';
+                (editedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
+              }
+            }
+          }
+          
+          editedNodes[nodeId] = editedNode;
+        } else {
+          console.warn(`Node ${nodeId} targeted for update but not found in current states. Skipping update.`);
+        }
       }
     }
     
