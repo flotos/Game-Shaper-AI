@@ -345,7 +345,7 @@ class AdvancedNodeGenerationService {
         }
 
         // Apply diffs to current state for validation
-        const editedNodes = this.applyDiffsToNodes(
+        let editedNodes = this.applyDiffsToNodes(
           state.currentNodeStates,
           state.generatedDiffs || {}
         );
@@ -365,6 +365,11 @@ class AdvancedNodeGenerationService {
 
         // Check if all rules passed
         if (state.validationResult && state.validationResult.failedRules.length === 0) {
+          // Apply node deletions if any are specified
+          if (state.planningOutput && state.planningOutput.deleteNodeIds.length > 0) {
+            editedNodes = this.applyNodeDeletions(editedNodes, state.planningOutput.deleteNodeIds);
+          }
+          
           state.stage = 'completed';
           onStageUpdate?.(state);
           break;
@@ -406,6 +411,7 @@ class AdvancedNodeGenerationService {
   private validatePlanningOutput(data: any): boolean {
     if (!data ||
         !Array.isArray(data.targetNodeIds) ||
+        !Array.isArray(data.deleteNodeIds) ||
         typeof data.objectives !== 'string' ||
         !Array.isArray(data.successRules) ||
         !Array.isArray(data.searchQueries) ||
@@ -421,6 +427,15 @@ class AdvancedNodeGenerationService {
       if (!nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/) && !this.isValidExistingNodeId(nodeId)) {
         // For validation purposes, we'll accept any string that doesn't match NEW_NODE pattern
         // The actual existence check will be done in the generation stage
+      }
+    }
+
+    // Validate deleteNodeIds format (should only be existing node IDs)
+    for (const nodeId of data.deleteNodeIds) {
+      if (typeof nodeId !== 'string') return false;
+      // Delete nodes should only reference existing nodes, not NEW_NODE patterns
+      if (nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
+        return false; // Can't delete a node that doesn't exist yet
       }
     }
 
@@ -567,6 +582,21 @@ class AdvancedNodeGenerationService {
         } else {
           console.warn(`Node ${nodeId} targeted for update but not found in current states. Skipping update.`);
         }
+      }
+    }
+    
+    return editedNodes;
+  }
+
+  private applyNodeDeletions(currentStates: { [nodeId: string]: any }, deleteNodeIds: string[]): { [nodeId: string]: any } {
+    const editedNodes = { ...currentStates };
+    
+    for (const nodeId of deleteNodeIds) {
+      if (editedNodes[nodeId]) {
+        delete editedNodes[nodeId];
+        console.log(`Deleted node: ${nodeId}`);
+      } else {
+        console.warn(`Node ${nodeId} targeted for deletion but not found in current states. Skipping deletion.`);
       }
     }
     

@@ -2,6 +2,7 @@
 
 export interface PlanningStageOutput {
   targetNodeIds: string[];
+  deleteNodeIds: string[];
   objectives: string;
   successRules: string[];
   searchQueries: string[];

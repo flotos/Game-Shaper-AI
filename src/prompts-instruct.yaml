@@ -982,13 +982,15 @@ advanced_nodes_generation:
     ## PLANNING OBJECTIVES
     1. **Identify Target Nodes**: Select nodes requiring modification referenced in chat history or user request
     2. **Plan New Node Creation**: Specify new nodes to create when existing nodes don't cover the requirements
-    3. **Define Measurable Success Rules**: Create testable boolean requirements per node (existing and new)
-    4. **Generate Search Queries**: Craft two distinct queries for web research
+    3. **Plan Node Deletion**: Identify nodes to remove when they're obsolete, conflicting, or requested for removal
+    4. **Define Measurable Success Rules**: Create testable boolean requirements per node (existing and new)
+    5. **Generate Search Queries**: Craft two distinct queries for web research
 
     ## OUTPUT REQUIREMENTS (STRICT JSON)
     ```json
     {
       "targetNodeIds": ["existingNodeID1", "NEW_NODE_merchantKael", "NEW_NODE_magicSword"],
+      "deleteNodeIds": ["obsoleteNode1", "conflictingNode2"],
       "objectives": "Concise paragraph describing update goals",
       "successRules": [
         "Measurable rule 1 (true/false verifiable)",
@@ -1005,6 +1007,16 @@ advanced_nodes_generation:
     - **Existing nodes**: Use actual node IDs from the provided game state
     - **New nodes**: Use format "NEW_NODE_descriptiveName" where descriptiveName describes the node (NEW_NODE_merchantKael, NEW_NODE_magicSword, etc.)
     - **Mixed approach**: You can combine both existing node edits and new node creation in the same plan
+
+    ## NODE DELETION GUIDELINES
+    - **deleteNodeIds**: Only include existing node IDs that should be removed
+    - **Common deletion scenarios**:
+      - User explicitly requests removal ("delete the old tavern", "remove this character")
+      - Nodes become obsolete after story progression
+      - Duplicate or conflicting content that needs cleanup
+      - Placeholder nodes that should be replaced by better versions
+    - **Never delete**: Core game mechanics, essential locations, or main characters unless explicitly requested
+    - **Empty array allowed**: Use `"deleteNodeIds": []` if no deletions are needed
 
     ## SUCCESS RULES CRITERIA
     Create 3-5 verifiable boolean rules per node type, examples:

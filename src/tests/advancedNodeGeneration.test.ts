@@ -68,6 +68,7 @@ describe('Advanced Node Generation Service', () => {
       // Test the validation logic that we know works
       const validData = {
         targetNodeIds: ['node1'],
+        deleteNodeIds: [],
         objectives: 'Enhance character development',
         successRules: ['Character has backstory', 'Character has motivation'],
         searchQueries: ['RPG character development', 'character backstory examples']
@@ -99,6 +100,7 @@ describe('Advanced Node Generation Service', () => {
       // Arrange
       const mockPlanningOutput = {
         targetNodeIds: ['node1'],
+        deleteNodeIds: [],
         objectives: 'test objectives',
         successRules: ['rule1'],
         searchQueries: ['broad query', 'precise query']
@@ -127,6 +129,7 @@ describe('Advanced Node Generation Service', () => {
       // Arrange
       const mockPlanningOutput = {
         targetNodeIds: ['node1'],
+        deleteNodeIds: [],
         objectives: 'test objectives',
         successRules: ['rule1'],
         searchQueries: ['only one query'] // Should be 2 queries
@@ -163,6 +166,7 @@ describe('Advanced Node Generation Service', () => {
       ];
       const mockPlanningOutput = {
         targetNodeIds: ['non-existent'],
+        deleteNodeIds: [],
         objectives: 'test objectives',
         successRules: ['rule1'],
         searchQueries: ['query1', 'query2']
@@ -227,6 +231,7 @@ describe('Advanced Node Generation Service', () => {
       // Arrange
       const validPlanningOutput = {
         targetNodeIds: ['node1'],
+        deleteNodeIds: [],
         objectives: 'Enhance character development',
         successRules: ['Character has backstory', 'Character has motivation'],
         searchQueries: ['RPG character development', 'character backstory examples']
@@ -243,6 +248,7 @@ describe('Advanced Node Generation Service', () => {
       // Arrange
       const validPlanningWithNewNodes = {
         targetNodeIds: ['existing-node-1', 'NEW_NODE_1', 'NEW_NODE_2'],
+        deleteNodeIds: [],
         objectives: 'Create new quest NPCs and update existing character',
         successRules: ['New NPCs have unique personalities', 'NPCs integrate with existing lore'],
         searchQueries: ['RPG NPC creation', 'fantasy character archetypes']
@@ -276,6 +282,7 @@ describe('Advanced Node Generation Service', () => {
       // Test that validation works with proper data structure
       const testData = {
         targetNodeIds: ['node1'],
+        deleteNodeIds: [],
         objectives: 'test objectives',
         successRules: ['rule1'],
         searchQueries: ['query1', 'query2']
@@ -522,6 +529,91 @@ describe('Advanced Node Generation Service', () => {
       // Verify new node was created
       expect(result.wizard123.name).toBe('Powerful Wizard');
       expect(result.wizard123.type).toBe('character');
+    });
+
+    describe('Node deletion functionality', () => {
+      it('should include deleteNodeIds in planning output validation', () => {
+        const service = advancedNodeGenerationService as any;
+        
+        // Valid planning output with deletions
+        const validPlanningWithDeletions = {
+          targetNodeIds: ['char_001', 'NEW_NODE_newCharacter'],
+          deleteNodeIds: ['obsolete_node_1', 'old_character_2'],
+          objectives: 'Update game content and remove outdated elements',
+          successRules: ['Characters have updated backstories', 'Obsolete content is removed'],
+          searchQueries: ['character development examples', 'narrative cleanup techniques']
+        };
+        
+        expect(service.validatePlanningOutput(validPlanningWithDeletions)).toBe(true);
+        
+        // Invalid: trying to delete NEW_NODE patterns
+        const invalidDeletion = {
+          targetNodeIds: ['char_001'],
+          deleteNodeIds: ['NEW_NODE_invalid'], // Can't delete what doesn't exist yet
+          objectives: 'Test invalid deletion',
+          successRules: ['Test rule'],
+          searchQueries: ['query1', 'query2']
+        };
+        
+        expect(service.validatePlanningOutput(invalidDeletion)).toBe(false);
+        
+        // Invalid: missing deleteNodeIds array
+        const missingDeleteIds = {
+          targetNodeIds: ['char_001'],
+          objectives: 'Test missing field',
+          successRules: ['Test rule'],
+          searchQueries: ['query1', 'query2']
+        };
+        
+        expect(service.validatePlanningOutput(missingDeleteIds)).toBe(false);
+      });
+
+      it('should apply node deletions correctly', () => {
+        const service = advancedNodeGenerationService as any;
+        
+        const currentStates = {
+          'keep_node_1': { id: 'keep_node_1', name: 'Keep This', type: 'character' },
+          'delete_node_1': { id: 'delete_node_1', name: 'Delete This', type: 'character' },
+          'keep_node_2': { id: 'keep_node_2', name: 'Keep This Too', type: 'location' },
+          'delete_node_2': { id: 'delete_node_2', name: 'Delete This Too', type: 'item' }
+        };
+        
+        const deleteNodeIds = ['delete_node_1', 'delete_node_2', 'nonexistent_node'];
+        
+        const result = service.applyNodeDeletions(currentStates, deleteNodeIds);
+        
+        // Should keep nodes not in delete list
+        expect(result['keep_node_1']).toEqual(currentStates['keep_node_1']);
+        expect(result['keep_node_2']).toEqual(currentStates['keep_node_2']);
+        
+        // Should remove nodes in delete list
+        expect(result['delete_node_1']).toBeUndefined();
+        expect(result['delete_node_2']).toBeUndefined();
+        
+        // Should not error on nonexistent nodes
+        expect(result['nonexistent_node']).toBeUndefined();
+        
+        // Original states should be unchanged
+        expect(currentStates['delete_node_1']).toBeDefined();
+        expect(currentStates['delete_node_2']).toBeDefined();
+      });
+
+      it('should handle empty deleteNodeIds array', () => {
+        const service = advancedNodeGenerationService as any;
+        
+        const currentStates = {
+          'node1': { id: 'node1', name: 'Node 1', type: 'character' },
+          'node2': { id: 'node2', name: 'Node 2', type: 'location' }
+        };
+        
+        const deleteNodeIds: string[] = [];
+        
+        const result = service.applyNodeDeletions(currentStates, deleteNodeIds);
+        
+        // Should return all nodes unchanged
+        expect(result).toEqual(currentStates);
+        expect(Object.keys(result)).toHaveLength(2);
+      });
     });
   });
 }); 
