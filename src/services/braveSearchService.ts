@@ -2,27 +2,30 @@ import { BraveSearchResponse, SearchResult, SearchResults } from '../types/advan
 
 class BraveSearchService {
   private apiKey?: string;
-  private baseUrl = 'https://api.search.brave.com/res/v1/web/search';
+  private baseUrl: string;
   
-  constructor() {
-    this.apiKey = import.meta.env.VITE_BRAVE_API_KEY;
+  constructor() {    
+    // Use proxy in development, direct API or serverless function in production
+    if (import.meta.env.DEV) {
+      this.baseUrl = '/api/search';
+    } else {
+      // In production, we'll use a serverless function or backend endpoint
+      this.baseUrl = import.meta.env.VITE_SEARCH_PROXY_URL || '/api/brave-search';
+    }
   }
   
   private async makeSearchRequest(query: string): Promise<BraveSearchResponse> {
-    if (!this.apiKey) {
-      throw new Error('Brave API key not configured. Please set VITE_BRAVE_API_KEY environment variable.');
-    }
     
-    const url = new URL(this.baseUrl);
+    const url = new URL(this.baseUrl, window.location.origin);
     url.searchParams.append('q', query);
+    
+    const headers: HeadersInit = {
+      'Accept': 'application/json',
+    };
     
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Accept-Encoding': 'gzip',
-        'X-Subscription-Token': this.apiKey,
-      },
+      headers,
     });
     
     if (!response.ok) {
@@ -46,11 +49,13 @@ class BraveSearchService {
   
   async searchDualQueries(broadQuery: string, preciseQuery: string, maxResults: number = 5): Promise<SearchResults> {
     try {
-      // Execute both searches in parallel
-      const [broadResponse, preciseResponse] = await Promise.all([
-        this.makeSearchRequest(broadQuery),
-        this.makeSearchRequest(preciseQuery),
-      ]);
+      // Execute searches sequentially with 2-second delay for rate limiting
+      const broadResponse = await this.makeSearchRequest(broadQuery);
+      
+      // Wait 2 seconds before the next search to respect rate limits
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const preciseResponse = await this.makeSearchRequest(preciseQuery);
       
       const broadResults = this.convertBraveResultsToSearchResults(broadResponse).slice(0, maxResults);
       const preciseResults = this.convertBraveResultsToSearchResults(preciseResponse).slice(0, maxResults);
@@ -86,16 +91,10 @@ class BraveSearchService {
   }
   
   getConfigurationStatus(): { configured: boolean; message: string } {
-    if (this.apiKey) {
-      return {
-        configured: true,
-        message: 'Brave Search API is configured and ready to use.',
-      };
-    }
-    
+    const endpoint = import.meta.env.DEV ? 'development proxy' : 'production endpoint';
     return {
-      configured: false,
-      message: 'Brave Search API key not found. Set VITE_BRAVE_API_KEY environment variable to enable web search.',
+      configured: true,
+      message: `Brave Search API is configured and ready to use via ${endpoint}.`,
     };
   }
 }

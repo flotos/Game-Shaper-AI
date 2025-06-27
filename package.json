@@ -6,7 +6,9 @@
     "build": "vite build",
     "serve": "vite preview",
     "test": "vitest --run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "proxy": "node server/brave-proxy.js",
+    "dev:full": "concurrently \"npm run proxy\" \"npm run dev\""
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.2.4",
@@ -23,7 +25,10 @@
     "react-dom": "^17.0.2",
     "react-markdown": "^8.0.7",
     "rehype-raw": "^6.1.1",
-    "tailwind-merge": "^3.2.0"
+    "tailwind-merge": "^3.2.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "node-fetch": "^2.6.9"
   },
   "devDependencies": {
     "@rollup/plugin-yaml": "^4.1.2",
@@ -34,6 +39,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^1.0.0",
     "autoprefixer": "^10.4.19",
+    "concurrently": "^7.6.0",
     "jsdom": "^26.1.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",

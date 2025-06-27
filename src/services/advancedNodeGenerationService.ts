@@ -172,7 +172,7 @@ class AdvancedNodeGenerationService {
     const pipelineId = Math.random().toString(36).substring(7);
     const initialState: PipelineState = {
       mode: 'automatic',
-      maxLoops: 3,
+      maxLoops: 1,
       timeout: finalConfig.defaultTimeout,
       currentLoop: 1,
       stage: 'planning',
