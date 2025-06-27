@@ -55,6 +55,13 @@ Game Shaper AI is an **interactive AI-powered narrative story simulator** that u
 - Error handling and recovery
 - Performance optimization strategies
 
+### 🔄 [Advanced Node Generation](./advanced-node-generation.md)
+**For understanding the multi-stage pipeline system**
+- 4-stage pipeline architecture (Planning → Search → Generation → Validation)
+- Web search integration with Brave API
+- Iterative refinement and loop control
+- Success criteria validation and quality assurance
+
 ## Quick Reference
 
 ### Node Types (Free-form String)
