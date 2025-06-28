@@ -117,9 +117,17 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     
     try {
       const chatHistory: Message[] = []; // TODO: Get from context if available
+      
+      // Use the updated nodes from the previous loop if available
+      let nodesToUse = nodes;
+      if (pipelineState.finalAppliedNodes) {
+        // Convert the finalAppliedNodes object map back to an array
+        nodesToUse = Object.values(pipelineState.finalAppliedNodes) as Node[];
+      }
+      
       const result = await advancedNodeGenerationService.runPipeline(
         query,
-        nodes,
+        nodesToUse,
         chatHistory,
         {}, // Use default config
         (state) => setPipelineState(state)
@@ -701,8 +709,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                   original={originalNode?.name || ''} 
                   updated={suggestedNodeChange.name || ''} 
                   isCurrent={false}
-                  validationResult={preview.validationResult}
-                  nodeId={nodeId}
                 />
               </div>
               <div>
@@ -711,8 +717,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                   original={originalNode?.longDescription || ''} 
                   updated={suggestedNodeChange.longDescription || ''} 
                   isCurrent={false}
-                  validationResult={preview.validationResult}
-                  nodeId={nodeId}
                 />
               </div>
               <div>
@@ -721,8 +725,6 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                   original={originalNode?.type || ''} 
                   updated={suggestedNodeChange.type || ''} 
                   isCurrent={false}
-                  validationResult={preview.validationResult}
-                  nodeId={nodeId}
                 />
               </div>
             </div>
