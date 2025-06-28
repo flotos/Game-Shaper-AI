@@ -288,8 +288,17 @@ class AdvancedNodeGenerationService {
           
           const generatedDiffs: { [nodeId: string]: any } = {};
           
+          // Use updated nodes from previous loops if this isn't the first loop
+          let currentNodes: Node[];
+          if (state.currentLoop === 1) {
+            currentNodes = [...state.allNodes];
+          } else {
+            // Reconstruct nodes from current state (includes changes from previous loops)
+            currentNodes = this.reconstructNodesFromStates(state.currentNodeStates);
+          }
+          
           // Create a working copy of nodes that will be updated with each generation
-          let workingNodes = [...state.allNodes];
+          let workingNodes = [...currentNodes];
           let workingNodesMap = this.createNodeSnapshot(workingNodes);
           
           for (const nodeId of state.planningOutput.targetNodeIds) {
@@ -355,8 +364,11 @@ class AdvancedNodeGenerationService {
           state.stage = 'validating';
           onStageUpdate?.(state);
           
+          // Use the same node set that was used for generation
+          const validationNodes = state.currentLoop === 1 ? state.allNodes : this.reconstructNodesFromStates(state.currentNodeStates);
+          
           state.validationResult = await this.validateOutput(
-            state.allNodes,
+            validationNodes,
             editedNodes,
             state.planningOutput,
             state.chatHistory || []
@@ -504,6 +516,18 @@ class AdvancedNodeGenerationService {
       snapshot[node.id] = { ...node };
     });
     return snapshot;
+  }
+
+  private reconstructNodesFromStates(nodeStates: { [nodeId: string]: any }): Node[] {
+    return Object.values(nodeStates).map(nodeData => ({
+      id: nodeData.id || '',
+      name: nodeData.name || '',
+      longDescription: nodeData.longDescription || '',
+      type: nodeData.type || '',
+      image: nodeData.image,
+      updateImage: nodeData.updateImage || false,
+      imageSeed: nodeData.imageSeed
+    }));
   }
 
   private applyDiffsToNodes(currentStates: { [nodeId: string]: any }, diffs: { [nodeId: string]: any }): { [nodeId: string]: any } {
