@@ -1295,6 +1295,8 @@ utils:
       - `occ`: Which occurrence to replace (defaults to 1)
     - **To append new content**: Use `prev_txt: ""` and `next_txt: "\n\nNew content"`
 
+    Never use "prev_txt" if it contains more than 50% of the original content. Instead, use "rpl" to replace the entire content. This is very important to avoid paying for ton of tokens.
+
     You should very rarely append new content. When possible, do targeted replacements being careful not to have duplicate content.
     You should take into consideration the final result that will be made with your diff update and not focus on only what you have to add.
 
