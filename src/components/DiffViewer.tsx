@@ -2,6 +2,7 @@ import React, { CSSProperties } from 'react';
 import ReactMarkdown from 'react-markdown';
 // @ts-ignore - rehypeRaw has no default TS types in our setup
 import rehypeRaw from 'rehype-raw';
+import { ValidationResult } from '../types/advancedNodeGeneration';
 
 interface DiffViewerProps {
   original: string | string[] | undefined | null;
@@ -9,6 +10,8 @@ interface DiffViewerProps {
   isCurrent: boolean;
   className?: string;
   style?: CSSProperties;
+  validationResult?: ValidationResult;
+  nodeId?: string;
 }
 
 export const createDiffMarkdown = (
@@ -101,11 +104,73 @@ export const createDiffMarkdown = (
   }
 };
 
-const DiffViewer: React.FC<DiffViewerProps> = ({ original, updated, isCurrent, className = '', style }) => {
+const DiffViewer: React.FC<DiffViewerProps> = ({ 
+  original, 
+  updated, 
+  isCurrent, 
+  className = '', 
+  style,
+  validationResult,
+  nodeId
+}) => {
   const markdownWithDiff = createDiffMarkdown(original, updated, isCurrent);
+  
+  // Filter validation results for this specific node
+  const nodeValidationResults = validationResult && nodeId ? {
+    passedRules: validationResult.validatedRules.filter(rule => 
+      validationResult.failedRules.every(fr => fr.rule !== rule) || 
+      rule.toLowerCase().includes('general') || 
+      rule.toLowerCase().includes('overall')
+    ),
+    failedRules: validationResult.failedRules.filter(fr => 
+      fr.nodeId === nodeId || 
+      fr.nodeId === 'general' || 
+      fr.nodeId === 'overall'
+    )
+  } : null;
+
   return (
-    <div className={`p-2 bg-gray-700 rounded text-white whitespace-pre-wrap ${className}`} style={style}>
-      <ReactMarkdown rehypePlugins={[rehypeRaw]}>{markdownWithDiff}</ReactMarkdown>
+    <div className={`${className}`} style={style}>
+      <div className={`p-2 bg-gray-700 rounded text-white whitespace-pre-wrap`}>
+        <ReactMarkdown rehypePlugins={[rehypeRaw]}>{markdownWithDiff}</ReactMarkdown>
+      </div>
+      
+      {nodeValidationResults && (nodeValidationResults.passedRules.length > 0 || nodeValidationResults.failedRules.length > 0) && (
+        <div className="mt-2 p-2 bg-gray-800 rounded text-xs border-l-4 border-blue-500">
+          <div className="font-semibold text-gray-300 mb-1">Validation Results</div>
+          
+          {nodeValidationResults.passedRules.length > 0 && (
+            <div className="mb-1">
+              <span className="text-green-400 font-medium">
+                ✓ {nodeValidationResults.passedRules.length} rule(s) passed
+              </span>
+              <div className="text-green-300 ml-2 space-y-0.5">
+                {nodeValidationResults.passedRules.slice(0, 2).map((rule, index) => (
+                  <div key={index} className="truncate">• {rule}</div>
+                ))}
+                {nodeValidationResults.passedRules.length > 2 && (
+                  <div className="text-green-400">• ... and {nodeValidationResults.passedRules.length - 2} more</div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {nodeValidationResults.failedRules.length > 0 && (
+            <div>
+              <span className="text-red-400 font-medium">
+                ✗ {nodeValidationResults.failedRules.length} rule(s) failed
+              </span>
+              <div className="text-red-300 ml-2 space-y-0.5">
+                {nodeValidationResults.failedRules.map((failure, index) => (
+                  <div key={index} className="break-words">
+                    <span className="font-medium">• {failure.rule}:</span> {failure.reason}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -10,7 +10,7 @@ import { AssistantPromptSelector } from './AssistantPromptSelector';
 import { applyTextDiffInstructions } from '../utils/textUtils';
 import { FieldUpdateOperation } from '../models/nodeOperations';
 import { advancedNodeGenerationService } from '../services/llm';
-import { PipelineState } from '../types/advancedNodeGeneration';
+import { PipelineState, ValidationResult } from '../types/advancedNodeGeneration';
 
 interface AssistantOverlayProps {
   nodes: Node[];
@@ -35,11 +35,47 @@ interface PreviewState {
   editedNodes?: Map<string, Partial<Node>>;
   newNodesEdits?: Map<string, Partial<Node>>;
   deletedNodesConfirm?: Set<string>;
+  validationResult?: ValidationResult;
 }
 
+// Helper to safely extract string value from various data types
+const safeStringValue = (value: any): string => {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  
+  // Handle objects that might have longDescription or content properties
+  if (typeof value === 'object') {
+    if (value.longDescription && typeof value.longDescription === 'string') {
+      return value.longDescription;
+    }
+    if (value.content && typeof value.content === 'string') {
+      return value.content;
+    }
+    if (value.text && typeof value.text === 'string') {
+      return value.text;
+    }
+    // For arrays, try to join them
+    if (Array.isArray(value)) {
+      return value.map(item => safeStringValue(item)).join('\n');
+    }
+  }
+  
+  // Last resort: try to JSON stringify for debugging, but fallback to empty string
+  try {
+    const jsonStr = JSON.stringify(value, null, 2);
+    // If it's a simple object representation, return empty instead
+    if (jsonStr === '{}' || jsonStr === '[]') return '';
+    return jsonStr;
+  } catch {
+    return '';
+  }
+};
+
 // Helper to calculate textarea height
-const calculateHeight = (value: string, isLong = false) => {
-  const numberOfLines = (value.match(/\n/g) || []).length + 1;
+const calculateHeight = (value: any, isLong = false) => {
+  const stringValue = safeStringValue(value);
+  const numberOfLines = (stringValue.match(/\n/g) || []).length + 1;
   const minHeight = isLong ? 100 : 40;
   return `${Math.max(minHeight, numberOfLines * 20)}px`;
 };
@@ -273,7 +309,8 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             prompt: query,
             editedNodes: new Map<string, Partial<Node>>(),
             newNodesEdits: new Map<string, Partial<Node>>(),
-            deletedNodesConfirm: new Set<string>()
+            deletedNodesConfirm: new Set<string>(),
+            validationResult: result.validationResult
           });
         } else {
           // Fallback: show empty preview with error information
@@ -611,9 +648,10 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
 
     const userEditsForThisNode = preview.editedNodes?.get(nodeId) || {};
 
-    const currentName = userEditsForThisNode.name ?? suggestedNodeChange.name ?? originalNode?.name ?? '';
-    const currentLongDescription = userEditsForThisNode.longDescription ?? suggestedNodeChange.longDescription ?? originalNode?.longDescription ?? '';
-    const currentType = userEditsForThisNode.type ?? suggestedNodeChange.type ?? originalNode?.type ?? '';
+    // Safely extract string values, handling complex objects from advanced node generation
+    const currentName = safeStringValue(userEditsForThisNode.name ?? suggestedNodeChange.name ?? originalNode?.name ?? '');
+    const currentLongDescription = safeStringValue(userEditsForThisNode.longDescription ?? suggestedNodeChange.longDescription ?? originalNode?.longDescription ?? '');
+    const currentType = safeStringValue(userEditsForThisNode.type ?? suggestedNodeChange.type ?? originalNode?.type ?? '');
     const currentUpdateImage = userEditsForThisNode.updateImage ?? suggestedNodeChange.updateImage ?? false;
     
     return (
@@ -631,7 +669,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                 </div>
                 <div>
                   <span className="font-semibold block mb-1">Long Description:</span>
-                  <p className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap" style={{ height: calculateHeight(originalNode.longDescription || '', true), overflowY: 'auto' }}>{originalNode.longDescription}</p>
+                  <p className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap" style={{ height: calculateHeight(originalNode.longDescription, true), overflowY: 'auto' }}>{originalNode.longDescription}</p>
                 </div>
                 <div>
                   <span className="font-semibold block mb-1">Type:</span>
@@ -648,15 +686,33 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             <div className="text-sm space-y-2">
               <div>
                 <span className="font-semibold block mb-1">Name:</span>
-                <DiffViewer original={originalNode?.name || ''} updated={suggestedNodeChange.name || ''} isCurrent={false} />
+                <DiffViewer 
+                  original={originalNode?.name || ''} 
+                  updated={suggestedNodeChange.name || ''} 
+                  isCurrent={false}
+                  validationResult={preview.validationResult}
+                  nodeId={nodeId}
+                />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
-                <DiffViewer original={originalNode?.longDescription || ''} updated={suggestedNodeChange.longDescription || ''} isCurrent={false} />
+                <DiffViewer 
+                  original={originalNode?.longDescription || ''} 
+                  updated={suggestedNodeChange.longDescription || ''} 
+                  isCurrent={false}
+                  validationResult={preview.validationResult}
+                  nodeId={nodeId}
+                />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>
-                <DiffViewer original={originalNode?.type || ''} updated={suggestedNodeChange.type || ''} isCurrent={false} />
+                <DiffViewer 
+                  original={originalNode?.type || ''} 
+                  updated={suggestedNodeChange.type || ''} 
+                  isCurrent={false}
+                  validationResult={preview.validationResult}
+                  nodeId={nodeId}
+                />
               </div>
             </div>
           </div>
@@ -670,7 +726,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               </div>
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
-                <textarea value={currentLongDescription} onChange={(e) => handleNodeEdit(nodeId, 'longDescription', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white resize-none" style={{ height: calculateHeight(currentLongDescription || '', true), overflowY: 'auto' }} placeholder="Enter long description..."/>
+                <textarea value={currentLongDescription} onChange={(e) => handleNodeEdit(nodeId, 'longDescription', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white resize-none" style={{ height: calculateHeight(currentLongDescription, true), overflowY: 'auto' }} placeholder="Enter long description..."/>
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>
@@ -701,9 +757,10 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
     const nodeId = `new-${index}`;
     const userEditsForThisNode = preview.newNodesEdits?.get(nodeId) || {};
 
-    const currentName = userEditsForThisNode.name ?? newNode.name ?? '';
-    const currentLongDescription = userEditsForThisNode.longDescription ?? newNode.longDescription ?? '';
-    const currentType = userEditsForThisNode.type ?? newNode.type ?? '';
+    // Safely extract string values, handling complex objects from advanced node generation
+    const currentName = safeStringValue(userEditsForThisNode.name ?? newNode.name ?? '');
+    const currentLongDescription = safeStringValue(userEditsForThisNode.longDescription ?? newNode.longDescription ?? '');
+    const currentType = safeStringValue(userEditsForThisNode.type ?? newNode.type ?? '');
     const currentUpdateImage = userEditsForThisNode.updateImage ?? newNode.updateImage ?? false;
     
     return (
@@ -717,7 +774,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
           </div>
           <div>
             <span className="font-semibold block mb-1">Long Description:</span>
-            <textarea value={currentLongDescription} onChange={(e) => handleNewNodeEdit(nodeId, 'longDescription', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white resize-none" style={{ height: calculateHeight(currentLongDescription || '', true), overflowY: 'auto' }} placeholder="Enter long description..."/>
+            <textarea value={currentLongDescription} onChange={(e) => handleNewNodeEdit(nodeId, 'longDescription', e.target.value)} className="w-full p-2 bg-gray-700 rounded text-white resize-none" style={{ height: calculateHeight(currentLongDescription, true), overflowY: 'auto' }} placeholder="Enter long description..."/>
           </div>
           <div>
             <span className="font-semibold block mb-1">Type:</span>
@@ -927,33 +984,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                 </div>
               </div>
 
-              {/* Validation Results */}
-              {pipelineState.validationResult && (
-                <div className="mb-4">
-                  <h4 className="text-sm font-medium text-gray-300 mb-2">Validation Results</h4>
-                  <div className="bg-gray-900 rounded p-3 text-sm">
-                    <div className="mb-2">
-                      <span className="text-green-400">
-                        Passed: {pipelineState.validationResult.validatedRules.length} rules
-                      </span>
-                    </div>
-                    {pipelineState.validationResult.failedRules.length > 0 && (
-                      <div>
-                        <span className="text-red-400">
-                          Failed: {pipelineState.validationResult.failedRules.length} rules
-                        </span>
-                        <ul className="mt-1 space-y-1">
-                          {pipelineState.validationResult.failedRules.map((failure, index) => (
-                            <li key={index} className="text-xs text-red-300">
-                              <span className="font-medium">{failure.nodeId}:</span> {failure.reason}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+
 
               {/* Errors */}
               {pipelineState.errors.length > 0 && (

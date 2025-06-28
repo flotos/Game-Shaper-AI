@@ -97,12 +97,6 @@ function useNodeGraph() {
   }, []);
 
   const deleteNode = useCallback((nodeId: string): void => {
-    const nodeToDeleteCheck = nodes.find(node => node.id === nodeId);
-    if (nodeToDeleteCheck && nonDeletableNodeTypes.includes(nodeToDeleteCheck.type.toLowerCase())) {
-      console.warn(`Attempted to delete a protected node type: ${nodeToDeleteCheck.type} (ID: ${nodeId}). Operation blocked.`);
-      return; 
-    }
-
     setNodes(prevNodes => {
       // Find the node to delete
       const nodeToDelete = prevNodes.find(node => node.id === nodeId);
@@ -165,10 +159,6 @@ function useNodeGraph() {
 
       workingNodes = workingNodes.filter(node => {
         if (deleteIds.has(node.id)) {
-          if (nonDeletableNodeTypes.includes(node.type.toLowerCase())) {
-            console.warn(`Attempted to delete a protected node type via updateGraph: ${node.type} (ID: ${node.id}). Operation blocked.`);
-            return true;
-          }
           // Node is to be deleted, perform cleanup before removing
           if (node.image?.startsWith('blob:')) {
             URL.revokeObjectURL(node.image);
