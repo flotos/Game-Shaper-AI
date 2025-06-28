@@ -1162,7 +1162,7 @@ advanced_nodes_generation:
     ## OUTPUT REQUIREMENTS (STRICT JSON)
     ```json
     {
-      "validatedRules": ["rule-id-1", "rule-id-2"],
+      "validatedRules": ["exact rule text from planning that passed", "another exact rule text that passed"],
       "failedRules": [
         {
           "rule": "exact rule text from planning",
@@ -1179,6 +1179,7 @@ advanced_nodes_generation:
       - Check ALL affected nodes
       - Return boolean pass/fail with concrete evidence
       - Flag partial compliance (e.g., "1/2 required hooks present")
+      - **CRITICAL**: Use the EXACT rule text from planning in both `validatedRules` and `failedRules.rule`
 
     2. **Cross-Node Checks**:
       - Detect content overlaps with other nodes
@@ -1210,11 +1211,12 @@ advanced_nodes_generation:
     ❌ Avoid subjective judgments ("better/worse")
     ❌ Never validate rules not in original successRules
 
-    ## VALIDATION CHECHEET
+    ## VALIDATION CHECKLIST
     Before output, confirm:
     ✓ Every original success rule appears in either validatedRules or failedRules
     ✓ Each failed rule has corresponding nodeId
     ✓ failedNodeIds contains ALL nodes with unmet rules
+    ✓ **CRITICAL**: validatedRules contains EXACT rule text, NOT generic IDs like "rule-id-1"
 
     **RETURN ONLY VALID JSON - NO ADDITIONAL COMMENTS**
 

@@ -134,6 +134,11 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
       );
       
       setPipelineState(result);
+      
+      // Process the result immediately to show diff viewer
+      if (result.stage === 'completed' || result.stage === 'failed') {
+        await handlePipelineResultForPreview(result, nodesToUse);
+      }
     } catch (err) {
       setError('Failed to run next loop. Please try again.');
       console.error(err);
@@ -145,6 +150,171 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   const handleCancelAdvanced = () => {
     setPipelineState(null);
     setIsAdvancedMode(false);
+  };
+
+  const handlePipelineResultForPreview = async (result: PipelineState, inputNodes: Node[]) => {
+    const mergeUpdates: Partial<Node>[] = [];
+    const newNodes: Partial<Node>[] = [];
+    const deleteNodeIds: string[] = [];
+    
+    // Get deletions from planning output
+    if (result.planningOutput?.deleteNodeIds) {
+      deleteNodeIds.push(...result.planningOutput.deleteNodeIds);
+    }
+    
+    // Use finalAppliedNodes if available (when completed successfully) or fall back to processing diffs
+    if (result.finalAppliedNodes && result.stage === 'completed') {
+      // Compare finalAppliedNodes with INPUT nodes (not original overlay nodes) to determine changes
+      const inputNodeMap = new Map(inputNodes.map(n => [n.id, n]));
+      
+      // Find updated and new nodes by comparing final state with input nodes
+      for (const [nodeId, finalNode] of Object.entries(result.finalAppliedNodes)) {
+        const inputNode = inputNodeMap.get(nodeId);
+        
+        if (!inputNode) {
+          // This is a new node
+          newNodes.push({
+            id: finalNode.id,
+            name: finalNode.name,
+            longDescription: finalNode.longDescription,
+            type: finalNode.type,
+            updateImage: finalNode.updateImage || false
+          });
+        } else {
+          // Check if this node was actually updated
+          const hasChanges = 
+            inputNode.name !== finalNode.name ||
+            inputNode.longDescription !== finalNode.longDescription ||
+            inputNode.type !== finalNode.type;
+          
+          if (hasChanges) {
+            mergeUpdates.push({
+              id: nodeId,
+              name: finalNode.name,
+              longDescription: finalNode.longDescription,
+              type: finalNode.type,
+              updateImage: finalNode.updateImage || false
+            });
+          }
+        }
+      }
+    } else if (result.generatedDiffs) {
+      // Fallback: process diffs manually (for failed/incomplete pipelines)
+      for (const [nodeId, diff] of Object.entries(result.generatedDiffs)) {
+        // Handle new node creation (direct node format for CREATE_NEW_NODE)
+        if (diff && diff.id && diff.name && diff.longDescription && diff.type && nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
+          newNodes.push({
+            id: diff.id,
+            name: diff.name,
+            longDescription: diff.longDescription,
+            type: diff.type,
+            updateImage: diff.updateImage || false
+          });
+        }
+        // Handle new node creation (legacy n_nodes format)
+        else if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
+          for (const newNode of diff.n_nodes) {
+            if (newNode.id) {
+              newNodes.push({
+                id: newNode.id,
+                name: newNode.name,
+                longDescription: newNode.longDescription,
+                type: newNode.type,
+                updateImage: newNode.updateImage || false
+              });
+            }
+          }
+        }
+        
+        // Handle existing node updates - multiple formats
+        const inputNode = inputNodes.find(n => n.id === nodeId);
+        if (inputNode) {
+          let updatedNode: Partial<Node> = { id: nodeId };
+          let hasChanges = false;
+          
+          // Format 1: u_nodes format
+          if (diff.u_nodes && diff.u_nodes[nodeId]) {
+            const nodeUpdates = diff.u_nodes[nodeId];
+            for (const [fieldName, operation] of Object.entries(nodeUpdates)) {
+              if (fieldName === 'img_upd') continue;
+              const fieldOp = operation as FieldUpdateOperation;
+
+              if (fieldOp && typeof fieldOp === 'object') {
+                if (fieldOp.rpl !== undefined) {
+                  (updatedNode as any)[fieldName] = fieldOp.rpl;
+                  hasChanges = true;
+                } else if (fieldOp.df) {
+                  const originalText = (inputNode as any)[fieldName] || '';
+                  (updatedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
+                  hasChanges = true;
+                }
+              }
+            }
+          }
+          
+          // Format 2: Direct diff format (df array)
+          else if (diff.df && Array.isArray(diff.df)) {
+            const originalText = inputNode.longDescription || '';
+            updatedNode.longDescription = applyTextDiffInstructions(originalText, diff.df);
+            hasChanges = true;
+          }
+          
+          // Format 3: Direct field operations
+          else if (diff.name || diff.longDescription || diff.type || diff.rpl) {
+            if (diff.rpl !== undefined) {
+              updatedNode.longDescription = diff.rpl;
+              hasChanges = true;
+            }
+            
+            ['name', 'longDescription', 'type'].forEach(fieldName => {
+              const fieldOp = (diff as any)[fieldName];
+              if (fieldOp) {
+                if (typeof fieldOp === 'string') {
+                  (updatedNode as any)[fieldName] = fieldOp;
+                  hasChanges = true;
+                } else if (fieldOp && typeof fieldOp === 'object') {
+                  if (fieldOp.rpl !== undefined) {
+                    (updatedNode as any)[fieldName] = fieldOp.rpl;
+                    hasChanges = true;
+                  } else if (fieldOp.df && Array.isArray(fieldOp.df)) {
+                    const originalText = (inputNode as any)[fieldName] || '';
+                    (updatedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
+                    hasChanges = true;
+                  }
+                }
+              }
+            });
+          }
+
+          if (hasChanges) {
+            mergeUpdates.push(updatedNode);
+          }
+        }
+      }
+    }
+    
+    // Check if any actual changes were generated
+    if (mergeUpdates.length === 0 && newNodes.length === 0 && deleteNodeIds.length === 0) {
+      setError('Advanced generation completed but no changes were produced. Try refining your request or checking the success rules.');
+      return;
+    }
+    
+    // Show preview with the generated changes, using inputNodes as the baseline for comparison
+    setPreview({
+      showPreview: true,
+      llmResponse: {
+        merge: mergeUpdates,
+        delete: deleteNodeIds,
+        newNodes: newNodes,
+      },
+      originalNodes: inputNodes, // Use input nodes, not the original overlay nodes
+      prompt: query,
+      editedNodes: new Map<string, Partial<Node>>(),
+      newNodesEdits: new Map<string, Partial<Node>>(),
+      deletedNodesConfirm: new Set<string>(),
+      validationResult: result.validationResult,
+      pipelineState: result
+    });
   };
 
   const handleSubmit = async () => {
@@ -169,168 +339,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         
         // Convert pipeline result to preview format
         if (result.stage === 'completed' || result.stage === 'failed') {
-          const mergeUpdates: Partial<Node>[] = [];
-          const newNodes: Partial<Node>[] = [];
-          const deleteNodeIds: string[] = [];
-          
-          // Get deletions from planning output
-          if (result.planningOutput?.deleteNodeIds) {
-            deleteNodeIds.push(...result.planningOutput.deleteNodeIds);
-          }
-          
-          // Use finalAppliedNodes if available (when completed successfully) or fall back to processing diffs
-          if (result.finalAppliedNodes && result.stage === 'completed') {
-            // Compare finalAppliedNodes with original nodes to determine changes
-            const originalNodeMap = new Map(nodes.map(n => [n.id, n]));
-            
-            // Find updated and new nodes by comparing final state with original
-            for (const [nodeId, finalNode] of Object.entries(result.finalAppliedNodes)) {
-              const originalNode = originalNodeMap.get(nodeId);
-              
-              if (!originalNode) {
-                // This is a new node
-                newNodes.push({
-                  id: finalNode.id,
-                  name: finalNode.name,
-                  longDescription: finalNode.longDescription,
-                  type: finalNode.type,
-                  updateImage: finalNode.updateImage || false
-                });
-              } else {
-                // Check if this node was actually updated
-                const hasChanges = 
-                  originalNode.name !== finalNode.name ||
-                  originalNode.longDescription !== finalNode.longDescription ||
-                  originalNode.type !== finalNode.type;
-                
-                if (hasChanges) {
-                  mergeUpdates.push({
-                    id: nodeId,
-                    name: finalNode.name,
-                    longDescription: finalNode.longDescription,
-                    type: finalNode.type,
-                    updateImage: finalNode.updateImage || false
-                  });
-                }
-              }
-            }
-          } else if (result.generatedDiffs) {
-            // Fallback: process diffs manually (for failed/incomplete pipelines)
-            for (const [nodeId, diff] of Object.entries(result.generatedDiffs)) {
-              // Handle new node creation (direct node format for CREATE_NEW_NODE)
-              if (diff && diff.id && diff.name && diff.longDescription && diff.type && nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
-                newNodes.push({
-                  id: diff.id,
-                  name: diff.name,
-                  longDescription: diff.longDescription,
-                  type: diff.type,
-                  updateImage: diff.updateImage || false
-                });
-              }
-              // Handle new node creation (legacy n_nodes format)
-              else if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
-                for (const newNode of diff.n_nodes) {
-                  if (newNode.id) {
-                    newNodes.push({
-                      id: newNode.id,
-                      name: newNode.name,
-                      longDescription: newNode.longDescription,
-                      type: newNode.type,
-                      updateImage: newNode.updateImage || false
-                    });
-                  }
-                }
-              }
-              
-              // Handle existing node updates - multiple formats
-              const originalNode = nodes.find(n => n.id === nodeId);
-              if (originalNode) {
-                let updatedNode: Partial<Node> = { id: nodeId };
-                let hasChanges = false;
-                
-                // Format 1: u_nodes format
-                if (diff.u_nodes && diff.u_nodes[nodeId]) {
-                  const nodeUpdates = diff.u_nodes[nodeId];
-                  for (const [fieldName, operation] of Object.entries(nodeUpdates)) {
-                    if (fieldName === 'img_upd') continue;
-                    const fieldOp = operation as FieldUpdateOperation;
-
-                    if (fieldOp && typeof fieldOp === 'object') {
-                      if (fieldOp.rpl !== undefined) {
-                        (updatedNode as any)[fieldName] = fieldOp.rpl;
-                        hasChanges = true;
-                      } else if (fieldOp.df) {
-                        const originalText = (originalNode as any)[fieldName] || '';
-                        (updatedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
-                        hasChanges = true;
-                      }
-                    }
-                  }
-                }
-                
-                // Format 2: Direct diff format (df array)
-                else if (diff.df && Array.isArray(diff.df)) {
-                  const originalText = originalNode.longDescription || '';
-                  updatedNode.longDescription = applyTextDiffInstructions(originalText, diff.df);
-                  hasChanges = true;
-                }
-                
-                // Format 3: Direct field operations
-                else if (diff.name || diff.longDescription || diff.type || diff.rpl) {
-                  if (diff.rpl !== undefined) {
-                    updatedNode.longDescription = diff.rpl;
-                    hasChanges = true;
-                  }
-                  
-                  ['name', 'longDescription', 'type'].forEach(fieldName => {
-                    const fieldOp = (diff as any)[fieldName];
-                    if (fieldOp) {
-                      if (typeof fieldOp === 'string') {
-                        (updatedNode as any)[fieldName] = fieldOp;
-                        hasChanges = true;
-                      } else if (fieldOp && typeof fieldOp === 'object') {
-                        if (fieldOp.rpl !== undefined) {
-                          (updatedNode as any)[fieldName] = fieldOp.rpl;
-                          hasChanges = true;
-                        } else if (fieldOp.df && Array.isArray(fieldOp.df)) {
-                          const originalText = (originalNode as any)[fieldName] || '';
-                          (updatedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
-                          hasChanges = true;
-                        }
-                      }
-                    }
-                  });
-                }
-
-                if (hasChanges) {
-                  mergeUpdates.push(updatedNode);
-                }
-              }
-            }
-          }
-          
-          // Check if any actual changes were generated
-          if (mergeUpdates.length === 0 && newNodes.length === 0 && deleteNodeIds.length === 0) {
-            setError('Advanced generation completed but no changes were produced. Try refining your request or checking the success rules.');
-            return;
-          }
-          
-          // Show preview with the generated changes
-          setPreview({
-            showPreview: true,
-            llmResponse: {
-              merge: mergeUpdates,
-              delete: deleteNodeIds,
-              newNodes: newNodes,
-            },
-            originalNodes: nodes,
-            prompt: query,
-            editedNodes: new Map<string, Partial<Node>>(),
-            newNodesEdits: new Map<string, Partial<Node>>(),
-            deletedNodesConfirm: new Set<string>(),
-            validationResult: result.validationResult,
-            pipelineState: result
-          });
+          await handlePipelineResultForPreview(result, nodes);
         } else {
           // Fallback: show empty preview with error information
           setError(`Advanced generation ${result.stage}. ${result.errors?.length ? 'Errors: ' + result.errors.map(e => e.error).join(', ') : ''}`);
