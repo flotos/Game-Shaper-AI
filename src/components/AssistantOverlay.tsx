@@ -36,6 +36,7 @@ interface PreviewState {
   newNodesEdits?: Map<string, Partial<Node>>;
   deletedNodesConfirm?: Set<string>;
   validationResult?: ValidationResult;
+  pipelineState?: PipelineState;
 }
 
 // Helper to safely extract string value from various data types
@@ -101,6 +102,15 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
 
   const handleRunNextLoop = async () => {
     if (!pipelineState) return;
+    
+    // Clear preview state to show pipeline progress
+    setPreview({
+      showPreview: false,
+      originalNodes: [],
+      editedNodes: new Map(),
+      newNodesEdits: new Map(),
+      deletedNodesConfirm: new Set()
+    });
     
     setIsLoading(true);
     setError('');
@@ -310,7 +320,8 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             editedNodes: new Map<string, Partial<Node>>(),
             newNodesEdits: new Map<string, Partial<Node>>(),
             deletedNodesConfirm: new Set<string>(),
-            validationResult: result.validationResult
+            validationResult: result.validationResult,
+            pipelineState: result
           });
         } else {
           // Fallback: show empty preview with error information
@@ -836,6 +847,69 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               <p className="text-white whitespace-pre-wrap">{preview.prompt}</p>
             </div>
           )}
+
+          {/* Validation Results and Advanced Controls */}
+          {preview.validationResult && (
+            <div className="mb-4 p-4 bg-gray-800 border border-gray-600 rounded">
+                             <div className="flex items-center justify-between mb-3">
+                 <h3 className="text-lg font-semibold text-white">Advanced Generation Results</h3>
+                 <button
+                   onClick={handleRunNextLoop}
+                   disabled={isLoading}
+                   className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm disabled:bg-gray-600"
+                 >
+                   Run Next Loop
+                 </button>
+               </div>
+              
+              <div className="bg-gray-900 rounded p-3 text-sm">
+                <div className="flex gap-6 mb-2">
+                  <div>
+                    <span className="text-green-400 font-medium">
+                      ✓ {preview.validationResult.validatedRules.length} rule(s) passed
+                    </span>
+                  </div>
+                  {preview.validationResult.failedRules.length > 0 && (
+                    <div>
+                      <span className="text-red-400 font-medium">
+                        ✗ {preview.validationResult.failedRules.length} rule(s) failed
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                                 {/* Show all passed rules */}
+                 {preview.validationResult.validatedRules.length > 0 && (
+                   <div className="mb-2">
+                     <div className="text-green-300 space-y-1">
+                       {preview.validationResult.validatedRules.map((rule, index) => (
+                         <div key={index} className="text-xs">• {rule}</div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+                
+                {/* Show failed rules */}
+                {preview.validationResult.failedRules.length > 0 && (
+                  <div>
+                    <div className="text-red-300 space-y-1">
+                      {preview.validationResult.failedRules.map((failure, index) => (
+                        <div key={index} className="text-xs">
+                          <span className="font-medium text-red-400">{failure.nodeId}:</span> {failure.reason}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                                 {preview.pipelineState && (
+                   <div className="mt-2 pt-2 border-t border-gray-700 text-xs text-gray-400">
+                     Loop {preview.pipelineState.currentLoop} / {preview.pipelineState.maxLoops} • Stage: {preview.pipelineState.stage}
+                   </div>
+                 )}
+              </div>
+            </div>
+          )}
           
           {preview.llmResponse.newNodes && preview.llmResponse.newNodes.length > 0 && (
             <div className="mb-6">
@@ -930,16 +1004,13 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white">Advanced Node Generation</h3>
                 <div className="flex gap-2">
-                  {(pipelineState.stage === 'completed' || pipelineState.stage === 'failed' ||
-                    (pipelineState.validationResult && pipelineState.validationResult.failedRules.length > 0)) && (
-                    <button
-                      onClick={handleRunNextLoop}
-                      disabled={isLoading}
-                      className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm disabled:bg-gray-600"
-                    >
-                      Run Next Loop
-                    </button>
-                  )}
+                  <button
+                    onClick={handleRunNextLoop}
+                    disabled={isLoading}
+                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm disabled:bg-gray-600"
+                  >
+                    Run Next Loop
+                  </button>
                   <button
                     onClick={handleCancelAdvanced}
                     className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-500 text-sm"
