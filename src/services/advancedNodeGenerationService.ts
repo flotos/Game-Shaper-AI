@@ -288,6 +288,8 @@ class AdvancedNodeGenerationService {
         }
 
         // Stage 3: Content Generation
+        let workingNodesMap: { [nodeId: string]: any } = state.currentNodeStates;
+        
         if (state.planningOutput && state.searchResults) {
           state.stage = 'generating';
           onStageUpdate?.(state);
@@ -305,15 +307,38 @@ class AdvancedNodeGenerationService {
           
           // Create a working copy of nodes that will be updated with each generation
           let workingNodes = [...currentNodes];
-          let workingNodesMap = this.createNodeSnapshot(workingNodes);
+          workingNodesMap = this.createNodeSnapshot(workingNodes);
           
-          for (const nodeId of state.planningOutput.targetNodeIds) {
+          for (const originalNodeId of state.planningOutput.targetNodeIds) {
+            // Check if this is a NEW_NODE that has already been created in previous loops
+            let actualNodeId = originalNodeId;
+            let skipProcessing = false;
+            
+            if (originalNodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
+              // Extract the intended node name from NEW_NODE_descriptiveName
+              const intendedNodeName = originalNodeId.replace(/^NEW_NODE_/, '');
+              
+              // Check if a node with this intended ID already exists
+              const existingNode = workingNodes.find(n => n.id === intendedNodeName);
+              if (existingNode) {
+                // Node was created in a previous loop, convert to edit operation
+                actualNodeId = intendedNodeName;
+                console.log(`Converting NEW_NODE_${intendedNodeName} to edit operation for existing node ${intendedNodeName}`);
+              }
+              // If not found, proceed with creation as normal
+            }
+            
+            if (skipProcessing) {
+              console.log(`Skipping processing of ${originalNodeId} as it was already created`);
+              continue;
+            }
+            
             const previousFailures = state.validationResult?.failedRules
-              .filter(fr => fr.nodeId === nodeId)
+              .filter(fr => fr.nodeId === originalNodeId || fr.nodeId === actualNodeId)
               .map(fr => fr.reason);
               
             const diff = await this.generateNodeDiff(
-              nodeId,
+              actualNodeId,
               workingNodes, // Use the working copy that includes previous generations
               state.planningOutput,
               state.searchResults,
@@ -322,15 +347,15 @@ class AdvancedNodeGenerationService {
               previousFailures
             );
             
-            generatedDiffs[nodeId] = diff;
+            generatedDiffs[originalNodeId] = diff;
             
             // Apply this diff to the working nodes immediately so next generations can see it
-            const tempDiffState = { [nodeId]: diff };
+            const tempDiffState = { [actualNodeId]: diff };
             const updatedNodesMap = this.applyDiffsToNodes(workingNodesMap, tempDiffState);
             
             // Update working nodes array with new nodes if any were created
             // Handle direct node format for CREATE_NEW_NODE
-            if (diff && diff.id && diff.name && diff.longDescription && diff.type && nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
+            if (diff && diff.id && diff.name && diff.longDescription && diff.type && originalNodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
               if (!workingNodes.find(n => n.id === diff.id)) {
                 workingNodes.push(diff);
               }
@@ -360,8 +385,9 @@ class AdvancedNodeGenerationService {
         }
 
         // Apply diffs to current state for validation
+        // Use the updated working nodes map that includes all intermediate changes from this loop
         let editedNodes = this.applyDiffsToNodes(
-          state.currentNodeStates,
+          workingNodesMap,
           state.generatedDiffs || {}
         );
 
@@ -371,7 +397,7 @@ class AdvancedNodeGenerationService {
           onStageUpdate?.(state);
           
           // Use the same node set that was used for generation
-          const validationNodes = state.currentLoop === 1 ? state.allNodes : this.reconstructNodesFromStates(state.currentNodeStates);
+          const validationNodes = state.currentLoop === 1 ? state.allNodes : this.reconstructNodesFromStates(workingNodesMap);
           
           state.validationResult = await this.validateOutput(
             validationNodes,
@@ -388,27 +414,24 @@ class AdvancedNodeGenerationService {
             editedNodes = this.applyNodeDeletions(editedNodes, state.planningOutput.deleteNodeIds);
           }
           
+          // Store the final applied state for UI preview and mark as completed
+          state.finalAppliedNodes = editedNodes;
+          state.stage = 'completed';
+          onStageUpdate?.(state);
+          
           // Only break early if forceLoops is false or we've reached the maximum loops
           if (!config.forceLoops || state.currentLoop >= state.maxLoops) {
-            // Store the final applied state for UI preview ONLY when actually completing
-            state.finalAppliedNodes = editedNodes;
-            state.stage = 'completed';
-            onStageUpdate?.(state);
             break;
           } else {
             // If force loops is enabled and we haven't reached max loops, continue to next loop
             // but update current node states with the successful changes
             state.currentNodeStates = editedNodes;
-            // DO NOT set finalAppliedNodes here - we're not done yet!
+            // Continue to next loop iteration
           }
         }
 
-        // Prepare for next loop
-        state.currentLoop++;
-        if (state.currentLoop <= state.maxLoops) {
-          // Update current node states with any successful changes
-          state.currentNodeStates = editedNodes;
-        }
+        // Update current node states with any successful changes for next loop
+        state.currentNodeStates = editedNodes;
         
       } catch (error) {
         state.errors.push({
@@ -422,8 +445,10 @@ class AdvancedNodeGenerationService {
         if (state.currentLoop >= state.maxLoops) {
           throw error;
         }
-        state.currentLoop++;
       }
+      
+      // Increment loop counter at the end of each complete loop iteration
+      state.currentLoop++;
     }
 
     // If we've exhausted all loops without success
