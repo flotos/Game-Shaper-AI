@@ -16,6 +16,8 @@ class AdvancedNodeGenerationService {
   private defaultConfig: AdvancedNodeGenerationConfig = {
     defaultTimeout: 10 * 60 * 1000, // 10 minutes
     maxSearchResults: 5,
+    maxLoops: 1,
+    forceLoops: false,
   };
   
   private pipelineTimeouts = new Map<string, NodeJS.Timeout>();
@@ -43,6 +45,7 @@ class AdvancedNodeGenerationService {
     allNodes: Node[], 
     chatHistory: Message[],
     userPrompt: string,
+    currentLoop: number = 1,
     moxusContext?: string
   ): Promise<PlanningStageOutput> {
     const nodesDescription = this.formatNodesForPrompt(allNodes);
@@ -51,6 +54,7 @@ class AdvancedNodeGenerationService {
       moxus_context_string: moxusContext || '',
       user_prompt: userPrompt,
       string_history: this.formatChatHistoryForPrompt(chatHistory),
+      current_loop: currentLoop.toString(),
     };
 
     const prompt = formatPrompt(loadedPrompts.advanced_nodes_generation.planning, replacements);
@@ -203,7 +207,7 @@ class AdvancedNodeGenerationService {
     const pipelineId = Math.random().toString(36).substring(7);
     const initialState: PipelineState = {
       mode: 'automatic',
-      maxLoops: 1,
+      maxLoops: finalConfig.maxLoops || 1,
       timeout: finalConfig.defaultTimeout,
       currentLoop: 1,
       stage: 'planning',
@@ -227,7 +231,7 @@ class AdvancedNodeGenerationService {
 
     try {
       const result = await Promise.race([
-        this.executePipelineLoop(state, onStageUpdate),
+        this.executePipelineLoop(state, finalConfig, onStageUpdate),
         timeoutPromise
       ]);
       
@@ -255,6 +259,7 @@ class AdvancedNodeGenerationService {
 
   private async executePipelineLoop(
     initialState: PipelineState,
+    config: AdvancedNodeGenerationConfig,
     onStageUpdate?: (state: PipelineState) => void
   ): Promise<PipelineState> {
     let state = { ...initialState };
@@ -269,7 +274,8 @@ class AdvancedNodeGenerationService {
           state.planningOutput = await this.runPlanningStage(
             state.allNodes,
             state.chatHistory || [],
-            state.userPrompt
+            state.userPrompt,
+            state.currentLoop
           );
         }
 
@@ -382,12 +388,19 @@ class AdvancedNodeGenerationService {
             editedNodes = this.applyNodeDeletions(editedNodes, state.planningOutput.deleteNodeIds);
           }
           
-          // Store the final applied state for UI preview
-          state.finalAppliedNodes = editedNodes;
-          
-          state.stage = 'completed';
-          onStageUpdate?.(state);
-          break;
+          // Only break early if forceLoops is false or we've reached the maximum loops
+          if (!config.forceLoops || state.currentLoop >= state.maxLoops) {
+            // Store the final applied state for UI preview ONLY when actually completing
+            state.finalAppliedNodes = editedNodes;
+            state.stage = 'completed';
+            onStageUpdate?.(state);
+            break;
+          } else {
+            // If force loops is enabled and we haven't reached max loops, continue to next loop
+            // but update current node states with the successful changes
+            state.currentNodeStates = editedNodes;
+            // DO NOT set finalAppliedNodes here - we're not done yet!
+          }
         }
 
         // Prepare for next loop

@@ -970,6 +970,8 @@ advanced_nodes_generation:
     # GAME CONTENT PLANNING INSTRUCTIONS
     **YOU ARE**: The Planning Module for Advanced Node Generation. Your task is to analyze the game context and user request to create inputs for subsequent pipeline stages.
 
+    You are in the iteration step number {current_loop} of this process.
+
     ## INPUT CONTEXT
     {utils.wrappers.nodes_description}
 

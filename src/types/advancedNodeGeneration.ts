@@ -68,6 +68,8 @@ export interface AdvancedNodeGenerationConfig {
   braveApiKey?: string;
   defaultTimeout: number;
   maxSearchResults: number;
+  maxLoops?: number;
+  forceLoops?: boolean;
 }
 
 // API Response types for Brave Search

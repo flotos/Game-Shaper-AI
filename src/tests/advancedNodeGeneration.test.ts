@@ -90,7 +90,7 @@ describe('Advanced Node Generation Service', () => {
       });
 
       await expect(
-        advancedNodeGenerationService.runPlanningStage(mockNodes, mockChatHistory, mockUserPrompt)
+        advancedNodeGenerationService.runPlanningStage(mockNodes, mockChatHistory, mockUserPrompt, 1)
       ).rejects.toThrow('Invalid planning stage output');
     });
   });

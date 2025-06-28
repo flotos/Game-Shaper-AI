@@ -87,7 +87,16 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
   const [error, setError] = useState('');
   const [sendMoxusContext, setSendMoxusContext] = useState(false);
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+  const [maxLoops, setMaxLoops] = useState(1);
+  const [forceLoops, setForceLoops] = useState(false);
   const [pipelineState, setPipelineState] = useState<PipelineState | null>(null);
+
+  // Auto-disable force loops when max loops is 1
+  React.useEffect(() => {
+    if (maxLoops === 1 && forceLoops) {
+      setForceLoops(false);
+    }
+  }, [maxLoops, forceLoops]);
   const [preview, setPreview] = useState<PreviewState>({
     showPreview: false,
     originalNodes: nodes,
@@ -129,7 +138,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         query,
         nodesToUse,
         chatHistory,
-        {}, // Use default config
+        { maxLoops, forceLoops }, // Use selected max loops and force loops setting
         (state) => setPipelineState(state)
       );
       
@@ -331,7 +340,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
           query,
           nodes,
           chatHistory,
-          {}, // Use default config
+          { maxLoops, forceLoops }, // Use selected max loops and force loops setting
           (state) => setPipelineState(state) // Update UI with pipeline progress
         );
         
@@ -1005,6 +1014,45 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
           />
           <label htmlFor="advanced-mode-checkbox" className="text-white text-sm">
             Advanced Mode (Multi-step pipeline with web search)
+          </label>
+        </div>
+        
+        <div className="flex items-center mb-4">
+          <label htmlFor="max-loops-selector" className={`text-sm mr-3 ${isAdvancedMode ? 'text-white' : 'text-gray-500'}`}>
+            Number of loops:
+          </label>
+          <select
+            id="max-loops-selector"
+            value={maxLoops}
+            onChange={(e) => setMaxLoops(parseInt(e.target.value))}
+            disabled={!isAdvancedMode}
+            className={`px-3 py-1 rounded text-sm ${
+              isAdvancedMode 
+                ? 'bg-gray-800 text-white border border-gray-600 hover:border-gray-500' 
+                : 'bg-gray-700 text-gray-500 border border-gray-700 cursor-not-allowed'
+            }`}
+          >
+            <option value={1}>1</option>
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+            <option value={4}>4</option>
+            <option value={5}>5</option>
+          </select>
+        </div>
+        
+        <div className="flex items-center mb-4">
+          <input
+            type="checkbox"
+            id="force-loops-checkbox"
+            checked={forceLoops}
+            onChange={() => setForceLoops(!forceLoops)}
+            disabled={!isAdvancedMode || maxLoops === 1}
+            className="mr-2"
+          />
+          <label htmlFor="force-loops-checkbox" className={`text-sm ${
+            isAdvancedMode && maxLoops > 1 ? 'text-white' : 'text-gray-500'
+          }`}>
+            Force all loops (run all {maxLoops} loops even if validation passes)
           </label>
         </div>
         
