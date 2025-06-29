@@ -7,6 +7,39 @@ interface AdvancedNodeGenerationPanelProps {
   onCancel?: () => void;
 }
 
+const safeStringValue = (value: any): string => {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  
+  // Handle objects that might have longDescription or content properties
+  if (typeof value === 'object') {
+    if (value.longDescription && typeof value.longDescription === 'string') {
+      return value.longDescription;
+    }
+    if (value.content && typeof value.content === 'string') {
+      return value.content;
+    }
+    if (value.text && typeof value.text === 'string') {
+      return value.text;
+    }
+    // For arrays, try to join them
+    if (Array.isArray(value)) {
+      return value.map(item => safeStringValue(item)).join('\n');
+    }
+  }
+  
+  // Last resort: try to JSON stringify for debugging, but fallback to empty string
+  try {
+    const jsonStr = JSON.stringify(value, null, 2);
+    // If it's a simple object representation, return empty instead
+    if (jsonStr === '{}' || jsonStr === '[]') return '';
+    return jsonStr;
+  } catch {
+    return '';
+  }
+};
+
 const AdvancedNodeGenerationPanel: React.FC<AdvancedNodeGenerationPanelProps> = ({
   pipelineState,
   onRunNextLoop,
@@ -114,14 +147,14 @@ const AdvancedNodeGenerationPanel: React.FC<AdvancedNodeGenerationPanelProps> = 
               <span className="text-gray-400">Target Nodes:</span>
               <p className="text-white mt-1">{pipelineState.planningOutput.targetNodeIds.join(', ')}</p>
             </div>
-            <div className="mb-2">
-              <span className="text-gray-400">Success Rules:</span>
-              <ul className="text-white mt-1 list-disc list-inside">
-                {pipelineState.planningOutput.successRules.map((rule, index) => (
-                  <li key={index} className="text-xs">{rule}</li>
-                ))}
-              </ul>
-            </div>
+                          <div className="mb-2">
+                <span className="text-gray-400">Success Rules:</span>
+                <ul className="text-white mt-1 list-disc list-inside">
+                  {pipelineState.planningOutput.successRules.map((rule, index) => (
+                    <li key={index} className="text-xs">{safeStringValue(rule)}</li>
+                  ))}
+                </ul>
+              </div>
           </div>
         </div>
       )}
@@ -177,7 +210,7 @@ const AdvancedNodeGenerationPanel: React.FC<AdvancedNodeGenerationPanelProps> = 
                 <ul className="mt-1 space-y-1">
                   {pipelineState.validationResult.failedRules.map((failure, index) => (
                     <li key={index} className="text-xs text-red-300">
-                      <span className="font-medium">{failure.nodeId}:</span> {failure.reason}
+                      <span className="font-medium">{safeStringValue(failure.nodeId)}:</span> {safeStringValue(failure.reason)}
                     </li>
                   ))}
                 </ul>

@@ -182,13 +182,14 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
         
         if (!inputNode) {
           // This is a new node
-          newNodes.push({
-            id: finalNode.id,
-            name: finalNode.name,
-            longDescription: finalNode.longDescription,
-            type: finalNode.type,
-            updateImage: finalNode.updateImage || false
-          });
+                  const newNodeData = {
+          id: safeStringValue(finalNode.id),
+          name: safeStringValue(finalNode.name),
+          longDescription: safeStringValue(finalNode.longDescription),
+          type: safeStringValue(finalNode.type),
+          updateImage: finalNode.updateImage || false
+        };
+        newNodes.push(newNodeData);
         } else {
           // Check if this node was actually updated
           const hasChanges = 
@@ -197,13 +198,14 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
             inputNode.type !== finalNode.type;
           
           if (hasChanges) {
-            mergeUpdates.push({
+            const mergeNodeData = {
               id: nodeId,
-              name: finalNode.name,
-              longDescription: finalNode.longDescription,
-              type: finalNode.type,
+              name: safeStringValue(finalNode.name),
+              longDescription: safeStringValue(finalNode.longDescription),
+              type: safeStringValue(finalNode.type),
               updateImage: finalNode.updateImage || false
-            });
+            };
+            mergeUpdates.push(mergeNodeData);
           }
         }
       }
@@ -212,25 +214,27 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
       for (const [nodeId, diff] of Object.entries(result.generatedDiffs)) {
         // Handle new node creation (direct node format for CREATE_NEW_NODE)
         if (diff && diff.id && diff.name && diff.longDescription && diff.type && nodeId.match(/^NEW_NODE_[a-zA-Z0-9_]+$/)) {
-          newNodes.push({
-            id: diff.id,
-            name: diff.name,
-            longDescription: diff.longDescription,
-            type: diff.type,
+          const newNodeData = {
+            id: safeStringValue(diff.id),
+            name: safeStringValue(diff.name),
+            longDescription: safeStringValue(diff.longDescription),
+            type: safeStringValue(diff.type),
             updateImage: diff.updateImage || false
-          });
+          };
+          newNodes.push(newNodeData);
         }
         // Handle new node creation (legacy n_nodes format)
         else if (diff.n_nodes && Array.isArray(diff.n_nodes)) {
           for (const newNode of diff.n_nodes) {
             if (newNode.id) {
-              newNodes.push({
-                id: newNode.id,
-                name: newNode.name,
-                longDescription: newNode.longDescription,
-                type: newNode.type,
+              const newNodeData = {
+                id: safeStringValue(newNode.id),
+                name: safeStringValue(newNode.name),
+                longDescription: safeStringValue(newNode.longDescription),
+                type: safeStringValue(newNode.type),
                 updateImage: newNode.updateImage || false
-              });
+              };
+              newNodes.push(newNodeData);
             }
           }
         }
@@ -250,11 +254,12 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
 
               if (fieldOp && typeof fieldOp === 'object') {
                 if (fieldOp.rpl !== undefined) {
-                  (updatedNode as any)[fieldName] = fieldOp.rpl;
+                  (updatedNode as any)[fieldName] = safeStringValue(fieldOp.rpl);
                   hasChanges = true;
                 } else if (fieldOp.df) {
                   const originalText = (inputNode as any)[fieldName] || '';
-                  (updatedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
+                  const updatedText = applyTextDiffInstructions(originalText, fieldOp.df);
+                  (updatedNode as any)[fieldName] = safeStringValue(updatedText);
                   hasChanges = true;
                 }
               }
@@ -264,14 +269,15 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
           // Format 2: Direct diff format (df array)
           else if (diff.df && Array.isArray(diff.df)) {
             const originalText = inputNode.longDescription || '';
-            updatedNode.longDescription = applyTextDiffInstructions(originalText, diff.df);
+            const updatedText = applyTextDiffInstructions(originalText, diff.df);
+            updatedNode.longDescription = safeStringValue(updatedText);
             hasChanges = true;
           }
           
           // Format 3: Direct field operations
           else if (diff.name || diff.longDescription || diff.type || diff.rpl) {
             if (diff.rpl !== undefined) {
-              updatedNode.longDescription = diff.rpl;
+              updatedNode.longDescription = safeStringValue(diff.rpl);
               hasChanges = true;
             }
             
@@ -279,15 +285,16 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               const fieldOp = (diff as any)[fieldName];
               if (fieldOp) {
                 if (typeof fieldOp === 'string') {
-                  (updatedNode as any)[fieldName] = fieldOp;
+                  (updatedNode as any)[fieldName] = safeStringValue(fieldOp);
                   hasChanges = true;
                 } else if (fieldOp && typeof fieldOp === 'object') {
                   if (fieldOp.rpl !== undefined) {
-                    (updatedNode as any)[fieldName] = fieldOp.rpl;
+                    (updatedNode as any)[fieldName] = safeStringValue(fieldOp.rpl);
                     hasChanges = true;
                   } else if (fieldOp.df && Array.isArray(fieldOp.df)) {
                     const originalText = (inputNode as any)[fieldName] || '';
-                    (updatedNode as any)[fieldName] = applyTextDiffInstructions(originalText, fieldOp.df);
+                    const updatedText = applyTextDiffInstructions(originalText, fieldOp.df);
+                    (updatedNode as any)[fieldName] = safeStringValue(updatedText);
                     hasChanges = true;
                   }
                 }
@@ -702,15 +709,15 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               <div className="text-sm space-y-2">
                 <div>
                   <span className="font-semibold block mb-1">Name:</span>
-                  <p className="p-2 bg-gray-700 rounded text-white">{originalNode.name}</p>
+                  <p className="p-2 bg-gray-700 rounded text-white">{safeStringValue(originalNode.name)}</p>
                 </div>
                 <div>
                   <span className="font-semibold block mb-1">Long Description:</span>
-                  <p className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap" style={{ height: calculateHeight(originalNode.longDescription, true), overflowY: 'auto' }}>{originalNode.longDescription}</p>
+                  <p className="p-2 bg-gray-700 rounded text-white whitespace-pre-wrap" style={{ height: calculateHeight(originalNode.longDescription, true), overflowY: 'auto' }}>{safeStringValue(originalNode.longDescription)}</p>
                 </div>
                 <div>
                   <span className="font-semibold block mb-1">Type:</span>
-                  <p className="p-2 bg-gray-700 rounded text-white">{originalNode.type}</p>
+                  <p className="p-2 bg-gray-700 rounded text-white">{safeStringValue(originalNode.type)}</p>
                 </div>
               </div>
             ) : (
@@ -724,24 +731,24 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
               <div>
                 <span className="font-semibold block mb-1">Name:</span>
                 <DiffViewer 
-                  original={originalNode?.name || ''} 
-                  updated={suggestedNodeChange.name || ''} 
+                  original={safeStringValue(originalNode?.name || '')} 
+                  updated={safeStringValue(suggestedNodeChange.name || '')} 
                   isCurrent={false}
                 />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Long Description:</span>
                 <DiffViewer 
-                  original={originalNode?.longDescription || ''} 
-                  updated={suggestedNodeChange.longDescription || ''} 
+                  original={safeStringValue(originalNode?.longDescription || '')} 
+                  updated={safeStringValue(suggestedNodeChange.longDescription || '')} 
                   isCurrent={false}
                 />
               </div>
               <div>
                 <span className="font-semibold block mb-1">Type:</span>
                 <DiffViewer 
-                  original={originalNode?.type || ''} 
-                  updated={suggestedNodeChange.type || ''} 
+                  original={safeStringValue(originalNode?.type || '')} 
+                  updated={safeStringValue(suggestedNodeChange.type || '')} 
                   isCurrent={false}
                 />
               </div>
@@ -841,9 +848,9 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
       <div key={nodeId} className="mb-4 p-4 bg-red-900/50 rounded">
         <div className="flex justify-between items-start">
           <div>
-            <h3 className="text-lg font-bold mb-2 text-white">{node.name} (ID: {nodeId})</h3>
-            <p className="text-sm text-gray-300 mb-2">Type: {node.type}</p>
-            <p className="text-sm text-gray-300 whitespace-pre-wrap">{node.longDescription}</p>
+            <h3 className="text-lg font-bold mb-2 text-white">{safeStringValue(node.name)} (ID: {nodeId})</h3>
+            <p className="text-sm text-gray-300 mb-2">Type: {safeStringValue(node.type)}</p>
+            <p className="text-sm text-gray-300 whitespace-pre-wrap">{safeStringValue(node.longDescription)}</p>
           </div>
           <button 
             onClick={() => toggleDeleteConfirmation(nodeId)} 
@@ -903,7 +910,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                    <div className="mb-2">
                      <div className="text-green-300 space-y-1">
                        {preview.validationResult.validatedRules.map((rule, index) => (
-                         <div key={index} className="text-xs">• {rule}</div>
+                         <div key={index} className="text-xs">• {safeStringValue(rule)}</div>
                        ))}
                      </div>
                    </div>
@@ -915,7 +922,7 @@ const AssistantOverlay: React.FC<AssistantOverlayProps> = ({ nodes, updateGraph,
                     <div className="text-red-300 space-y-1">
                       {preview.validationResult.failedRules.map((failure, index) => (
                         <div key={index} className="text-xs">
-                          <span className="font-medium text-red-400">{failure.nodeId}:</span> {failure.reason}
+                          <span className="font-medium text-red-400">{safeStringValue(failure.nodeId)}:</span> {safeStringValue(failure.reason)}
                         </div>
                       ))}
                     </div>
