@@ -14,7 +14,7 @@ import { applyTextDiffInstructions } from '../utils/textUtils';
 
 class AdvancedNodeGenerationService {
   private defaultConfig: AdvancedNodeGenerationConfig = {
-    defaultTimeout: 10 * 60 * 1000, // 10 minutes
+    defaultTimeout: 120 * 60 * 1000, // 120 minutes
     maxSearchResults: 5,
     maxLoops: 1,
     forceLoops: false,

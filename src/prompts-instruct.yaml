@@ -1265,37 +1265,59 @@ utils:
   diffPrompt: |
     ## Diff Format Instructions
     
-    When updating content, use this diff format:
+    When updating content, use this diff format with explicit field targeting:
     
-    ### For complete replacement:
+    ### For complete field replacement:
     ```json
     {
-      "rpl": "Complete replacement text for the entire content"
+      "name": { "rpl": "New name value" },
+      "longDescription": { "rpl": "Complete replacement text for the entire longDescription" },
+      "type": { "rpl": "new_type" }
     }
     ```
     
-    ### For targeted updates:
+    ### For targeted field updates:
     ```json
     {
-      "df": [
-        {
-          "prev_txt": "exact text to find and replace",
-          "next_txt": "new text to replace with",
-          "occ": 1
-        }
-      ]
+      "longDescription": {
+        "df": [
+          {
+            "prev_txt": "exact text to find and replace",
+            "next_txt": "new text to replace with",
+            "occ": 1
+          }
+        ]
+      }
+    }
+    ```
+    
+    ### Mixed field operations:
+    ```json
+    {
+      "name": { "rpl": "Updated Name" },
+      "longDescription": {
+        "df": [
+          { "prev_txt": "old content", "next_txt": "new content" }
+        ]
+      }
     }
     ```
     
     ### Diff Instructions:
-    - **rpl**: Complete replacement of the entire content
-    - **df**: Array of targeted replacements where:
+    - **rpl**: Complete replacement of the field's content - MUST specify target field (`"name"`, `"longDescription"`, `"type"`)
+    - **df**: Array of targeted replacements within a field - MUST specify target field
       - `prev_txt`: Exact text fragment to find (case-sensitive)
       - `next_txt`: Text to replace with (can be empty to delete)
       - `occ`: Which occurrence to replace (defaults to 1)
-    - **To append new content**: Use `prev_txt: ""` and `next_txt: "\n\nNew content"`
+    - **To append to a field**: Use `"df": [{"prev_txt": "", "next_txt": "\n\nNew content"}]`
 
-    Never use "prev_txt" if it contains more than 50% of the original content. Instead, use "rpl" to replace the entire content. This is very important to avoid paying for ton of tokens.
+    ### CRITICAL: Field Specification Required
+    - When using `rpl`, you MUST specify which field: `"fieldName": {"rpl": "value"}`
+    - When using `df`, you MUST specify which field: `"fieldName": {"df": [...]}`
+    - Available fields: `name`, `longDescription`, `type`
+    - NEVER use bare `{"rpl": "..."}` without field specification
+
+    Never use "prev_txt" if it contains more than 50% of the original content. Instead, use "rpl" to replace the entire field content. This is very important to avoid paying for ton of tokens.
 
     You should very rarely append new content. When possible, do targeted replacements being careful not to have duplicate content.
     You should take into consideration the final result that will be made with your diff update and not focus on only what you have to add.
